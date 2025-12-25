@@ -106,3 +106,77 @@ process KRAKEN_FILTER_SE {
     gzip -f ${prefix}.kraken.fq
     '''
 }
+
+process FASTP_PE {
+    tag "fastp PE: ${sampleId}"
+    cpus 4
+    memory '8 GB'
+    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename ->
+        if (filename.endsWith('.json') || filename.endsWith('.html')) return "stats/${filename}"
+        return filename
+    }
+    
+    input:
+    tuple val(sampleId), val(runId), path(r1), path(r2), val(refId), val(taxId)
+    
+    output:
+    tuple val(sampleId), val(runId), path("${sampleId}__${runId}_R1.clean.fq.gz"), path("${sampleId}__${runId}_R2.clean.fq.gz"), val(refId), val(taxId), emit: pe_reads
+    tuple val(sampleId), val(runId), path("${sampleId}__${runId}_se_combined.fq.gz"), val(refId), val(taxId), emit: se_reads
+    path("${sampleId}__${runId}_fastp.json"), emit: json
+    path("${sampleId}__${runId}_fastp.html"), emit: html
+    
+    shell:
+    '''
+    set -euo pipefail
+    prefix="!{sampleId}__!{runId}"
+    
+    # Run FastP
+    fastp -i !{r1} -I !{r2} \
+      --out1 ${prefix}_R1.clean.fq.gz --out2 ${prefix}_R2.clean.fq.gz \
+      --merge --merged_out ${prefix}_merged.fq.gz \
+      --unpaired1 ${prefix}_u1.fq.gz --unpaired2 ${prefix}_u2.fq.gz \
+      --detect_adapter_for_pe \
+      --thread !{task.cpus} \
+      --length_required !{params.fastp_min_length} \
+      --json ${prefix}_fastp.json --html ${prefix}_fastp.html
+
+    # Handle optional merged/unpaired outputs
+    for f in ${prefix}_merged.fq.gz ${prefix}_u1.fq.gz ${prefix}_u2.fq.gz; do
+      if [[ ! -f "$f" ]]; then gzip -c /dev/null > "$f"; fi
+    done
+    
+    # Concatenate orphans and merged reads into a single SE file
+    cat ${prefix}_merged.fq.gz ${prefix}_u1.fq.gz ${prefix}_u2.fq.gz > ${prefix}_se_combined.fq.gz
+    rm -f ${prefix}_merged.fq.gz ${prefix}_u1.fq.gz ${prefix}_u2.fq.gz
+    '''
+}
+
+process FASTP_SE {
+    tag "fastp SE: ${sampleId}"
+    cpus 4
+    memory '8 GB'
+    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename ->
+        if (filename.endsWith('.json') || filename.endsWith('.html')) return "stats/${filename}"
+        return filename
+    }
+    
+    input:
+    tuple val(sampleId), val(runId), path(r1), val(refId), val(taxId)
+    
+    output:
+    tuple val(sampleId), val(runId), path("${sampleId}__${runId}_SE.clean.fq.gz"), val(refId), val(taxId), emit: se_reads
+    path("${sampleId}__${runId}_fastp.json"), emit: json
+    path("${sampleId}__${runId}_fastp.html"), emit: html
+    
+    shell:
+    '''
+    set -euo pipefail
+    prefix="!{sampleId}__!{runId}"
+    
+    fastp -i !{r1} \
+      --out1 ${prefix}_SE.clean.fq.gz \
+      --thread !{task.cpus} \
+      --length_required !{params.fastp_min_length} \
+      --json ${prefix}_fastp.json --html ${prefix}_fastp.html
+    '''
+}
