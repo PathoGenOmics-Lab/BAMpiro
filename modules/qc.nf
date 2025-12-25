@@ -180,3 +180,37 @@ process FASTP_SE {
       --json ${prefix}_fastp.json --html ${prefix}_fastp.html
     '''
 }
+
+process MULTIQC {
+    tag "MultiQC"
+    publishDir "${params.outdir}/multiqc", mode: 'copy'
+    cpus 2
+    memory '4 GB'
+
+    input:
+    path multiqc_files
+    val report_name
+
+    output:
+    path "${report_name}.html", emit: report
+    path "${report_name}_data", emit: data
+
+    script:
+    """
+    # Create configuration file to ORDER the report logically.
+    # We do NOT hide 'generalstats' to keep the summary table.
+    cat <<EOF > multiqc_config.yaml
+    title: "BAMpiro Report 🧛‍♂️"
+    module_order:
+        - fastp
+        - samtools
+        - kraken
+        - snpeff
+    EOF
+
+    # Run MultiQC
+    # -c : Use custom config
+    # -n : Set dynamic output name
+    multiqc . -c multiqc_config.yaml -n ${report_name}
+    """
+}
