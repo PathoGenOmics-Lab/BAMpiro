@@ -1,5 +1,11 @@
 nextflow.enable.dsl=2
 
+/* ====================================================================
+    QC MODULES
+    Contains: Validation, Kraken2, FastP, and MultiQC processes
+====================================================================
+*/
+
 process VALIDATE_RAW_READS_PE {
     tag "Validate PE: ${sampleId}"
     cpus 1
