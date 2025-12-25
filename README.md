@@ -1,15 +1,25 @@
+
+
 # BAMpiro 🧛‍♂️🧬
+### *General Bacterial Short Read Mapping, Variant Calling & Lineage/DR Typing Pipeline*
 __Paula Ruiz-Rodriguez<sup>1</sup>__ 
 __and Mireia Coscolla<sup>1</sup>__
 <br>
 <sub> 1. I<sup>2</sup>SysBio, University of Valencia-CSIC, FISABIO Joint Research Unit Infection and Public Health, Valencia, Spain </sub>  
 
-
-### *General Bacterial Short Read Mapping, Variant Calling & Lineage/DR Typing Pipeline*
-
-**BAMpiro** is a modular, containerized bioinformatics pipeline built with **Nextflow (DSL2)**. While optimized by default for *Mycobacterium tuberculosis* (TB), its architecture is **agnostic** and can be used to analyze **any bacterial genome** (e.g., *E. coli*, *Salmonella*, *Staphylococcus*) by adjusting a few parameters.
-
-The pipeline automates the workflow from raw reads to annotated variants, consensus sequences, and comprehensive quality control reports.
+<table>
+  <tr>
+    <td width="300">
+      <img src=".github/bampiro2.png" title="BAMpiro logo" style="width:300px; height: auto;">
+    </td>
+    <td style="padding-left: 20px;">
+      <p>
+        <strong>BAMpiro</strong> is a modular, containerized bioinformatics pipeline built with <strong>Nextflow (DSL2)</strong>. While optimized by default for <em>Mycobacterium tuberculosis</em> (TB), its architecture is <strong>agnostic</strong> and can be used to analyze <strong>any bacterial genome</strong> (e.g., <em>E. coli</em>, <em>Salmonella</em>, <em>Staphylococcus</em>) by adjusting a few parameters.
+      </p>
+      <p>The pipeline automates the workflow from raw reads to annotated variants, consensus sequences, and comprehensive quality control reports.</p>
+    </td>
+  </tr>
+</table>
 
 ## Key Features
 
