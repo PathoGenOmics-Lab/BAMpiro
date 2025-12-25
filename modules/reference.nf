@@ -61,3 +61,47 @@ process PREPARE_REFERENCE {
     fi
     '''
 }
+
+process SNPEFF_BUILD_DB {
+    tag "SnpEff DB: ${refId}"
+    publishDir "${params.outdir}/references/${refId}/snpeff", mode: 'copy'
+    cpus 1
+    memory '8 GB'
+    
+    input:
+    tuple val(refId), path(fasta), path(gff)
+    
+    output:
+    tuple val(refId), path("snpEff.config"), path("data"), emit: db
+    
+    shell:
+    '''
+    set -euo pipefail
+    
+    # Create SnpEff directory structure
+    mkdir -p data/!{refId}
+    
+    # Handle Fasta (Gunzip or Copy)
+    if [[ "!{fasta}" == *.gz ]]; then 
+        gzip -cd "!{fasta}" > data/!{refId}/sequences.fa
+    else 
+        cp "!{fasta}" data/!{refId}/sequences.fa
+    fi
+
+    # Handle GFF (Gunzip or Copy)
+    if [[ "!{gff}"   == *.gz ]]; then 
+        gzip -cd "!{gff}"   > data/!{refId}/genes.gff
+    else 
+        cp "!{gff}"   data/!{refId}/genes.gff
+    fi
+    
+    # Generate Config File
+    cat > snpEff.config <<EOF
+data.dir = ./data
+!{refId}.genome : !{refId}
+EOF
+    
+    # Build Database
+    snpEff build -c snpEff.config -gff3 -noCheckCds -noCheckProtein -v !{refId}
+    '''
+}
