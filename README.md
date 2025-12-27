@@ -49,7 +49,7 @@ __and Mireia Coscolla<sup>1</sup>__
 
 ## 🛠 Prerequisites
 
-* **Nextflow** (`>=21.10.6`)
+* **Nextflow** (`>=24.04.2`)
 * **Singularity** or **Docker**
 * **Java** (version 11 or later)
 
