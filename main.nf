@@ -3,7 +3,7 @@ nextflow.enable.dsl=2
 
 /*
 ===============================================================================
-BAMpiro Pipeline 🧛‍♂️ - Short Read Mapping, Variant Calling, Lineage & Reporting
+ BAMpiro Pipeline - Short Read Mapping, Variant Calling, Lineage & Reporting
 ===============================================================================
 */
 
@@ -144,7 +144,6 @@ if (params.kraken2_db && hasTax) {
 // Check consensus script
 if (params.make_consensus) {
     // Note: Script is now looked for in 'bin/', handled by Nextflow automatically
-    // This check is kept for safety if path was explicit
 }
 
 log.info """
@@ -275,10 +274,10 @@ workflow {
     // 7. Consensus Generation (Optional)
     if (params.make_consensus) {
         // Prepare inputs: VCF + Reference + Mask sites
-        def consensus_py = file("bin/WGS_fasta_allpos.py") // Now in bin/
+        // Note: Script is called from bin/ directly in the module
         def refmeta = final_bams.final_bam.map { sId, rId, bam, bai, ref_fa, exclude_txt -> tuple(sId, rId, ref_fa, exclude_txt) }
         def allpos_mask = vcf_ch.allpos.join(fb_out.mask_sites, by: [0,1])
-        def cons_in = allpos_mask.join(refmeta, by: [0,1]).map { sId, rId, vcf_gz, tbi, mask, ref_fa, exclude_txt -> tuple(sId, rId, vcf_gz, tbi, mask, ref_fa, exclude_txt, consensus_py) }
+        def cons_in = allpos_mask.join(refmeta, by: [0,1]).map { sId, rId, vcf_gz, tbi, mask, ref_fa, exclude_txt -> tuple(sId, rId, vcf_gz, tbi, mask, ref_fa, exclude_txt) }
         
         CONSENSUS_FASTA(cons_in)
     }
@@ -316,8 +315,6 @@ workflow {
     }
 
     // 9. Legacy Stats Generation
-    def script_stats = file("bin/stats_to_legacy.py") // Now in bin/
-
     // Prepare Reference Index channel
     def ref_fai_ch = ref_bundle.bundle.map { rId, fa, indices, excl -> 
         def fai_file = indices.find { it.name.endsWith('.fai') }
@@ -373,7 +370,8 @@ workflow {
         }
         .filter { it != null }
 
-    GENERATE_LEGACY_STATS(final_stats_input, script_stats)
+    // CORRECCIÓN: Se eliminó el segundo argumento 'script_stats'
+    GENERATE_LEGACY_STATS(final_stats_input)
 
     // 10. MultiQC Report
     // Collect all relevant metrics from previous processes
