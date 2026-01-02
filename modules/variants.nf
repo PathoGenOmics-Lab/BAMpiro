@@ -218,10 +218,11 @@ process MERGE_VCFS {
     cp clean_snps.vcf.gz.tbi !{sampleId}.!{refId}.vcf.gz.tbi
 
     # 2. Merge Backbone + SNPs
-    has_snps=0
-    if zgrep -v '^#' clean_snps.vcf.gz | grep -q "."; then has_snps=1; fi
-    
-    if [[ \$has_snps -eq 1 ]]; then
+    n_vars=\$(zgrep -v '^#' clean_snps.vcf.gz | head -n 1 | wc -l || true)
+    echo "DEBUG: Numero de variantes encontradas: \$n_vars" >&2
+
+    if [[ "\$n_vars" -gt 0 ]]; then
+
       # A. Identify Variant Positions
       bcftools query -f '%CHROM\\t%POS\\n' clean_snps.vcf.gz | sort -u > variant_positions.txt
       
