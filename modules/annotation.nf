@@ -101,7 +101,7 @@ process GENERATE_LEGACY_STATS {
     
     """
     # Run the Python script (located in the bin/ directory)
-    python3 stats_to_legacy.py \\
+    python3 ${projectDir}/bin/stats_to_legacy.py \\
         --sample ${sampleId} \\
         --fastp-json ${fastp_json} \\
         --bam-stats ${bam_stats} \\
