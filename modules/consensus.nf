@@ -29,7 +29,7 @@ process CONSENSUS_FASTA {
     # while masking low-confidence areas.
     # Note: WGS_fasta_allpos.py is automatically found in the bin/ directory.
     
-    python3 WGS_fasta_allpos.py \\
+    python3 ${projectDir}/bin/WGS_fasta_allpos.py \\
       --vcf ${allpos_vcf_gz} \\
       --reference ${ref_fa} \\
       --exclude ${exclude_txt} \\
