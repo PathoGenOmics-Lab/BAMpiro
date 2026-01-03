@@ -1,7 +1,7 @@
 nextflow.enable.dsl=2
 
-// Import centralized function for publishDir management
-include { getSavePath } from './utils'
+// Import centralized functions for path generation and file classification
+include { getSavePath; getSampleDir } from './utils'
 
 /* ====================================================================
     VARIANTS MODULES
@@ -10,8 +10,10 @@ include { getSavePath } from './utils'
 
 process CALL_FREEBAYES {
     tag "FreeBayes: ${sampleId}"
-    // Use centralized logic. This allows saving specific VCFs while discarding intermediates if defined in utils.nf
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    
+    // Use getSampleDir for nested output support.
+    // getSavePath handles the filtering of intermediate files if needed.
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     cpus 4
     memory '16 GB'
@@ -184,8 +186,9 @@ process CALL_BACKBONE {
 
 process MERGE_VCFS {
     tag "Merge: ${sampleId}"
-    // Use centralized logic
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    
+    // Use getSampleDir for nested output support
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     cpus 4
     memory '8 GB'
