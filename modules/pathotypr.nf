@@ -1,7 +1,7 @@
 nextflow.enable.dsl=2
 
-// Import centralized function for publishDir management
-include { getSavePath } from './utils'
+// Import centralized functions for path generation and file classification
+include { getSavePath; getSampleDir } from './utils'
 
 /* ====================================================================
     PATHOTYPR MODULES
@@ -10,9 +10,10 @@ include { getSavePath } from './utils'
 
 process RUN_PATHOTYPR_PE {
     tag "PathotyprPE: ${sampleId}"
-    // Use centralized logic. getSavePath will automatically place these files 
-    // into the 'lineage/' subdirectory based on their filename.
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    
+    // Use getSampleDir for nested output support.
+    // getSavePath will automatically place these files into the 'lineage/' subdirectory.
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     cpus 4
     memory '8 GB'
@@ -46,8 +47,9 @@ process RUN_PATHOTYPR_PE {
 
 process RUN_PATHOTYPR_SE {
     tag "PathotyprSE: ${sampleId}"
-    // Use centralized logic.
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    
+    // Use getSampleDir for nested output support
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     cpus 4
     memory '8 GB'
