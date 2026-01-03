@@ -1,5 +1,8 @@
 nextflow.enable.dsl=2
 
+// Import centralized function for publishDir management
+include { getSavePath } from './utils'
+
 /* ====================================================================
     ANNOTATION MODULES
     Contains: SnpEff annotation processes and Final Legacy Stats generation
@@ -7,7 +10,8 @@ nextflow.enable.dsl=2
 
 process ANNOTATE_LEGACY_VCF {
     tag "AnnLegacy: ${sampleId}"
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy'
+    // Use centralized logic
+    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     cpus 2
     memory '8 GB'
 
@@ -49,7 +53,8 @@ process ANNOTATE_LEGACY_VCF {
 
 process ANNOTATE_MAIN_VCF {
     tag "AnnMain: ${sampleId}"
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy'
+    // Use centralized logic
+    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     cpus 2
     memory '16 GB'
 
@@ -85,7 +90,8 @@ process ANNOTATE_MAIN_VCF {
 
 process GENERATE_LEGACY_STATS {
     tag "Stats: ${sampleId}"
-    publishDir "${params.outdir}/${sampleId}/stats", mode: 'copy'
+    // Changed to root sample dir, getSavePath will handle moving .log files to stats/ subdirectory
+    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     cpus 1
     
     input:
