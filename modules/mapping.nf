@@ -1,5 +1,8 @@
 nextflow.enable.dsl=2
 
+// Import centralized function for publishDir management
+include { getSavePath } from './utils'
+
 /* ====================================================================
     MAPPING MODULES
     Contains: BWA Alignment and BAM Processing (Merge/Sort/MarkDup)
@@ -7,8 +10,9 @@ nextflow.enable.dsl=2
 
 process MAPPING_PE {
     tag "Map PE: ${sampleId}"
-    // We typically don't publish these intermediate BAMs to save space
-    // publishDir "${params.outdir}/${sampleId}/intermediate", mode: 'copy'
+    // We typically don't publish these intermediate BAMs to save space.
+    // If you wanted to publish them, you would uncomment the line below:
+    // publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     cpus { params.threads as int }
     memory '32 GB'
@@ -35,6 +39,9 @@ process MAPPING_PE {
 
 process MAPPING_SE {
     tag "Map SE: ${sampleId}"
+    // Intermediate BAMs are usually not published
+    // publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+
     cpus { params.threads as int }
     memory '32 GB'
 
@@ -58,10 +65,10 @@ process MAPPING_SE {
 
 process MERGE_AND_MARKDUP {
     tag "Dedup: ${sampleId}"
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename ->
-        // We save the final BAM and the stats, but maybe not the indices if not needed
-        return filename
-    }
+    
+    // Use centralized logic. This handles putting .stats in the stats/ folder
+    // and keeping the final .bam in the sample root.
+    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     // --- OOM (Out of Memory) Protection Strategy ---
     // If the process fails with exit code 137 (OOM), it retries with more memory
