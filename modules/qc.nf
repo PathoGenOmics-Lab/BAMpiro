@@ -1,7 +1,7 @@
 nextflow.enable.dsl=2
 
-// Import centralized function for publishDir management
-include { getSavePath } from './utils'
+// Import centralized functions for path generation and file classification
+include { getSavePath; getSampleDir } from './utils'
 
 /* ====================================================================
     QC MODULES
@@ -49,8 +49,9 @@ process KRAKEN_FILTER_PE {
     tag "Kraken PE: ${sampleId}"
     cpus 12
     memory '80 GB'
-    // Centralized logic applied here
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    
+    // Use getSampleDir for nested output support
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), path(r2), val(refId), val(taxId)
@@ -88,8 +89,9 @@ process KRAKEN_FILTER_SE {
     tag "Kraken SE: ${sampleId}"
     cpus 12
     memory '80 GB'
-    // Centralized logic applied here
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    
+    // Use getSampleDir for nested output support
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), val(refId), val(taxId)
@@ -122,8 +124,9 @@ process FASTP_PE {
     tag "fastp PE: ${sampleId}"
     cpus 4
     memory '8 GB'
-    // Centralized logic applied here
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    
+    // Use getSampleDir for nested output support
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), path(r2), val(refId), val(taxId)
@@ -164,8 +167,9 @@ process FASTP_SE {
     tag "fastp SE: ${sampleId}"
     cpus 4
     memory '8 GB'
-    // Centralized logic applied here
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    
+    // Use getSampleDir for nested output support
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), val(refId), val(taxId)
