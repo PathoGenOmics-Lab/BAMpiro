@@ -1,5 +1,8 @@
 nextflow.enable.dsl=2
 
+// Import centralized function for publishDir management
+include { getSavePath } from './utils'
+
 /* ====================================================================
     VARIANTS MODULES
     Contains: FreeBayes Calling, Backbone Generation, and VCF Merging
@@ -7,10 +10,8 @@ nextflow.enable.dsl=2
 
 process CALL_FREEBAYES {
     tag "FreeBayes: ${sampleId}"
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename ->
-        // We save specific VCFs but might discard intermediate temps if needed
-        return filename
-    }
+    // Use centralized logic. This allows saving specific VCFs while discarding intermediates if defined in utils.nf
+    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     cpus 4
     memory '16 GB'
@@ -168,7 +169,7 @@ process CALL_BACKBONE {
             
             # Determine status based on coverage
             wt=(dp>=MINCOV?1:0); 
-            nc=(dp>=MINCOV?0:1); 
+            nc=(dp>=MINCOV?0:1);
             gt=(dp>=MINCOV?"0":"./.");
             
             info="ADP="dp";WT="wt";HET=0;HOM=0;NC="nc;
@@ -183,10 +184,9 @@ process CALL_BACKBONE {
 
 process MERGE_VCFS {
     tag "Merge: ${sampleId}"
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename ->
-        // Save the main VCF and the All-Positions VCF
-        return filename
-    }
+    // Use centralized logic
+    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    
     cpus 4
     memory '8 GB'
     
@@ -219,7 +219,7 @@ process MERGE_VCFS {
 
     # 2. Merge Backbone + SNPs
     n_vars=\$(zgrep -v '^#' clean_snps.vcf.gz | head -n 1 | wc -l || true)
-    echo "DEBUG: Numero de variantes encontradas: \$n_vars" >&2
+    echo "DEBUG: Number of variants found: \$n_vars" >&2
 
     if [[ "\$n_vars" -gt 0 ]]; then
 
