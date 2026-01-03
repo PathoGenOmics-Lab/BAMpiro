@@ -1,5 +1,8 @@
 nextflow.enable.dsl=2
 
+// Import centralized function for publishDir management
+include { getSavePath } from './utils'
+
 /* ====================================================================
     QC MODULES
     Contains: Validation, Kraken2, FastP, and MultiQC processes
@@ -46,7 +49,8 @@ process KRAKEN_FILTER_PE {
     tag "Kraken PE: ${sampleId}"
     cpus 12
     memory '80 GB'
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy'
+    // Centralized logic applied here
+    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), path(r2), val(refId), val(taxId)
@@ -84,7 +88,8 @@ process KRAKEN_FILTER_SE {
     tag "Kraken SE: ${sampleId}"
     cpus 12
     memory '80 GB'
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy'
+    // Centralized logic applied here
+    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), val(refId), val(taxId)
@@ -117,10 +122,8 @@ process FASTP_PE {
     tag "fastp PE: ${sampleId}"
     cpus 4
     memory '8 GB'
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename ->
-        if (filename.endsWith('.json') || filename.endsWith('.html')) return "stats/${filename}"
-        return filename
-    }
+    // Centralized logic applied here
+    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), path(r2), val(refId), val(taxId)
@@ -161,10 +164,8 @@ process FASTP_SE {
     tag "fastp SE: ${sampleId}"
     cpus 4
     memory '8 GB'
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename ->
-        if (filename.endsWith('.json') || filename.endsWith('.html')) return "stats/${filename}"
-        return filename
-    }
+    // Centralized logic applied here
+    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), val(refId), val(taxId)
@@ -189,6 +190,7 @@ process FASTP_SE {
 
 process MULTIQC {
     tag "MultiQC"
+    // MultiQC has its own dedicated path and does not use per-sample logic
     publishDir "${params.outdir}/multiqc", mode: 'copy'
     cpus 2
     memory '4 GB'
@@ -206,7 +208,7 @@ process MULTIQC {
     # Create configuration file to ORDER the report logically.
     # We do NOT hide 'generalstats' to keep the summary table.
     cat <<EOF > multiqc_config.yaml
-    title: "BAMpiro Report 🧛‍♂️"
+    title: "BAMpiro Report"
     module_order:
         - fastp
         - samtools
