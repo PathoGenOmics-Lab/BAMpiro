@@ -9,10 +9,10 @@ process PREPARE_REFERENCE {
 
     tag "Ref: ${refId}"
 
-    // We do not publish the 'reference.fa' copy to save space, only indices and exclusion files.
-    // Note: We use specific logic here instead of 'getSavePath' because we NEED to publish
-    // the index files (.fai, .bwt, etc.) which getSavePath would normally filter out.
+    // We keep custom logic here because we NEED to publish the index files (.fai, .bwt, etc.),
+    // which the global 'getSavePath' function would filter out.
     publishDir "${params.outdir}/references/${refId}", mode: 'copy', saveAs: { filename ->
+        // Only hide the raw copy of reference.fa to save space (since we have the original input)
         if (filename == "reference.fa") return null
         return filename
     }
@@ -50,6 +50,7 @@ process PREPARE_REFERENCE {
         nucmer --maxmatch --nosimplify reference.fa reference.fa -p self_aln
         show-coords -r -c -l -T self_aln.delta > coords.tsv
 
+        # Parse nucmer coordinates to identify repetitive regions
         awk -v RID="!{refId}" 'BEGIN{OFS="\t"}
         {
             # Skip header/blank lines and enforce numeric coords in columns 1..4
