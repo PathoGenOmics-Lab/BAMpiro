@@ -86,6 +86,19 @@ nextflow run main.nf \
     --outdir results_bampiro \
     -profile slurm
 ```
+### Handling Multiple Runs per Sample (Merging)
+
+BAMpiro automatically handles multiple sequencing runs (e.g., different lanes or re-sequencing) for the same biological sample. 
+
+* **How to trigger merging:** Simply assign the **same `sampleId`** to multiple rows in your TSV file.
+* **The Logic:** The pipeline will process QC and Mapping for each run independently (in parallel) and then **merge** all BAM files associated with that `sampleId` before the Deduplication and Variant Calling steps.
+
+**Example of merging 2 runs into 1 sample:**
+```tsv
+sampleId    runId   r1                 r2                 refId ...
+Sample_A    Run_L1  /data/A_L1_R1.fq   /data/A_L1_R2.fq   H37Rv ...
+Sample_A    Run_L2  /data/A_L2_R1.fq   /data/A_L2_R2.fq   H37Rv ...
+```
 
 ## Output Structure
 After a successful run, the results_bampiro/ directory will look like this:
