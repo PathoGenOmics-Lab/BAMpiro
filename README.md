@@ -101,24 +101,38 @@ Sample_A    Run_L2  /data/A_L2_R1.fq   /data/A_L2_R2.fq   H37Rv ...
 ```
 
 ## Output Structure
-After a successful run, the results_bampiro/ directory will look like this:
-```
+The pipeline organizes results by `sampleId`. Below is a detailed breakdown of the output files using a sample named `MP00091` mapped against reference `LENS`.
+```text
 results_bampiro/
 ├── multiqc/
-│   ├── samples_multiqc_report.html   # Final interactive Summary (FastP, Kraken, Alignment, Variants)
-│   └── samples_multiqc_report_data/  # Raw data for the report
+│   └── samples_legio_multiqc_report.html   # 📊 Aggregate Report (QC, Mapping, Variants summary)
+│
 ├── references/
-│   └── H37Rv/                        # Processed reference indices & SnpEff DB
-├── T00001/                           # Per-sample results
-│   ├── stats/
-│   │   └── T00001.log                # Legacy statistics log (tab-separated)
-│   ├── lineage/
-│   │   └── T00001.pathotypr...       # Lineage classification results (if enabled)
-│   ├── T00001.H37Rv.final.bam        # Final Deduped BAM
-│   ├── T00001.H37Rv.vcf.gz           # Main Variant VCF (Annotated)
-│   ├── T00001.H37Rv.all.pos.vcf.gz   # All-sites VCF (Backbone)
-│   └── T00001.H37Rv.consensus.fasta  # Consensus Sequence
-└── ...
+│   └── LENS/                               # Processed Reference indices & SnpEff DB
+│
+└── MP00091/                                # 📁 Per-Sample Results Directory
+    │
+    ├── MP00091.LENS.final.bam              # 🧬 Merged, Coordinate-sorted, Deduplicated BAM
+    ├── MP00091.LENS.final.bam.bai          # BAM Index
+    │
+    ├── MP00091.LENS.ann.vcf.gz             # 🎯 MAIN OUTPUT: Annotated Variants (SNPs/Indels)
+    ├── MP00091.LENS.ann.vcf.gz.tbi         # Index for the main VCF
+    │
+    ├── MP00091.LENS.all.pos.vcf.gz         # 🦴 BACKBONE: VCF containing ALL positions (WT + Variants)
+    │                                       # (Ideal for phylogenetic supermatrices)
+    │
+    ├── MP00091.LENS.consensus.fasta        # 📝 Consensus Sequence (Fasta generated from VCF)
+    │
+    ├── MP00091.LENS.var.homo.SNPs.ann...   # 📂 Split VCFs: Subset of Homozygous SNPs (Annotated)
+    ├── MP00091.LENS.var.het.SNPs.ann...    # 📂 Split VCFs: Subset of Heterozygous SNPs (Annotated)
+    │
+    └── stats/                              # 📉 Statistics & Logs Folder
+        ├── MP00091.log                     # -> LEGACY summary log (Tab-separated metrics)
+        ├── MP00091.LENS.dedup.stats        # -> Samtools stats (reads mapped, coverage, etc.)
+        ├── MP00091...fastp.html/.json      # -> Trimming quality reports
+        ├── MP00091...kraken.report         # -> Taxonomic classification report
+        ├── MP00091.LENS.snpeff.csv         # -> Variant effect statistics
+        └── Locus_to_exclude_LENS.txt       # -> List of repetitive regions excluded from calling
 ```
 ## Directory Layout
 ```
