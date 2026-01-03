@@ -9,8 +9,10 @@ process PREPARE_REFERENCE {
 
     tag "Ref: ${refId}"
 
+    // We do not publish the 'reference.fa' copy to save space, only indices and exclusion files.
+    // Note: We use specific logic here instead of 'getSavePath' because we NEED to publish
+    // the index files (.fai, .bwt, etc.) which getSavePath would normally filter out.
     publishDir "${params.outdir}/references/${refId}", mode: 'copy', saveAs: { filename ->
-        // We do not publish the 'reference.fa' copy to save space, only indices and exclusion files
         if (filename == "reference.fa") return null
         return filename
     }
