@@ -1,5 +1,8 @@
 nextflow.enable.dsl=2
 
+// Import centralized function for publishDir management
+include { getSavePath } from './utils'
+
 /* ====================================================================
     CONSENSUS MODULES
     Contains: Generation of Consensus Fasta from VCF and Backbone
@@ -7,7 +10,9 @@ nextflow.enable.dsl=2
 
 process CONSENSUS_FASTA {
     tag "Consensus: ${sampleId}"
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy'
+    // Use centralized logic for publishing
+    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    
     cpus 1
     memory '4 GB'
 
@@ -28,7 +33,6 @@ process CONSENSUS_FASTA {
     # This script merges the reference, the backbone (all positions), and the variants
     # while masking low-confidence areas.
     # Note: WGS_fasta_allpos.py is automatically found in the bin/ directory.
-    
     python3 ${projectDir}/bin/WGS_fasta_allpos.py \\
       --vcf ${allpos_vcf_gz} \\
       --reference ${ref_fa} \\
