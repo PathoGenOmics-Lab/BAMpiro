@@ -1,7 +1,7 @@
 nextflow.enable.dsl=2
 
-// Import centralized function for publishDir management
-include { getSavePath } from './utils'
+// Import centralized functions for path generation and file classification
+include { getSavePath; getSampleDir } from './utils'
 
 /* ====================================================================
     ANNOTATION MODULES
@@ -10,8 +10,8 @@ include { getSavePath } from './utils'
 
 process ANNOTATE_LEGACY_VCF {
     tag "AnnLegacy: ${sampleId}"
-    // Use centralized logic
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    // Use getSampleDir for nested output support
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     cpus 2
     memory '8 GB'
 
@@ -53,8 +53,8 @@ process ANNOTATE_LEGACY_VCF {
 
 process ANNOTATE_MAIN_VCF {
     tag "AnnMain: ${sampleId}"
-    // Use centralized logic
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    // Use getSampleDir for nested output support
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     cpus 2
     memory '16 GB'
 
@@ -90,8 +90,8 @@ process ANNOTATE_MAIN_VCF {
 
 process GENERATE_LEGACY_STATS {
     tag "Stats: ${sampleId}"
-    // Changed to root sample dir, getSavePath will handle moving .log files to stats/ subdirectory
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    // Use getSampleDir. getSavePath automatically places .log files into the 'stats/' subfolder.
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     cpus 1
     
     input:
