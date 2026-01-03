@@ -1,7 +1,7 @@
 nextflow.enable.dsl=2
 
-// Import centralized function for publishDir management
-include { getSavePath } from './utils'
+// Import centralized functions for path generation and file classification
+include { getSavePath; getSampleDir } from './utils'
 
 /* ====================================================================
     CONSENSUS MODULES
@@ -10,15 +10,16 @@ include { getSavePath } from './utils'
 
 process CONSENSUS_FASTA {
     tag "Consensus: ${sampleId}"
-    // Use centralized logic for publishing
-    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    
+    // Use getSampleDir for nested output support
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     cpus 1
     memory '4 GB'
 
     input:
     // Input tuple: SampleID, RefID, VCF (all positions), TBI, Mask Sites, Ref Fasta, Excluded Regions
-    // Note: The python script 'WGS_fasta_allpos.py' is assumed to be in the 'bin/' folder
+    // Note: The python script 'WGS_fasta_allpos.py' is assumed to be in the 'bin/' folder of the project
     tuple val(sampleId), val(refId), path(allpos_vcf_gz), path(allpos_tbi), path(mask_sites), path(ref_fa), path(exclude_txt)
 
     output:
@@ -32,7 +33,6 @@ process CONSENSUS_FASTA {
     # Run the consensus generation script
     # This script merges the reference, the backbone (all positions), and the variants
     # while masking low-confidence areas.
-    # Note: WGS_fasta_allpos.py is automatically found in the bin/ directory.
     python3 ${projectDir}/bin/WGS_fasta_allpos.py \\
       --vcf ${allpos_vcf_gz} \\
       --reference ${ref_fa} \\
