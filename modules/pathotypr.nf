@@ -1,5 +1,8 @@
 nextflow.enable.dsl=2
 
+// Import centralized function for publishDir management
+include { getSavePath } from './utils'
+
 /* ====================================================================
     PATHOTYPR MODULES
     Contains: Lineage classification processes (PE and SE)
@@ -7,8 +10,10 @@ nextflow.enable.dsl=2
 
 process RUN_PATHOTYPR_PE {
     tag "PathotyprPE: ${sampleId}"
-    // Publish results to the 'lineage' subdirectory
-    publishDir "${params.outdir}/${sampleId}/lineage", mode: 'copy'
+    // Use centralized logic. getSavePath will automatically place these files 
+    // into the 'lineage/' subdirectory based on their filename.
+    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    
     cpus 4
     memory '8 GB'
 
@@ -41,8 +46,9 @@ process RUN_PATHOTYPR_PE {
 
 process RUN_PATHOTYPR_SE {
     tag "PathotyprSE: ${sampleId}"
-    // Publish results to the 'lineage' subdirectory
-    publishDir "${params.outdir}/${sampleId}/lineage", mode: 'copy'
+    // Use centralized logic.
+    publishDir "${params.outdir}/${sampleId}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    
     cpus 4
     memory '8 GB'
 
