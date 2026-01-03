@@ -99,6 +99,38 @@ sampleId    runId   r1                 r2                 refId ...
 Sample_A    Run_L1  /data/A_L1_R1.fq   /data/A_L1_R2.fq   H37Rv ...
 Sample_A    Run_L2  /data/A_L2_R1.fq   /data/A_L2_R2.fq   H37Rv ...
 ```
+## Configuration Parameters
+
+You can customize the pipeline execution by providing parameters via the command line (e.g., `--threads 16`) or by modifying a config file.
+
+| Category | Parameter | Default | Description |
+| :--- | :--- | :--- | :--- |
+| **Input/Output** | `--tsv` | `samples_legio.tsv` | Path to the input sample sheet (TSV). |
+| | `--outdir` | `results_bampiro` | Directory where results will be saved. |
+| | `--threads` | `8` | Max CPUs per process (where applicable). |
+| **Pathotypr** | `--run_pathotypr` | `false` | Set to `true` to enable lineage classification. |
+| | `--pathotypr_bin` | *(path)* | Path to the Pathotypr binary executable. |
+| | `--pathotypr_markers` | *(path)* | Path to the lineage markers file. |
+| | `--pathotypr_ref` | *(path)* | Reference fasta used for Pathotypr. |
+| **QC & Filter** | `--kraken2_db` | *(path)* | Path to the Kraken2 database directory. |
+| | `--fastp_min_length` | `35` | Discard reads shorter than this length. |
+| **Mapping/Backbone**| `--allpos_min_cov` | `30` | Minimum coverage to call a site "WT" (otherwise "NC"). |
+| | `--allpos_max_depth` | `10000` | Max depth for mpileup to avoid memory issues. |
+| | `--allpos_min_bq` | `20` | Minimum base quality for backbone calling. |
+| **Variant Calling** | `--freebayes_ploidy` | `2` | Ploidy (1 for haploid, 2 for mixed/diploid). |
+| | `--freebayes_min_map_qual`| `30` | Min mapping quality to use a read. |
+| | `--freebayes_min_base_qual`| `20` | Min base quality to use a base. |
+| | `--freebayes_min_alt_frac`| `0.05` | Min fraction of alt reads to propose a variant. |
+| **VAF & Filters** | `--hom_threshold` | `0.90` | Frequency ≥ 0.90 is called **Homozygous**. |
+| | `--het_min_frac` | `0.10` | Frequency between 0.10 and 0.90 is **Heterozygous**. |
+| | `--filter_min_dp` | `30` | Minimum depth required to call a variant. |
+| | `--min_alt_fwd/rev` | `2` | Min variant supporting reads in FWD and REV strands. |
+| **Consensus** | `--make_consensus` | `true` | Generate a consensus FASTA for each sample. |
+| | `--consensus_min_dp` | `7` | Depth threshold below which a base becomes "No Call". |
+| | `--consensus_mask_char` | `X` | Character for masked/low-quality sites. |
+| | `--consensus_nocall_char`| `-` | Character for no-coverage sites (gaps). |
+| **Flags** | `--exclude_repeats` | `true` | Mask self-aligned repetitive regions from reference. |
+| | `--annotate_legacy_vcfs`| `true` | Run SnpEff on split VCFs (homo/het/indel). |
 
 ## Output Structure
 The pipeline organizes results by `sampleId`. Below is a detailed breakdown of the output files using a sample named `MP00091` mapped against reference `LENS`.
