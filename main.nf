@@ -148,7 +148,7 @@ if (params.make_consensus) {
 
 log.info """
 ================================================================
- BAMpiro Pipeline 🧛‍♂️
+ BAMpiro Pipeline ðŸ§›â€â™‚ï¸
 ================================================================
 TSV              : ${params.tsv}
 Output Absolute  : ${final_outdir}
@@ -370,7 +370,7 @@ workflow {
         }
         .filter { it != null }
 
-    // CORRECCIÓN: Se eliminó el segundo argumento 'script_stats'
+    
     GENERATE_LEGACY_STATS(final_stats_input)
 
     // 10. MultiQC Report
