@@ -3,22 +3,17 @@
 
 """
 Consensus FASTA from BAMpiro all.pos VCF (multiallelic-aware) with "original-like" X rules.
+NOW INCLUDES: Special CSV Masking support.
 
 - Keep multiallelic support:
   * 3 distinct A/C/G/T bases at a site -> IUPAC (B/D/H/V)
   * 4 distinct bases -> N
-- X (mask_char) in as many "original-like" cases as possible:
-  1) any position within --exclude intervals
-  2) any position listed in --mask-sites (e.g., "str10-equivalent" sites from pipeline)
-  3) any VCF record with FILTER containing "str10" (VarScan compatibility)
-- '-' (nocall_char) ONLY if DP <= --min-dp (default 0)
-  (DP read from FORMAT/DP, else INFO/DP, else INFO/ADP, else 0)
-
-Notes:
-- all.pos can contain multiple records at the same CHROM/POS (bcftools norm -m -).
-  We group records per position and compute the allele set using GT per record.
-- We do NOT treat INFO/NC as gap. (NC in BAMpiro backbone can represent DP<MINCOV;
-  gaps only when DP = 0.)
+- X (mask_char) priority logic:
+  1) Position within --exclude intervals.
+  2) Position listed in --mask-sites.
+  3) Position marked as 'repetitive' (1) or 'blindspot' (1) in --special-mask-csv.
+  4) VCF record with FILTER containing "str10".
+- '-' (nocall_char) ONLY if DP <= --min-dp (default 0).
 """
 
 from __future__ import annotations
@@ -26,6 +21,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import sys
+import csv
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
@@ -236,6 +232,44 @@ class PointMasker:
         return (pos in s) if s else False
 
 
+class CsvMasker:
+    """
+    Parses a CSV with columns: rv_position,pal,homopolymer,GCrich,repetitive,blindspot
+    Masks the position if 'repetitive' or 'blindspot' == 1.
+    """
+    def __init__(self, csv_path: Optional[str]):
+        self.points: Set[int] = set()
+        if csv_path:
+            self._load(csv_path)
+
+    def _load(self, path: str) -> None:
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                reader = csv.DictReader(fh)
+                # Check for required 'rv_position' header
+                if not reader.fieldnames or 'rv_position' not in reader.fieldnames:
+                     sys.stderr.write(f"[WARN] CSV missing 'rv_position' header: {path}\n")
+                     return
+                
+                for row in reader:
+                    try:
+                        pos = int(row['rv_position'])
+                        # Parse flags (handle strings '1' or integers)
+                        rep = int(row.get('repetitive', 0))
+                        blind = int(row.get('blindspot', 0))
+                        
+                        if rep == 1 or blind == 1:
+                            self.points.add(pos)
+                            
+                    except (ValueError, KeyError):
+                        continue
+        except FileNotFoundError:
+            sys.stderr.write(f"[WARN] Special Mask CSV file not found: {path}\n")
+
+    def masked(self, pos: int) -> bool:
+        return pos in self.points
+
+
 class FastaReader:
     def __init__(self, fasta_path: str):
         self.seqs: Dict[str, str] = {}
@@ -316,7 +350,6 @@ def allele_bases_from_record(rec: VcfRecord, ref_base: str) -> Optional[Set[str]
     if alleles is None:
         return None
 
-    # If ALT is '.', treat as reference
     if rec.alt == "." or rec.alt == "":
         out = set()
         for aidx in alleles:
@@ -345,6 +378,7 @@ def consensus_for_position(
     ref_seqs: Dict[str, str],
     interval_mask: IntervalMasker,
     point_mask: PointMasker,
+    csv_mask: CsvMasker,
     mask_char: str,
     nocall_char: str,
     min_dp: int,
@@ -352,20 +386,21 @@ def consensus_for_position(
     chrom = recs[0].chrom
     pos = recs[0].pos
 
-    # X priority
-    if interval_mask.masked(chrom, pos) or point_mask.masked(chrom, pos):
+    # CHECK MASKING PRIORITY:
+    # 1. Interval Mask (Exclusions)
+    # 2. Point Mask (Mask Sites)
+    # 3. CSV Mask (Repetitive/Blindspot)
+    if interval_mask.masked(chrom, pos) or point_mask.masked(chrom, pos) or csv_mask.masked(pos):
         return mask_char
 
     for r in recs:
         if r.flt and "str10" in r.flt:
             return mask_char
 
-    # DP threshold for gap: use max DP at site
     dp_pos = max(get_dp(r.fmt, r.sample, r.info) for r in recs) if recs else 0
     if dp_pos <= min_dp:
         return nocall_char
 
-    # Reference base
     ref_seq = ref_seqs.get(chrom)
     ref_base = "N"
     if ref_seq and 1 <= pos <= len(ref_seq):
@@ -373,7 +408,6 @@ def consensus_for_position(
     elif recs[0].ref:
         ref_base = recs[0].ref[0].upper()
 
-    # Pure backbone record
     if len(recs) == 1 and (recs[0].alt == "." or recs[0].alt == ""):
         return ref_base if ref_base in DNA_BASES else "N"
 
@@ -394,6 +428,7 @@ def build_consensus(
     reference_path: str,
     exclude_path: Optional[str],
     mask_sites_path: Optional[str],
+    special_csv_path: Optional[str],
     out_path: str,
     wrap: int,
     mask_char: str,
@@ -406,6 +441,7 @@ def build_consensus(
 
     interval_mask = IntervalMasker(exclude_path)
     point_mask = PointMasker(mask_sites_path)
+    csv_mask = CsvMasker(special_csv_path)
 
     op = gzip.open if vcf_path.endswith(".gz") else open
     writer = FastaWriter(out_path, wrap=wrap)
@@ -423,7 +459,8 @@ def build_consensus(
     def fill_gap(chrom: str, start: int, end_excl: int) -> None:
         nonlocal expected_pos
         for p in range(start, end_excl):
-            if interval_mask.masked(chrom, p) or point_mask.masked(chrom, p):
+            # Also check CSV mask for gaps
+            if interval_mask.masked(chrom, p) or point_mask.masked(chrom, p) or csv_mask.masked(p):
                 writer.write_base(mask_char)
             else:
                 writer.write_base(nocall_char)
@@ -453,7 +490,7 @@ def build_consensus(
             pending = []
             return
 
-        base = consensus_for_position(pending, ref_seqs, interval_mask, point_mask, mask_char, nocall_char, min_dp)
+        base = consensus_for_position(pending, ref_seqs, interval_mask, point_mask, csv_mask, mask_char, nocall_char, min_dp)
         writer.write_base(base)
         expected_pos = pos + 1
         pending = []
@@ -481,17 +518,21 @@ def build_consensus(
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Consensus FASTA from BAMpiro all.pos (multiallelic + original-like X, DP<=min_dp -> '-').")
+    ap = argparse.ArgumentParser(description="Consensus FASTA from BAMpiro all.pos.")
     ap.add_argument("--vcf", required=True, help="Input all.pos.vcf(.gz)")
     ap.add_argument("--reference", required=True, help="Reference FASTA (.fa or .fa.gz)")
-    ap.add_argument("--exclude", default=None, help="Exclude intervals file (Chrom\\tStart\\tEnd...)")
-    ap.add_argument("--mask-sites", default=None, help="Mask sites file (CHROM\\tPOS per line) -> X (str10-equivalent)")
+    ap.add_argument("--exclude", default=None, help="Exclude intervals file")
+    ap.add_argument("--mask-sites", default=None, help="Mask sites file")
+    
+    # New argument for the special CSV mask
+    ap.add_argument("--special-mask-csv", default=None, help="CSV with rv_position,repetitive,blindspot to mask")
+    
     ap.add_argument("--output", required=True, help="Output consensus FASTA")
-    ap.add_argument("--wrap", type=int, default=80, help="FASTA wrap length (0 disables wrapping)")
+    ap.add_argument("--wrap", type=int, default=80, help="FASTA wrap length")
     ap.add_argument("--mask-char", default="X", help="Character for masked sites")
     ap.add_argument("--nocall-char", default="-", help="Character for no-call sites")
-    ap.add_argument("--min-dp", type=int, default=0, help="Write nocall_char when DP <= min-dp (default 0)")
-    ap.add_argument("--strict", action="store_true", help="Fail on unsorted VCF / unexpected duplicates")
+    ap.add_argument("--min-dp", type=int, default=0, help="Write nocall_char when DP <= min-dp")
+    ap.add_argument("--strict", action="store_true", help="Fail on unsorted VCF")
     args = ap.parse_args()
 
     build_consensus(
@@ -499,6 +540,7 @@ def main() -> None:
         reference_path=args.reference,
         exclude_path=args.exclude,
         mask_sites_path=args.mask_sites,
+        special_csv_path=args.special_mask_csv,
         out_path=args.output,
         wrap=args.wrap,
         mask_char=(args.mask_char or "X")[0],
@@ -507,7 +549,5 @@ def main() -> None:
         strict=args.strict,
     )
 
-
 if __name__ == "__main__":
     main()
-
