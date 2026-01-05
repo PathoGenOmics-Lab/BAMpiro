@@ -176,6 +176,7 @@ BAMpiro/
 │   ├── variants.nf          # FreeBayes, Backbone, Merge
 │   ├── annotation.nf        # SnpEff, Stats Legacy
 │   ├── consensus.nf         # Consensus Fasta
+│   ├── utils.nf             # Clean publish dir
 │   ├── pathotypr.nf         # Pathotypr Logic
 │   └── reference.nf         # Reference Prep
 ├── nextflow.config          # Global configuration & params
