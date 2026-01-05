@@ -249,3 +249,28 @@ This project follows the [all-contributors](https://github.com/all-contributors/
 </h2>
 
 <div align="justify">
+
+___
+## 📦 Container Specifications (Software Versions)
+
+The Docker container (`paururo/bambard:latest`) includes the following tools:
+
+| Tool | Version | Purpose |
+| :--- | :--- | :--- |
+| **Nextflow** | `25.10.2` | Workflow management engine |
+| **Python** | `3.14.2` | Scripting and orchestration |
+| **Java (OpenJDK)** | `23.0.2` | Runtime for Nextflow, SnpEff & FastQC |
+| **BWA-MEM2** | `2.3` | High-performance read alignment |
+| **Samtools** | `1.23` | BAM/SAM processing and stats |
+| **BCFtools** | `1.23` | Variant manipulation and filtering |
+| **HTSlib** | `1.23` | C library for high-throughput sequencing data |
+| **FreeBayes** | `1.3.10` | Haplotype-based variant caller |
+| **SnpEff** | `5.4.0a` | Variant annotation and effect prediction |
+| **FastP** | `1.0.1` | Fast all-in-one read pre-processing |
+| **Kraken2** | `2.17.1` | Taxonomic classification |
+| **MultiQC** | `1.33` | Aggregate results reporting |
+| **Bedtools** | `2.31.1` | Genome arithmetic |
+| **BLAST** | `2.17.0` | Sequence alignment search |
+| **MUMmer4** | `4.0.1` | Efficient sequence alignment (used for repeat masking) |
+| **Biopython** | `1.86` | Biological computation library |
+| **Pandas** | `2.3.3` | Data analysis library |
