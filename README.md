@@ -155,12 +155,15 @@ results_bampiro/
     │
     ├── MP00091.LENS.consensus.fasta        # 📝 Consensus Sequence (Fasta generated from VCF)
     │
+    ├── MP00091.LENS.freebayes.raw...       # 🧪 RAW VCF: Unfiltered calls (debug/comparison)
     ├── MP00091.LENS.var.homo.SNPs.ann...   # 📂 Split VCFs: Subset of Homozygous SNPs (Annotated)
     ├── MP00091.LENS.var.het.SNPs.ann...    # 📂 Split VCFs: Subset of Heterozygous SNPs (Annotated)
+    ├── MP00091.LENS.var.homo.indel...      # 📂 SPLIT VCF: Homozygous Indels only
     │
     └── stats/                              # 📉 Statistics & Logs Folder
         ├── MP00091.log                     # -> LEGACY summary log (Tab-separated metrics)
         ├── MP00091.LENS.dedup.stats        # -> Samtools stats (reads mapped, coverage, etc.)
+        ├── MP00091.LENS.mask_sites.tsv     # -> Specific positions masked due to low confidence
         ├── MP00091...fastp.html/.json      # -> Trimming quality reports
         ├── MP00091...kraken.report         # -> Taxonomic classification report
         ├── MP00091.LENS.snpeff.csv         # -> Variant effect statistics
