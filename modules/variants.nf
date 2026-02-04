@@ -68,7 +68,8 @@ process CALL_FREEBAYES {
     safe_tabix !{sampleId}.!{refId}.freebayes.raw.vcf.gz
 
     # 3. Normalize Variants
-    bcftools norm -m - -a -f !{ref_fa} -Ov -o normalized.vcf raw_freebayes.vcf
+    bcftools norm -m - -a -f !{ref_fa} raw_freebayes.vcf | \
+    bcftools view -e 'GT="0/0"' -Ov -o normalized.vcf
     
     # 4. Generate Mask Sites (Positions with low allelic balance support)
     ( bcftools view \$EXCL_ARG --types snps,mnps \\
