@@ -258,11 +258,12 @@ process MERGE_VCFS {
     memory '8 GB'
     
     input:
-    tuple val(sampleId), val(refId), path(snps_vcf), path(snps_tbi), path(back_vcf), path(back_tbi), path(hdr_template)
-    
+    // outLabel is "" for the normal (masked) all.pos and ".raw" for the virgin one.
+    tuple val(sampleId), val(refId), path(snps_vcf), path(snps_tbi), path(back_vcf), path(back_tbi), path(hdr_template), val(outLabel)
+
     output:
-    tuple val(sampleId), val(refId), path("${sampleId}.${refId}.all.pos.vcf.gz"), path("${sampleId}.${refId}.all.pos.vcf.gz.tbi"), emit: allpos
-    tuple val(sampleId), val(refId), path("${sampleId}.${refId}.vcf.gz"), path("${sampleId}.${refId}.vcf.gz.tbi"), emit: main_vcf
+    tuple val(sampleId), val(refId), path("${sampleId}.${refId}${outLabel}.all.pos.vcf.gz"), path("${sampleId}.${refId}${outLabel}.all.pos.vcf.gz.tbi"), emit: allpos
+    tuple val(sampleId), val(refId), path("${sampleId}.${refId}${outLabel}.vcf.gz"), path("${sampleId}.${refId}${outLabel}.vcf.gz.tbi"), emit: main_vcf
     
     shell:
     """
@@ -291,8 +292,8 @@ process MERGE_VCFS {
     safe_tabix clean_snps.vcf.gz
     
     # Save a copy as the main variant VCF
-    cp clean_snps.vcf.gz !{sampleId}.!{refId}.vcf.gz
-    cp clean_snps.vcf.gz.tbi !{sampleId}.!{refId}.vcf.gz.tbi
+    cp clean_snps.vcf.gz !{sampleId}.!{refId}!{outLabel}.vcf.gz
+    cp clean_snps.vcf.gz.tbi !{sampleId}.!{refId}!{outLabel}.vcf.gz.tbi
 
     # 2. Merge Backbone + SNPs
     # Count with bcftools (reads the whole file): a truncated clean_snps errors under set -e
@@ -313,16 +314,16 @@ process MERGE_VCFS {
       
       # C. Concatenate and Sort
       bcftools concat -a backbone_clean.vcf.gz clean_snps.vcf.gz \\
-        | bcftools sort -T "\$TMPDIR" -m !{params.bcftools_sort_mem} -Oz -o !{sampleId}.!{refId}.all.pos.vcf.gz
+        | bcftools sort -T "\$TMPDIR" -m !{params.bcftools_sort_mem} -Oz -o !{sampleId}.!{refId}!{outLabel}.all.pos.vcf.gz
     else
       # If no variants, the all.pos VCF is identical to the backbone
-      cp !{back_vcf} !{sampleId}.!{refId}.all.pos.vcf.gz
+      cp !{back_vcf} !{sampleId}.!{refId}!{outLabel}.all.pos.vcf.gz
     fi
 
     # The all.pos VCF is the direct consensus substrate and always has records; verify BGZF
     # integrity and index with plain tabix so any truncation/corruption fails the task loudly
     # (never a fake empty index here).
-    bgzip -t !{sampleId}.!{refId}.all.pos.vcf.gz
-    tabix -f -p vcf !{sampleId}.!{refId}.all.pos.vcf.gz
+    bgzip -t !{sampleId}.!{refId}!{outLabel}.all.pos.vcf.gz
+    tabix -f -p vcf !{sampleId}.!{refId}!{outLabel}.all.pos.vcf.gz
     """
 }

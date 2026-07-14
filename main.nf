@@ -14,6 +14,9 @@ include { RUN_PATHOTYPR_PE; RUN_PATHOTYPR_SE } from './modules/pathotypr'
 include { MAPPING_PE; MAPPING_SE; MERGE_AND_MARKDUP; FILTER_READS } from './modules/mapping'
 include { CALL_FREEBAYES; CALL_BACKBONE; MERGE_VCFS } from './modules/variants'
 include { CONSENSUS_FASTA } from './modules/consensus'
+// Aliases for the parallel virgin (unmasked) consensus path (a DSL2 process runs once per name)
+include { CALL_BACKBONE as CALL_BACKBONE_RAW; MERGE_VCFS as MERGE_VCFS_RAW } from './modules/variants'
+include { CONSENSUS_FASTA as CONSENSUS_FASTA_RAW } from './modules/consensus'
 include { ANNOTATE_LEGACY_VCF; ANNOTATE_MAIN_VCF; GENERATE_LEGACY_STATS } from './modules/annotation'
 
 /* ----------------------------- Configuration Logic ----------------------------- */
@@ -280,8 +283,9 @@ workflow {
     def bb_in  = vbase.map { sId, rId, bam, bai, ref_fa, exclude_txt -> tuple(sId, rId, bam, bai, ref_fa) }
     def bb_out = CALL_BACKBONE(bb_in)
     
-    // Merge specific variants with backbone for All-Positions VCF
+    // Merge specific variants with backbone for All-Positions VCF (outLabel "" = masked path)
     def merge_in = fb_out.snps.join(bb_out.backbone, by: [0,1]).join(bb_out.header, by: [0,1])
+        .map { sId, rId, sv, st, bv, bt, hdr -> tuple(sId, rId, sv, st, bv, bt, hdr, "") }
     def vcf_ch = MERGE_VCFS(merge_in)
 
     // 7. Consensus Generation (Optional)
@@ -290,9 +294,23 @@ workflow {
         // Note: Script is called from bin/ directly in the module
         def refmeta = final_bams.final_bam.map { sId, rId, bam, bai, ref_fa, exclude_txt -> tuple(sId, rId, ref_fa, exclude_txt) }
         def allpos_mask = vcf_ch.allpos.join(fb_out.mask_sites, by: [0,1])
-        def cons_in = allpos_mask.join(refmeta, by: [0,1]).map { sId, rId, vcf_gz, tbi, mask, ref_fa, exclude_txt -> tuple(sId, rId, vcf_gz, tbi, mask, ref_fa, exclude_txt) }
-        
+        def cons_in = allpos_mask.join(refmeta, by: [0,1]).map { sId, rId, vcf_gz, tbi, mask, ref_fa, exclude_txt -> tuple(sId, rId, vcf_gz, tbi, mask, ref_fa, exclude_txt, "") }
+
         CONSENSUS_FASTA(cons_in)
+
+        // 7b. Virgin (unmasked) consensus from the ORIGINAL dedup BAM, in parallel with the masked one.
+        // Reuses the masked-path FreeBayes SNPs; only backbone coverage + masking differ (no 2nd FreeBayes).
+        if (params.keep_virgin_consensus && params.dynamic_read_filter) {
+            def raw_bb_in = final_bams.final_bam.map { sId, rId, bam, bai, ref_fa, excl -> tuple(sId, rId, bam, bai, ref_fa) }
+            def bb_raw = CALL_BACKBONE_RAW(raw_bb_in)
+            def merge_raw = fb_out.snps.join(bb_raw.backbone, by: [0,1]).join(bb_raw.header, by: [0,1])
+                .map { sId, rId, sv, st, bv, bt, hdr -> tuple(sId, rId, sv, st, bv, bt, hdr, ".raw") }
+            def vcf_raw = MERGE_VCFS_RAW(merge_raw)
+            def refmeta_raw = final_bams.final_bam.map { sId, rId, bam, bai, ref_fa, excl -> tuple(sId, rId, ref_fa, excl) }
+            def cons_raw = vcf_raw.allpos.join(fb_out.mask_sites, by: [0,1]).join(refmeta_raw, by: [0,1])
+                .map { sId, rId, vcf_gz, tbi, mask, ref_fa, excl -> tuple(sId, rId, vcf_gz, tbi, mask, ref_fa, excl, ".raw") }
+            CONSENSUS_FASTA_RAW(cons_raw)
+        }
     }
 
     // 8. Annotation
