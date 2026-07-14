@@ -12,7 +12,7 @@ NOW INCLUDES: Special CSV Masking support.
   1) Position within --exclude intervals.
   2) Position listed in --mask-sites.
   3) Position marked as 'repetitive' (1) or 'blindspot' (1) in --special-mask-csv.
-  4) VCF record with FILTER containing "str10" or "baq_dropout".
+  4) VCF record with any non-PASS FILTER value (e.g., str10, baq_dropout, caller soft filters).
 - '-' (nocall_char) ONLY if DP <= --min-dp (default 0).
 """
 
@@ -398,12 +398,17 @@ def allele_bases_from_record(rec: VcfRecord, ref_base: str) -> Optional[Set[str]
                 out.add(ref_base)
         elif 1 <= aidx <= len(alt_alleles):
             a = alt_alleles[aidx - 1]
+            if a == "*":
+                # Spanning-deletion allele: skip it and use the remaining allele(s)
+                continue
             if len(a) != 1 or a not in DNA_BASES:
-                return {"N"}
+                # Non-SNP allele (MNP / indel / complex): signal for masking
+                return None
             out.add(a)
         else:
-            return {"N"}
-    return out
+            # Allele index out of range: signal for masking
+            return None
+    return out if out else None
 
 
 def consensus_for_position(
@@ -430,7 +435,7 @@ def consensus_for_position(
         return mask_char
 
     for r in recs:
-        if r.flt and ("str10" in r.flt or "baq_dropout" in r.flt):
+        if r.flt and r.flt not in {".", "PASS", ""}:
             return mask_char
 
     dp_pos = max(get_dp(r.fmt, r.sample, r.info) for r in recs) if recs else 0
