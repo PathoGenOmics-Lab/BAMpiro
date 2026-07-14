@@ -51,6 +51,7 @@ RUN micromamba create -n bambard-env -c conda-forge -c bioconda -y \
     'samtools' \
     'freebayes' \
     'bcftools' \
+    'genmap' \
     'snpeff' \
     'kraken2' \
     'multiqc' \
