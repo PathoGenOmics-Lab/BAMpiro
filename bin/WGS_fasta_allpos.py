@@ -116,6 +116,33 @@ def get_gt(fmt: str, sample: str) -> Optional[str]:
     return gt
 
 
+def get_ro_ao(fmt: str, sample: str) -> Tuple[Optional[int], Optional[int]]:
+    """Reference- and alternate-supporting read counts (freebayes RO / AO, or backbone AD). None if unavailable."""
+    fs = parse_format_sample(fmt, sample)
+
+    def _int(key: str) -> Optional[int]:
+        v = fs.get(key)
+        if v and v not in {".", ""}:
+            try:
+                return int(float(v.split(",")[0]))
+            except ValueError:
+                return None
+        return None
+
+    ro = _int("RO")
+    ao = _int("AO")
+    if ro is None or ao is None:                       # fall back to AD = ref,alt
+        ad = fs.get("AD")
+        if ad and ad not in {".", ""}:
+            parts = ad.split(",")
+            try:
+                ro = int(parts[0])
+                ao = sum(int(x) for x in parts[1:]) if len(parts) > 1 else 0
+            except ValueError:
+                pass
+    return ro, ao
+
+
 def parse_gt_alleles(gt: str) -> Optional[List[int]]:
     if not gt or gt in {".", "./.", ".|."}:
         return None
@@ -299,6 +326,8 @@ class FastaWriter:
         self._fh = open(out_path, "w", encoding="utf-8")
         self._line_len = 0
         self._started = False
+        self.counts: Dict[str, int] = {}   # per-contig bases written (truncation guard)
+        self._cur: Optional[str] = None
 
     def start(self, header: str) -> None:
         if self._started and self._line_len != 0:
@@ -306,11 +335,15 @@ class FastaWriter:
         self._fh.write(f">{header}\n")
         self._started = True
         self._line_len = 0
+        self._cur = header
+        self.counts[header] = 0
 
     def write_base(self, base: str) -> None:
         b = (base or "N")[0].upper()
         self._fh.write(b)
         self._line_len += 1
+        if self._cur is not None:
+            self.counts[self._cur] += 1
         if self.wrap and self._line_len >= self.wrap:
             self._fh.write("\n")
             self._line_len = 0
@@ -382,6 +415,9 @@ def consensus_for_position(
     mask_char: str,
     nocall_char: str,
     min_dp: int,
+    ref_min_dp: int,
+    max_ref_altfrac: float,
+    max_ref_min_alt: int,
 ) -> str:
     chrom = recs[0].chrom
     pos = recs[0].pos
@@ -409,7 +445,27 @@ def consensus_for_position(
         ref_base = recs[0].ref[0].upper()
 
     if len(recs) == 1 and (recs[0].alt == "." or recs[0].alt == ""):
-        return ref_base if ref_base in DNA_BASES else "N"
+        # Monomorphic-reference site: emit the reference base ONLY if the reference call is
+        # CONFIDENT, else N. Without this gate, uncertain / low-coverage / deletion-spanning
+        # positions default to the reference base (false-ancestral) and bias a phylogeny.
+        if ref_base not in DNA_BASES:
+            return "N"
+        r0 = recs[0]
+        gt_alleles = parse_gt_alleles(get_gt(r0.fmt, r0.sample) or "")
+        if gt_alleles is None or any(a != 0 for a in gt_alleles):   # GT missing or not homozygous-ref
+            return "N"
+        ro, ao = get_ro_ao(r0.fmt, r0.sample)
+        # Gate on RO+AO (real base-calling depth), NOT raw DP: samtools counts deletion-spanning
+        # '*' and ref-skip reads into DP but they carry no base evidence, so a deletion site would
+        # otherwise satisfy ref_min_dp on DP alone and emit a false-ancestral reference call.
+        base_depth = (ro + ao) if (ro is not None and ao is not None) else dp_pos
+        if base_depth < ref_min_dp:
+            return "N"
+        # Enough alt reads to doubt the ref call: require BOTH a high alt fraction AND >= max_ref_min_alt alt reads.
+        if (ro is not None and ao is not None and base_depth > 0
+                and ao >= max_ref_min_alt and ao / base_depth >= max_ref_altfrac):
+            return "N"
+        return ref_base
 
     bases_union: Set[str] = set()
     for r in recs:
@@ -434,6 +490,9 @@ def build_consensus(
     mask_char: str,
     nocall_char: str,
     min_dp: int,
+    ref_min_dp: int,
+    max_ref_altfrac: float,
+    max_ref_min_alt: int,
     strict: bool,
 ) -> None:
     ref_reader = FastaReader(reference_path)
@@ -490,7 +549,7 @@ def build_consensus(
             pending = []
             return
 
-        base = consensus_for_position(pending, ref_seqs, interval_mask, point_mask, csv_mask, mask_char, nocall_char, min_dp)
+        base = consensus_for_position(pending, ref_seqs, interval_mask, point_mask, csv_mask, mask_char, nocall_char, min_dp, ref_min_dp, max_ref_altfrac, max_ref_min_alt)
         writer.write_base(base)
         expected_pos = pos + 1
         pending = []
@@ -516,6 +575,19 @@ def build_consensus(
     flush_pending()
     writer.close()
 
+    # Fail loud on a truncated / interrupted stream: every reference contig must be emitted at
+    # full length. A mid-stream failure can still leave a valid-gzip but SHORT FASTA that is
+    # plausible-but-wrong for a phylogeny; assert here rather than let it flow downstream.
+    missing = [c for c in ref_seqs if c not in writer.counts]
+    if missing:
+        raise RuntimeError(f"consensus is missing contig(s) entirely: {missing} (empty / truncated VCF?)")
+    for chrom, seq in ref_seqs.items():
+        got = writer.counts.get(chrom, 0)
+        if got != len(seq):
+            raise RuntimeError(
+                f"consensus length mismatch for {chrom}: wrote {got} != reference {len(seq)} "
+                f"(truncated VCF / interrupted stream?)")
+
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Consensus FASTA from BAMpiro all.pos.")
@@ -532,6 +604,12 @@ def main() -> None:
     ap.add_argument("--mask-char", default="X", help="Character for masked sites")
     ap.add_argument("--nocall-char", default="-", help="Character for no-call sites")
     ap.add_argument("--min-dp", type=int, default=0, help="Write nocall_char when DP <= min-dp")
+    ap.add_argument("--ref-min-dp", type=int, default=10,
+                    help="Min base-supporting depth (RO+AO) to emit the REFERENCE base at a monomorphic site, else N. Prevents reference bias. 0 = disable.")
+    ap.add_argument("--max-ref-altfrac", type=float, default=0.10,
+                    help="If a monomorphic-reference call has alt-read fraction >= this (and >= --max-ref-min-alt alt reads), write N. 1.0 = disable.")
+    ap.add_argument("--max-ref-min-alt", type=int, default=2,
+                    help="Only apply --max-ref-altfrac if there are >= this many alt reads (stops a single low-cov read N-ing a ref call).")
     ap.add_argument("--strict", action="store_true", help="Fail on unsorted VCF")
     args = ap.parse_args()
 
@@ -546,6 +624,9 @@ def main() -> None:
         mask_char=(args.mask_char or "X")[0],
         nocall_char=(args.nocall_char or "-")[0],
         min_dp=int(args.min_dp),
+        ref_min_dp=int(args.ref_min_dp),
+        max_ref_altfrac=float(args.max_ref_altfrac),
+        max_ref_min_alt=int(args.max_ref_min_alt),
         strict=args.strict,
     )
 
