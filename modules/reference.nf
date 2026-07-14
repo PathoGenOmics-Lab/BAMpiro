@@ -99,7 +99,10 @@ process BUILD_MAPPABILITY {
     // which the k-mer starting there is genome-unique (min_unique_len). Feeds FILTER_READS.
     tag "Mappability: ${refId}"
 
-    publishDir "${params.outdir}/references/${refId}/mappability", mode: 'copy'
+    // storeDir persists the track and SKIPS this (expensive) step if it already exists -> computed
+    // once per reference across runs. Keyed by refId + the genmap params; clear the dir if the
+    // reference sequence changes for a given refId.
+    storeDir "${params.mappability_dir}/${refId}_k${params.genmap_min_k}-${params.genmap_max_k}_s${params.genmap_step}_E${params.genmap_errors}r${params.genmap_error_rate}"
 
     cpus 8
     memory '16 GB'
@@ -109,6 +112,7 @@ process BUILD_MAPPABILITY {
 
     output:
     tuple val(refId), path("${refId}.min_unique_len.npz"), emit: track
+    tuple val(refId), path("Locus_to_exclude_mappability_${refId}.txt"), emit: repeat_bed
 
     shell:
     '''
@@ -119,19 +123,28 @@ process BUILD_MAPPABILITY {
     rm -rf gmidx
     genmap index -F !{ref_fa} -I gmidx
 
-    # (k,E)-mappability sweep across candidate read lengths; value 1 == unique (both strands)
+    # (k,E)-mappability sweep across candidate read lengths; value 1 == unique (both strands).
+    # E is fixed (genmap_errors) unless genmap_error_rate>0, in which case it scales with k.
     BGS=""
     for K in $(seq !{params.genmap_min_k} !{params.genmap_step} !{params.genmap_max_k}); do
-        genmap map -K ${K} -E !{params.genmap_errors} -T !{task.cpus} -I gmidx -O map_K${K} -bg
+        if [ "!{params.genmap_error_rate}" != "0" ]; then
+            E=$(python3 -c "print(max(1, round(${K} * !{params.genmap_error_rate})))")
+        else
+            E=!{params.genmap_errors}
+        fi
+        genmap map -K ${K} -E ${E} -T !{task.cpus} -I gmidx -O map_K${K} -bg
         BGS="${BGS} ${K}:map_K${K}.bedgraph"
     done
 
-    # Collapse the sweep into one uint16 per-contig min_unique_len array (65535 = never unique)
+    # Collapse the sweep into one uint16 per-contig min_unique_len array (65535 = never unique),
+    # and emit the always-repetitive interior as a 1-based BED for consensus masking.
     python3 !{projectDir}/bin/build_min_unique_len.py \
         --fai !{ref_fa}.fai \
         --bedgraphs ${BGS} \
         --sentinel !{params.genmap_infinity} \
         --tail-policy !{params.genmap_tail_policy} \
+        --mask-bed Locus_to_exclude_mappability_!{refId}.txt \
+        --mask-window !{params.genmap_max_k} \
         --out-prefix !{refId}
     '''
 }
