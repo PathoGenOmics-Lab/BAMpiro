@@ -30,6 +30,15 @@ process CONSENSUS_FASTA {
     """
     set -euo pipefail
 
+    # Reference-bias gate: emit the reference base at a monomorphic site only with enough
+    # base-supporting depth (RO+AO) and low alt fraction, else N. Disable via consensus_ref_bias_gate=false.
+    REF_MIN_DP=${params.consensus_ref_min_dp}
+    MAX_REF_ALTFRAC=${params.consensus_max_ref_altfrac}
+    if [[ "${params.consensus_ref_bias_gate}" != "true" ]]; then
+        REF_MIN_DP=0
+        MAX_REF_ALTFRAC=1.0
+    fi
+
     # Run the consensus generation script
     # This script merges the reference, the backbone (all positions), and the variants
     # while masking low-confidence areas.
@@ -39,6 +48,9 @@ process CONSENSUS_FASTA {
       --exclude ${exclude_txt} \\
       --mask-sites ${mask_sites} \\
       --min-dp ${params.consensus_min_dp} \\
+      --ref-min-dp \$REF_MIN_DP \\
+      --max-ref-altfrac \$MAX_REF_ALTFRAC \\
+      --max-ref-min-alt ${params.consensus_max_ref_min_alt} \\
       --output ${sampleId}.${refId}.consensus.fasta \\
       --wrap ${params.consensus_wrap} \\
       --mask-char ${params.consensus_mask_char} \\
