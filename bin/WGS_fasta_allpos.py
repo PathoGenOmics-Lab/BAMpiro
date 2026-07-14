@@ -12,7 +12,7 @@ NOW INCLUDES: Special CSV Masking support.
   1) Position within --exclude intervals.
   2) Position listed in --mask-sites.
   3) Position marked as 'repetitive' (1) or 'blindspot' (1) in --special-mask-csv.
-  4) VCF record with FILTER containing "str10".
+  4) VCF record with FILTER containing "str10" or "baq_dropout".
 - '-' (nocall_char) ONLY if DP <= --min-dp (default 0).
 """
 
@@ -394,7 +394,7 @@ def consensus_for_position(
         return mask_char
 
     for r in recs:
-        if r.flt and "str10" in r.flt:
+        if r.flt and ("str10" in r.flt or "baq_dropout" in r.flt):
             return mask_char
 
     dp_pos = max(get_dp(r.fmt, r.sample, r.info) for r in recs) if recs else 0

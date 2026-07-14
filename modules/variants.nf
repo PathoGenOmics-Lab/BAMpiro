@@ -162,25 +162,38 @@ process CALL_BACKBONE {
     echo '##INFO=<ID=NC,Number=1,Type=Integer,Description="Legacy_NC">' >> header_template.txt
     echo '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">' >> header_template.txt
     echo '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">' >> header_template.txt
+    echo '##FILTER=<ID=baq_dropout,Description="Well-covered site whose depth collapses below consensus_min_dp only under BAQ (indel-adjacent homopolymer); masked in consensus">' >> header_template.txt
     echo -e "#CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tINFO\\tFORMAT\\t!{sampleId}" >> header_template.txt
 
     # 2. Run Mpileup for ALL positions (-aa)
-    # Convert mpileup output to VCF lines using awk
-    samtools mpileup -aa -f !{ref_fa} -Q !{params.allpos_min_bq} -d !{params.allpos_max_depth} !{bam} \\
-        | awk -v MINCOV=!{params.allpos_min_cov} -v OFS="\\t" '{
-            chrom=\$1; pos=\$2; ref=\$3; dp=(\$4+0);
-            
-            # Determine status based on coverage
-            wt=(dp>=MINCOV?1:0); 
+    # ADP/DP is the real (no-BAQ) depth. A site is flagged 'baq_dropout' when it is
+    # well covered but BAQ collapses it to <= consensus_min_dp (indel-adjacent
+    # homopolymer artifact), so the consensus masks it (X) instead of leaving a gap.
+    if [[ "!{params.mask_baq_dropouts}" == "true" ]]; then
+        paste \\
+          <(samtools mpileup -aa -B -f !{ref_fa} -Q !{params.allpos_min_bq} -d !{params.allpos_max_depth} !{bam}) \\
+          <(samtools mpileup -aa    -f !{ref_fa} -Q !{params.allpos_min_bq} -d !{params.allpos_max_depth} !{bam}) \\
+        | awk -v MINCOV=!{params.allpos_min_cov} -v GAPDP=!{params.consensus_min_dp} -v OFS="\\t" '{
+            chrom=\$1; pos=\$2; ref=\$3; dp=(\$4+0); dp_baq=(\$10+0);
+            wt=(dp>=MINCOV?1:0);
             nc=(dp>=MINCOV?0:1);
             gt=(dp>=MINCOV?"0":"./.");
-            
+            flt=(dp>GAPDP && dp_baq<=GAPDP)?"baq_dropout":".";
             info="ADP="dp";WT="wt";HET=0;HOM=0;NC="nc;
-            
-            # Print VCF Record (ALT is dot, QUAL is dot)
-            print chrom, pos, ".", ref, ".", ".", ".", info, "GT:DP", gt":"dp
+            print chrom, pos, ".", ref, ".", ".", flt, info, "GT:DP", gt":"dp
           }' | cat header_template.txt - | bgzip -@ !{task.cpus} -c > backbone.vcf.gz
-    
+    else
+        samtools mpileup -aa -f !{ref_fa} -Q !{params.allpos_min_bq} -d !{params.allpos_max_depth} !{bam} \\
+            | awk -v MINCOV=!{params.allpos_min_cov} -v OFS="\\t" '{
+                chrom=\$1; pos=\$2; ref=\$3; dp=(\$4+0);
+                wt=(dp>=MINCOV?1:0);
+                nc=(dp>=MINCOV?0:1);
+                gt=(dp>=MINCOV?"0":"./.");
+                info="ADP="dp";WT="wt";HET=0;HOM=0;NC="nc;
+                print chrom, pos, ".", ref, ".", ".", ".", info, "GT:DP", gt":"dp
+              }' | cat header_template.txt - | bgzip -@ !{task.cpus} -c > backbone.vcf.gz
+    fi
+
     safe_tabix backbone.vcf.gz
     """
 }
