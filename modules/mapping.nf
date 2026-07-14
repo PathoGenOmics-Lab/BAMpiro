@@ -142,33 +142,58 @@ process FILTER_READS {
     memory '8 GB'
 
     input:
-    // final_bam tuple + the per-reference mappability track (joined by refId in main.nf)
-    tuple val(sampleId), val(refId), path(bam), path(bai), path(ref_fa), path(exclude_txt), path(mul_npz)
+    // final_bam tuple + the per-reference mappability track and repeat BED (joined by refId in main.nf)
+    tuple val(sampleId), val(refId), path(bam), path(bai), path(ref_fa), path(exclude_txt), path(mul_npz), path(repeat_bed)
 
     output:
-    // Same 6-field shape as MERGE_AND_MARKDUP.final_bam -> drop-in for CALL_FREEBAYES/CALL_BACKBONE
+    // Same 6-field shape as MERGE_AND_MARKDUP.final_bam, but exclude_txt is now nucmer + genmap
+    // repeat regions combined -> the always-repetitive interior is masked (X) downstream.
     tuple val(sampleId), val(refId),
           path("${sampleId}.${refId}.filtered.bam"), path("${sampleId}.${refId}.filtered.bam.bai"),
-          path(ref_fa), path(exclude_txt), emit: filtered_bam
-    path("${sampleId}.${refId}.filter.stats"), emit: stats
+          path(ref_fa), path("${sampleId}.${refId}.exclude.txt"), emit: filtered_bam
+    path("${sampleId}.${refId}.filter_mqc.tsv"), emit: stats
 
     shell:
     '''
     set -euo pipefail
 
+    # Combine the nucmer repeat exclude with the genmap always-repetitive interior (-> X in consensus)
+    if [[ "!{params.mappability_mask_consensus}" == "true" ]]; then
+        cat !{exclude_txt} !{repeat_bed} > !{sampleId}.!{refId}.exclude.txt
+    else
+        cp !{exclude_txt} !{sampleId}.!{refId}.exclude.txt
+    fi
+
     KU=""
     if [[ "!{params.filter_keep_unmapped}" == "true" ]]; then KU="--keep-unmapped"; fi
+    SC=""
+    if [[ "!{params.filter_strict_contigs}" == "true" ]]; then SC="--strict-contigs"; fi
 
     # Drops-only over the coordinate-sorted BAM -> order preserved -> just re-index (no sort)
     samtools view -h -@ !{task.cpus} !{bam} \
       | python3 !{projectDir}/bin/filter_reads_mappability.py \
-          --mul !{mul_npz} --kmin !{params.genmap_min_k} --sentinel !{params.genmap_infinity} $KU \
+          --mul !{mul_npz} --kmin !{params.genmap_min_k} --sentinel !{params.genmap_infinity} $KU $SC \
       | samtools view -b -@ !{task.cpus} -o !{sampleId}.!{refId}.filtered.bam -
     samtools index -@ !{task.cpus} !{sampleId}.!{refId}.filtered.bam
 
     a=$(samtools view -c !{bam})
     b=$(samtools view -c !{sampleId}.!{refId}.filtered.bam)
-    printf 'input_reads\t%s\nkept_reads\t%s\ndropped_reads\t%s\n' "$a" "$b" "$((a-b))" \
-        > !{sampleId}.!{refId}.filter.stats
+    d=$((a-b))
+    pct=$(python3 -c "print(f'{100*$d/$a:.2f}') if $a else print('0.00')")
+
+    # QC: MultiQC custom-content table (one row per sample; rows merge under one section)
+    {
+      printf '# id: read_filter\n'
+      printf '# section_name: Length-aware read filter\n'
+      printf '# description: Reads dropped as unable to map uniquely at their locus (near-repeat short reads).\n'
+      printf '# plot_type: table\n'
+      printf 'Sample\tinput_reads\tkept_reads\tdropped_reads\tdropped_pct\n'
+      printf '%s\t%s\t%s\t%s\t%s\n' "!{sampleId}.!{refId}" "$a" "$b" "$d" "$pct"
+    } > !{sampleId}.!{refId}.filter_mqc.tsv
+
+    # Flag samples that drop an abnormal fraction of reads (contamination / short reads / wrong ref)
+    if [ "$(python3 -c "print(1 if $pct > !{params.filter_max_drop_pct} else 0)")" = "1" ]; then
+        echo "[FILTER_READS] WARNING: !{sampleId}.!{refId} dropped ${pct}% of reads (> !{params.filter_max_drop_pct}%) -- check contamination / read length / reference" >&2
+    fi
     '''
 }

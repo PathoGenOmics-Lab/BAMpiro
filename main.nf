@@ -12,7 +12,7 @@ include { PREPARE_REFERENCE; SNPEFF_BUILD_DB; BUILD_MAPPABILITY } from './module
 include { VALIDATE_RAW_READS_PE; VALIDATE_RAW_READS_SE; KRAKEN_FILTER_PE; KRAKEN_FILTER_SE; FASTP_PE; FASTP_SE; MULTIQC } from './modules/qc'
 include { RUN_PATHOTYPR_PE; RUN_PATHOTYPR_SE } from './modules/pathotypr'
 include { MAPPING_PE; MAPPING_SE; MERGE_AND_MARKDUP; FILTER_READS } from './modules/mapping'
-include { CALL_FREEBAYES; CALL_BACKBONE; MERGE_VCFS } from './modules/variants'
+include { CALL_FREEBAYES; CALL_BACKBONE; MERGE_VCFS; CALL_FREEBAYES_RAW } from './modules/variants'
 include { CONSENSUS_FASTA } from './modules/consensus'
 // Aliases for the parallel virgin (unmasked) consensus path (a DSL2 process runs once per name)
 include { CALL_BACKBONE as CALL_BACKBONE_RAW; MERGE_VCFS as MERGE_VCFS_RAW } from './modules/variants'
@@ -267,13 +267,17 @@ workflow {
     // (short-read false positives in near-repeats), then call/consensus on the filtered BAM.
     // Feature off -> call on the dedup BAM unchanged.
     def vbase
+    def filter_stats = Channel.empty()
     if (params.dynamic_read_filter) {
         def mapp = BUILD_MAPPABILITY( ref_bundle.bundle.map { rId, fa, idx, excl -> tuple(rId, fa) } )
+        def track_bed = mapp.track.join(mapp.repeat_bed, by: 0)                    // (rId, npz, repeat_bed)
         def filt_in = final_bams.final_bam
             .map { sId, rId, bam, bai, fa, excl -> tuple(rId, sId, bam, bai, fa, excl) }
-            .combine(mapp.track, by: 0)                                  // fan the per-reference track out to each sample
-            .map { rId, sId, bam, bai, fa, excl, npz -> tuple(sId, rId, bam, bai, fa, excl, npz) }
-        vbase = FILTER_READS(filt_in).filtered_bam
+            .combine(track_bed, by: 0)                                             // fan the per-reference track+bed to each sample
+            .map { rId, sId, bam, bai, fa, excl, npz, bed -> tuple(sId, rId, bam, bai, fa, excl, npz, bed) }
+        def filt = FILTER_READS(filt_in)
+        vbase = filt.filtered_bam                                                  // exclude_txt now = nucmer + genmap repeats
+        filter_stats = filt.stats
     } else {
         vbase = final_bams.final_bam
     }
@@ -292,18 +296,20 @@ workflow {
     if (params.make_consensus) {
         // Prepare inputs: VCF + Reference + Mask sites
         // Note: Script is called from bin/ directly in the module
-        def refmeta = final_bams.final_bam.map { sId, rId, bam, bai, ref_fa, exclude_txt -> tuple(sId, rId, ref_fa, exclude_txt) }
+        // refmeta from vbase so the masked consensus gets the combined (nucmer + genmap) exclude
+        def refmeta = vbase.map { sId, rId, bam, bai, ref_fa, exclude_txt -> tuple(sId, rId, ref_fa, exclude_txt) }
         def allpos_mask = vcf_ch.allpos.join(fb_out.mask_sites, by: [0,1])
         def cons_in = allpos_mask.join(refmeta, by: [0,1]).map { sId, rId, vcf_gz, tbi, mask, ref_fa, exclude_txt -> tuple(sId, rId, vcf_gz, tbi, mask, ref_fa, exclude_txt, "") }
 
         CONSENSUS_FASTA(cons_in)
 
         // 7b. Virgin (unmasked) consensus from the ORIGINAL dedup BAM, in parallel with the masked one.
-        // Reuses the masked-path FreeBayes SNPs; only backbone coverage + masking differ (no 2nd FreeBayes).
         if (params.keep_virgin_consensus && params.dynamic_read_filter) {
             def raw_bb_in = final_bams.final_bam.map { sId, rId, bam, bai, ref_fa, excl -> tuple(sId, rId, bam, bai, ref_fa) }
             def bb_raw = CALL_BACKBONE_RAW(raw_bb_in)
-            def merge_raw = fb_out.snps.join(bb_raw.backbone, by: [0,1]).join(bb_raw.header, by: [0,1])
+            // Virgin SNPs: re-call FreeBayes on the raw bam (shows pre-filter variants) or reuse masked SNPs.
+            def raw_snps = params.virgin_full_freebayes ? CALL_FREEBAYES_RAW(final_bams.final_bam).snps : fb_out.snps
+            def merge_raw = raw_snps.join(bb_raw.backbone, by: [0,1]).join(bb_raw.header, by: [0,1])
                 .map { sId, rId, sv, st, bv, bt, hdr -> tuple(sId, rId, sv, st, bv, bt, hdr, ".raw") }
             def vcf_raw = MERGE_VCFS_RAW(merge_raw)
             def refmeta_raw = final_bams.final_bam.map { sId, rId, bam, bai, ref_fa, excl -> tuple(sId, rId, ref_fa, excl) }
@@ -411,6 +417,7 @@ workflow {
         .mix(final_bams.stats)                 // Samtools
         .mix(ch_kraken_reports)                // Kraken
         .mix(ch_snpeff_stats)                  // SnpEff
+        .mix(filter_stats)                     // Length-aware read filter (drop rate)
         .collect()
 
     MULTIQC(qc_collection, multiqc_report_filename)

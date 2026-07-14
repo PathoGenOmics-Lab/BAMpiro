@@ -327,3 +327,68 @@ process MERGE_VCFS {
     tabix -f -p vcf !{sampleId}.!{refId}!{outLabel}.all.pos.vcf.gz
     """
 }
+
+process CALL_FREEBAYES_RAW {
+    // Lean FreeBayes for the VIRGIN path (virgin_full_freebayes=true): the SAME SNP calls but on
+    // the UNfiltered bam, with no legacy outputs and no publishing -> feeds only the virgin
+    // consensus so it shows the pre-filter variant set. Mirrors CALL_FREEBAYES steps 2/3/5/6/8.
+    tag "FreeBayes(raw): ${sampleId}"
+    cpus 4
+    memory '16 GB'
+
+    input:
+    tuple val(sampleId), val(refId), path(bam), path(bai), path(ref_fa), path(exclude_txt)
+
+    output:
+    tuple val(sampleId), val(refId), path("valid_snps_formatted.vcf.gz"), path("valid_snps_formatted.vcf.gz.tbi"), emit: snps
+
+    shell:
+    """
+    set -euo pipefail
+    if [ -n "\${SLURM_TMPDIR:-}" ]; then export TMPDIR="\$SLURM_TMPDIR"; else export TMPDIR="./tmp_fbraw"; fi
+    mkdir -p "\$TMPDIR"
+
+    awk 'NR>1 && \$1!="" && \$2!="" && \$3!="" {print \$1"\\t"\$2"\\t"\$3}' !{exclude_txt} > exclude.regions.tsv || true
+    EXCL_ARG=""
+    if [[ "!{params.exclude_repeats}" == "true" && -s exclude.regions.tsv ]]; then EXCL_ARG="-T ^exclude.regions.tsv"; fi
+
+    freebayes -f !{ref_fa} -p !{params.freebayes_ploidy} \\
+      --min-alternate-count !{params.freebayes_min_alt_count} \\
+      --min-alternate-fraction !{params.freebayes_min_alt_fraction} \\
+      --min-mapping-quality !{params.freebayes_min_map_qual} \\
+      --min-base-quality !{params.freebayes_min_base_qual} \\
+      !{bam} > raw_freebayes.vcf
+
+    bcftools norm -m - -a -f !{ref_fa} raw_freebayes.vcf | bcftools view -e 'GT="0/0"' -Ov -o normalized.vcf
+
+    base_filt="(FMT/DP >= !{params.filter_min_dp} || INFO/DP >= !{params.filter_min_dp}) && INFO/SAF[0] >= !{params.min_alt_fwd} && INFO/SAR[0] >= !{params.min_alt_rev}"
+    af_guard="(INFO/AO[0] + INFO/RO) > 0"
+    af_calc="((INFO/AO[0] * 1.0) / (INFO/AO[0] + INFO/RO))"
+    hom_rule="\$base_filt && \$af_guard && \$af_calc >= !{params.hom_threshold}"
+    het_rule="\$base_filt && \$af_guard && \$af_calc >= !{params.het_min_frac} && \$af_calc < !{params.hom_threshold}"
+
+    bcftools view \$EXCL_ARG --types snps -i "\$hom_rule || \$het_rule" normalized.vcf > valid_snps.vcf || true
+    [ -s valid_snps.vcf ] || bcftools view -h normalized.vcf > valid_snps.vcf
+
+    awk 'BEGIN{OFS="\\t"}
+      /^##/ { print; next }
+      /^#CHROM/ { print; next }
+      {
+        dp=0
+        if (match(\$8, /DP=[0-9]+/)) { s=substr(\$8,RSTART,RLENGTH); split(s,a,"="); dp=a[2] }
+        if (dp==0) { n=split(\$9,fmt,":"); m=split(\$10,dat,":"); for(i=1;i<=n;i++) if(fmt[i]=="DP") dp=dat[i] }
+        if (dp==0) dp=1
+        split(\$10,b,":"); gtype=b[1]
+        het=0; hom=0
+        if (gtype=="0/1" || gtype=="1/0") het=1
+        else if (gtype=="1/1") hom=1
+        \$8="ADP="dp";WT=0;HET="het";HOM="hom";NC=0"
+        \$9="GT:DP"
+        \$10=gtype":"dp
+        print
+      }' valid_snps.vcf | bgzip -@ !{task.cpus} -c > valid_snps_formatted.vcf.gz
+
+    set +e; tabix -f -p vcf valid_snps_formatted.vcf.gz; st=\$?; set -e
+    if [ \$st -ne 0 ]; then : > valid_snps_formatted.vcf.gz.tbi; fi
+    """
+}
