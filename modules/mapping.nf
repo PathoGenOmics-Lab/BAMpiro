@@ -129,3 +129,46 @@ process MERGE_AND_MARKDUP {
     rm -f merged.bam merged.name.bam merged.fixmate.bam merged.coord.bam
     '''
 }
+
+process FILTER_READS {
+    // Length-aware per-read-PAIR mappability filter. Drops reads too short to be uniquely
+    // placed at their locus (short-read false positives in near-repeats); a fragment is kept
+    // if EITHER mate anchors uniquely (concordant-pair rescue). One streaming pass, no re-sort.
+    tag "Filter: ${sampleId}"
+
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+
+    cpus 4
+    memory '8 GB'
+
+    input:
+    // final_bam tuple + the per-reference mappability track (joined by refId in main.nf)
+    tuple val(sampleId), val(refId), path(bam), path(bai), path(ref_fa), path(exclude_txt), path(mul_npz)
+
+    output:
+    // Same 6-field shape as MERGE_AND_MARKDUP.final_bam -> drop-in for CALL_FREEBAYES/CALL_BACKBONE
+    tuple val(sampleId), val(refId),
+          path("${sampleId}.${refId}.filtered.bam"), path("${sampleId}.${refId}.filtered.bam.bai"),
+          path(ref_fa), path(exclude_txt), emit: filtered_bam
+    path("${sampleId}.${refId}.filter.stats"), emit: stats
+
+    shell:
+    '''
+    set -euo pipefail
+
+    KU=""
+    if [[ "!{params.filter_keep_unmapped}" == "true" ]]; then KU="--keep-unmapped"; fi
+
+    # Drops-only over the coordinate-sorted BAM -> order preserved -> just re-index (no sort)
+    samtools view -h -@ !{task.cpus} !{bam} \
+      | python3 !{projectDir}/bin/filter_reads_mappability.py \
+          --mul !{mul_npz} --kmin !{params.genmap_min_k} --sentinel !{params.genmap_infinity} $KU \
+      | samtools view -b -@ !{task.cpus} -o !{sampleId}.!{refId}.filtered.bam -
+    samtools index -@ !{task.cpus} !{sampleId}.!{refId}.filtered.bam
+
+    a=$(samtools view -c !{bam})
+    b=$(samtools view -c !{sampleId}.!{refId}.filtered.bam)
+    printf 'input_reads\t%s\nkept_reads\t%s\ndropped_reads\t%s\n' "$a" "$b" "$((a-b))" \
+        > !{sampleId}.!{refId}.filter.stats
+    '''
+}

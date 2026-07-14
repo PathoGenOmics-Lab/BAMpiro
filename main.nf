@@ -8,10 +8,10 @@ nextflow.enable.dsl=2
 */
 
 // --- MODULE IMPORTS ---
-include { PREPARE_REFERENCE; SNPEFF_BUILD_DB } from './modules/reference'
+include { PREPARE_REFERENCE; SNPEFF_BUILD_DB; BUILD_MAPPABILITY } from './modules/reference'
 include { VALIDATE_RAW_READS_PE; VALIDATE_RAW_READS_SE; KRAKEN_FILTER_PE; KRAKEN_FILTER_SE; FASTP_PE; FASTP_SE; MULTIQC } from './modules/qc'
 include { RUN_PATHOTYPR_PE; RUN_PATHOTYPR_SE } from './modules/pathotypr'
-include { MAPPING_PE; MAPPING_SE; MERGE_AND_MARKDUP } from './modules/mapping'
+include { MAPPING_PE; MAPPING_SE; MERGE_AND_MARKDUP; FILTER_READS } from './modules/mapping'
 include { CALL_FREEBAYES; CALL_BACKBONE; MERGE_VCFS } from './modules/variants'
 include { CONSENSUS_FASTA } from './modules/consensus'
 include { ANNOTATE_LEGACY_VCF; ANNOTATE_MAIN_VCF; GENERATE_LEGACY_STATS } from './modules/annotation'
@@ -260,8 +260,21 @@ workflow {
     def final_bams = MERGE_AND_MARKDUP(bams_grouped)
 
     // 6. Variant Calling
-    def vbase = final_bams.final_bam.map { sId, rId, bam, bai, ref_fa, exclude_txt -> tuple(sId, rId, bam, bai, ref_fa, exclude_txt) }
-    
+    // Optional length-aware read filter: drop reads too short to map uniquely at their locus
+    // (short-read false positives in near-repeats), then call/consensus on the filtered BAM.
+    // Feature off -> call on the dedup BAM unchanged.
+    def vbase
+    if (params.dynamic_read_filter) {
+        def mapp = BUILD_MAPPABILITY( ref_bundle.bundle.map { rId, fa, idx, excl -> tuple(rId, fa) } )
+        def filt_in = final_bams.final_bam
+            .map { sId, rId, bam, bai, fa, excl -> tuple(rId, sId, bam, bai, fa, excl) }
+            .combine(mapp.track, by: 0)                                  // fan the per-reference track out to each sample
+            .map { rId, sId, bam, bai, fa, excl, npz -> tuple(sId, rId, bam, bai, fa, excl, npz) }
+        vbase = FILTER_READS(filt_in).filtered_bam
+    } else {
+        vbase = final_bams.final_bam
+    }
+
     // Run FreeBayes and Backbone parallel
     def fb_out = CALL_FREEBAYES(vbase)
     def bb_in  = vbase.map { sId, rId, bam, bai, ref_fa, exclude_txt -> tuple(sId, rId, bam, bai, ref_fa) }

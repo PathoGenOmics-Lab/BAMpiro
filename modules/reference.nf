@@ -94,6 +94,49 @@ process PREPARE_REFERENCE {
 }
 
 
+process BUILD_MAPPABILITY {
+    // Length-aware mappability track: for each position, the smallest read length at
+    // which the k-mer starting there is genome-unique (min_unique_len). Feeds FILTER_READS.
+    tag "Mappability: ${refId}"
+
+    publishDir "${params.outdir}/references/${refId}/mappability", mode: 'copy'
+
+    cpus 8
+    memory '16 GB'
+
+    input:
+    tuple val(refId), path(ref_fa)
+
+    output:
+    tuple val(refId), path("${refId}.min_unique_len.npz"), emit: track
+
+    shell:
+    '''
+    set -euo pipefail
+    samtools faidx !{ref_fa}
+
+    # genmap refuses to write into an existing index dir (matters on -resume / retry)
+    rm -rf gmidx
+    genmap index -F !{ref_fa} -I gmidx
+
+    # (k,E)-mappability sweep across candidate read lengths; value 1 == unique (both strands)
+    BGS=""
+    for K in $(seq !{params.genmap_min_k} !{params.genmap_step} !{params.genmap_max_k}); do
+        genmap map -K ${K} -E !{params.genmap_errors} -T !{task.cpus} -I gmidx -O map_K${K} -bg
+        BGS="${BGS} ${K}:map_K${K}.bedgraph"
+    done
+
+    # Collapse the sweep into one uint16 per-contig min_unique_len array (65535 = never unique)
+    python3 !{projectDir}/bin/build_min_unique_len.py \
+        --fai !{ref_fa}.fai \
+        --bedgraphs ${BGS} \
+        --sentinel !{params.genmap_infinity} \
+        --tail-policy !{params.genmap_tail_policy} \
+        --out-prefix !{refId}
+    '''
+}
+
+
 process SNPEFF_BUILD_DB {
     tag "SnpEff DB: ${refId}"
     publishDir "${params.outdir}/references/${refId}/snpeff", mode: 'copy'
