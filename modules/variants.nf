@@ -42,9 +42,15 @@ process CALL_FREEBAYES {
     safe_tabix () {
       local gz="\$1"; local idx="\${gz}.tbi"
       set +e; tabix -f -p vcf "\$gz"; st=\$?; set -e
-      if [ \$st -ne 0 ]; then 
-        # If indexing failed, check if file is truly empty or just has header
-        if zgrep -v '^#' "\$gz" | grep -q "."; then exit \$st; else : > "\$idx"; fi
+      if [ \$st -ne 0 ]; then
+        # Only a genuinely header-only VCF gets an empty index. bcftools reads the whole file,
+        # so a truncated/malformed VCF errors under set -e (fails loud) instead of a fake index.
+        local nrec; nrec=\$(bcftools view -H "\$gz" | wc -l)
+        if [ "\$nrec" -ne 0 ]; then
+          echo "ERROR: tabix failed on \$gz with \$nrec records (malformed/truncated) -> refusing a fake index" >&2
+          exit \$st
+        fi
+        : > "\$idx"
       fi
     }
 
@@ -146,7 +152,14 @@ process CALL_BACKBONE {
     safe_tabix () {
       local gz="\$1"; local idx="\${gz}.tbi"
       set +e; tabix -f -p vcf "\$gz"; st=\$?; set -e
-      if [ \$st -ne 0 ]; then if zgrep -v '^#' "\$gz" | grep -q "."; then exit \$st; else : > "\$idx"; fi; fi
+      if [ \$st -ne 0 ]; then
+        local nrec; nrec=\$(bcftools view -H "\$gz" | wc -l)
+        if [ "\$nrec" -ne 0 ]; then
+          echo "ERROR: tabix failed on \$gz with \$nrec records (malformed/truncated) -> refusing a fake index" >&2
+          exit \$st
+        fi
+        : > "\$idx"
+      fi
     }
     
     # Ensure index exists
@@ -162,6 +175,7 @@ process CALL_BACKBONE {
     echo '##INFO=<ID=NC,Number=1,Type=Integer,Description="Legacy_NC">' >> header_template.txt
     echo '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">' >> header_template.txt
     echo '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">' >> header_template.txt
+    echo '##FORMAT=<ID=AD,Number=.,Type=Integer,Description="Allelic depths ref,alt (backbone: pileup-derived; variants: freebayes RO,AO)">' >> header_template.txt
     echo '##FILTER=<ID=baq_dropout,Description="Well-covered site whose depth collapses below consensus_min_dp only under BAQ (indel-adjacent homopolymer); masked in consensus">' >> header_template.txt
     echo -e "#CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tINFO\\tFORMAT\\t!{sampleId}" >> header_template.txt
 
@@ -173,25 +187,61 @@ process CALL_BACKBONE {
         paste \\
           <(samtools mpileup -aa -B -f !{ref_fa} -Q !{params.allpos_min_bq} -d !{params.allpos_max_depth} !{bam}) \\
           <(samtools mpileup -aa    -f !{ref_fa} -Q !{params.allpos_min_bq} -d !{params.allpos_max_depth} !{bam}) \\
-        | awk -v MINCOV=!{params.allpos_min_cov} -v GAPDP=!{params.consensus_min_dp} -v OFS="\\t" '{
-            chrom=\$1; pos=\$2; ref=\$3; dp=(\$4+0); dp_baq=(\$10+0);
-            wt=(dp>=MINCOV?1:0);
-            nc=(dp>=MINCOV?0:1);
-            gt=(dp>=MINCOV?"0":"./.");
-            flt=(dp>GAPDP && dp_baq<=GAPDP)?"baq_dropout":".";
-            info="ADP="dp";WT="wt";HET=0;HOM=0;NC="nc;
-            print chrom, pos, ".", ref, ".", ".", flt, info, "GT:DP", gt":"dp
-          }' | cat header_template.txt - | bgzip -@ !{task.cpus} -c > backbone.vcf.gz
+        | awk -v MINCOV=!{params.allpos_min_cov} -v GAPDP=!{params.consensus_min_dp} -v OFS="\\t" '
+            function count_bases(s,   i,n,c,num){
+              RO_G=0; AO_G=0; i=1; n=length(s)
+              while(i<=n){
+                c=substr(s,i,1)
+                if(c=="^"){ i+=2 }                                    # ^ + mapping-quality char (read start)
+                else if(c=="\$"){ i++ }                               # read end
+                else if(c=="+"||c=="-"){                              # indel: skip sign + count + that many bases
+                  i++; num=""
+                  while(i<=n && substr(s,i,1) ~ /[0-9]/){ num=num substr(s,i,1); i++ }
+                  i+=(num+0)
+                }
+                else if(c=="."||c==","){ RO_G++; i++ }                # match to reference
+                else if(c ~ /[ACGTacgt]/){ AO_G++; i++ }             # mismatch = alt observation
+                else{ i++ }                                          # * (del), <>, N, etc. -> ignore
+              }
+            }
+            {
+              chrom=\$1; pos=\$2; ref=\$3; dp=(\$4+0); dp_baq=(\$10+0);
+              count_bases(\$5)                                        # RO/AO from the no-BAQ pileup (real base evidence)
+              wt=(dp>=MINCOV?1:0);
+              nc=(dp>=MINCOV?0:1);
+              gt=(dp>=MINCOV?"0":"./.");
+              flt=(dp>GAPDP && dp_baq<=GAPDP)?"baq_dropout":".";
+              info="ADP="dp";WT="wt";HET=0;HOM=0;NC="nc;
+              print chrom, pos, ".", ref, ".", ".", flt, info, "GT:DP:AD", gt":"dp":"RO_G","AO_G
+            }' | cat header_template.txt - | bgzip -@ !{task.cpus} -c > backbone.vcf.gz
     else
         samtools mpileup -aa -f !{ref_fa} -Q !{params.allpos_min_bq} -d !{params.allpos_max_depth} !{bam} \\
-            | awk -v MINCOV=!{params.allpos_min_cov} -v OFS="\\t" '{
-                chrom=\$1; pos=\$2; ref=\$3; dp=(\$4+0);
-                wt=(dp>=MINCOV?1:0);
-                nc=(dp>=MINCOV?0:1);
-                gt=(dp>=MINCOV?"0":"./.");
-                info="ADP="dp";WT="wt";HET=0;HOM=0;NC="nc;
-                print chrom, pos, ".", ref, ".", ".", ".", info, "GT:DP", gt":"dp
-              }' | cat header_template.txt - | bgzip -@ !{task.cpus} -c > backbone.vcf.gz
+            | awk -v MINCOV=!{params.allpos_min_cov} -v OFS="\\t" '
+                function count_bases(s,   i,n,c,num){
+                  RO_G=0; AO_G=0; i=1; n=length(s)
+                  while(i<=n){
+                    c=substr(s,i,1)
+                    if(c=="^"){ i+=2 }
+                    else if(c=="\$"){ i++ }
+                    else if(c=="+"||c=="-"){
+                      i++; num=""
+                      while(i<=n && substr(s,i,1) ~ /[0-9]/){ num=num substr(s,i,1); i++ }
+                      i+=(num+0)
+                    }
+                    else if(c=="."||c==","){ RO_G++; i++ }
+                    else if(c ~ /[ACGTacgt]/){ AO_G++; i++ }
+                    else{ i++ }
+                  }
+                }
+                {
+                  chrom=\$1; pos=\$2; ref=\$3; dp=(\$4+0);
+                  count_bases(\$5)
+                  wt=(dp>=MINCOV?1:0);
+                  nc=(dp>=MINCOV?0:1);
+                  gt=(dp>=MINCOV?"0":"./.");
+                  info="ADP="dp";WT="wt";HET=0;HOM=0;NC="nc;
+                  print chrom, pos, ".", ref, ".", ".", ".", info, "GT:DP:AD", gt":"dp":"RO_G","AO_G
+                }' | cat header_template.txt - | bgzip -@ !{task.cpus} -c > backbone.vcf.gz
     fi
 
     safe_tabix backbone.vcf.gz
@@ -223,7 +273,17 @@ process MERGE_VCFS {
     safe_tabix () {
       local gz="\$1"; local idx="\${gz}.tbi"
       set +e; tabix -f -p vcf "\$gz"; st=\$?; set -e
-      if [ \$st -ne 0 ]; then : > "\$idx"; fi
+      if [ \$st -ne 0 ]; then
+        # Only a genuinely header-only VCF gets an empty index. bcftools reads the whole
+        # file, so a truncated/malformed VCF errors under set -e (fails loud) instead of
+        # getting a fake index that would let a short VCF flow into the consensus.
+        local nrec; nrec=\$(bcftools view -H "\$gz" | wc -l)
+        if [ "\$nrec" -ne 0 ]; then
+          echo "ERROR: tabix failed on \$gz with \$nrec records (malformed/truncated) -> refusing a fake index" >&2
+          exit \$st
+        fi
+        : > "\$idx"
+      fi
     }
 
     # 1. Apply proper header to SNP VCF
@@ -235,7 +295,11 @@ process MERGE_VCFS {
     cp clean_snps.vcf.gz.tbi !{sampleId}.!{refId}.vcf.gz.tbi
 
     # 2. Merge Backbone + SNPs
-    n_vars=\$(zgrep -v '^#' clean_snps.vcf.gz | head -n 1 | wc -l || true)
+    # Count with bcftools (reads the whole file): a truncated clean_snps errors under set -e
+    # instead of the old 'zgrep | head | wc || true', where SIGPIPE+pipefail could swallow a
+    # truncation and yield n_vars=0 -> backbone-only branch -> every SNP silently dropped and
+    # the consensus collapses to the reference.
+    n_vars=\$(bcftools view -H clean_snps.vcf.gz | wc -l)
     echo "DEBUG: Number of variants found: \$n_vars" >&2
 
     if [[ "\$n_vars" -gt 0 ]]; then
@@ -254,7 +318,11 @@ process MERGE_VCFS {
       # If no variants, the all.pos VCF is identical to the backbone
       cp !{back_vcf} !{sampleId}.!{refId}.all.pos.vcf.gz
     fi
-    
-    safe_tabix !{sampleId}.!{refId}.all.pos.vcf.gz
+
+    # The all.pos VCF is the direct consensus substrate and always has records; verify BGZF
+    # integrity and index with plain tabix so any truncation/corruption fails the task loudly
+    # (never a fake empty index here).
+    bgzip -t !{sampleId}.!{refId}.all.pos.vcf.gz
+    tabix -f -p vcf !{sampleId}.!{refId}.all.pos.vcf.gz
     """
 }
