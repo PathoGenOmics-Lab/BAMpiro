@@ -37,6 +37,8 @@ def main():
     ap.add_argument("--kmin", type=int, default=35, help="smallest read length probed by genmap")
     ap.add_argument("--sentinel", type=int, default=65535)
     ap.add_argument("--keep-unmapped", action="store_true")
+    ap.add_argument("--strict-contigs", action="store_true",
+                    help="fail loudly if any BAM @SQ contig is absent from the track (else fail-open with a warning)")
     a = ap.parse_args()
     npz = np.load(a.mul)
     MUL = {k: npz[k] for k in npz.files}
@@ -62,6 +64,9 @@ def main():
                     if tok.startswith("SN:"):
                         sn = tok[3:].strip()
                         if sn not in MUL:
+                            if a.strict_contigs:
+                                sys.exit("[filter_reads] ERROR: BAM contig %r absent from the mappability track "
+                                         "(wrong reference/track?). Aborting (--strict-contigs)." % sn)
                             sys.stderr.write("[filter_reads] WARNING: contig %r not in track -> fail-open (masking disabled there)\n" % sn)
                         seen_sq.add(sn)
             w(line)

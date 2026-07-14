@@ -24,6 +24,10 @@ def main():
     ap.add_argument("--tail-policy", choices=["keep", "drop"], default="keep",
                     help="contig-end positions genmap never scored: keep (min_unique_len=0) or drop (=infinity)")
     ap.add_argument("--unique-eps", type=float, default=0.999999, help="mappability >= this counts as unique (==1)")
+    ap.add_argument("--mask-bed", default=None,
+                    help="also emit a 1-based-inclusive repeat BED: positions no read up to --mask-window bp can map uniquely")
+    ap.add_argument("--mask-window", type=int, default=150,
+                    help="longest read length considered for the repeat BED (typically genmap_max_k)")
     ap.add_argument("--out-prefix", required=True)
     a = ap.parse_args()
 
@@ -57,6 +61,25 @@ def main():
             tracks[n][tail] = 0                            # span >= 0 always -> such reads are kept
 
     np.savez(a.out_prefix + ".min_unique_len.npz", **tracks)
+
+    # Optional repeat BED: a base is unmappable iff NO read of length <= mask_window covering it
+    # can be unique, i.e. every start s in [p-W+1, p] has min_unique_len[s] > W. This is the
+    # covered-position semantics (a base deep in a repeat whose own k-mer escapes into unique
+    # flank is still masked), and it shrinks correctly at repeat edges. 1-based inclusive, so it
+    # merges with the nucmer Locus_to_exclude and bcftools -T region contract.
+    if a.mask_bed:
+        W = a.mask_window
+        with open(a.mask_bed, "w") as o:
+            o.write("Chrom\tStart\tEnd\tTag\tComment\n")
+            for n, L in contigs:
+                mul = tracks[n]
+                nonrep = (mul <= W)                                # a read starting here can anchor within W bp
+                pos_or_neg = np.where(nonrep, np.arange(L), -1)
+                last_nonrep = np.maximum.accumulate(pos_or_neg)     # last anchor-start at or before each position
+                masked = (np.arange(L) - last_nonrep) >= W          # no anchor start within the preceding W bp
+                d = np.diff(np.r_[np.int8(0), masked.view(np.int8), np.int8(0)])
+                for s2, e2 in zip(np.where(d == 1)[0], np.where(d == -1)[0]):
+                    o.write(f"{n}\t{int(s2) + 1}\t{int(e2)}\t\t\n")   # 0-based [s,e) -> 1-based [s+1,e]
 
 
 if __name__ == "__main__":
