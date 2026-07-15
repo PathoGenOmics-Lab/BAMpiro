@@ -44,6 +44,9 @@ process QC_REPORT {
     path(summary)
     path(gene_burden)
     path(consensus)         // all masked consensus FASTAs (may be empty)
+    path(gff)               // reference GFF3 -> per-gene SNP-density hotspots panel
+    path(mask_bed)          // reference repeat/exclude BED -> masked-regions / callability panel
+    val(provenance)         // pre-quoted provenance tokens (container=..., reference=...)
     val(basename)
 
     output:
@@ -53,12 +56,19 @@ process QC_REPORT {
     script:
     def gate_arg = params.report_gate ? "--gate" : ""
     def cons_arg = consensus ? "--consensus ${consensus}" : ""
+    def palette  = "${projectDir}/assets/mycolorsTB_nature.tsv"
     """
     set -euo pipefail
+    # Optional inputs self-hide their panel when absent/empty (parse_gff & parse_bed are tolerant).
+    LC_ARG=""; [ -f "${palette}" ] && LC_ARG="--lineage-colors ${palette}"
+    MASK_ARG=""; [ -s "${mask_bed}" ] && MASK_ARG="--mask-bed ${mask_bed}"
     python3 ${projectDir}/bin/qc_report.py \\
         --summary ${summary} \\
         ${cons_arg} \\
         --gene-burden ${gene_burden} \\
+        --gff ${gff} \\
+        \$MASK_ARG \$LC_ARG \\
+        --provenance ${provenance} \\
         --out-html ${basename}_qc_report.html \\
         --out-flags ${basename}_qc_flags.tsv \\
         --title "BAMpiro QC report" \\

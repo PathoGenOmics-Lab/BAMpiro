@@ -443,6 +443,13 @@ workflow {
         def all_logs = legacy_stats.legacy_log.collect()
         def summ = COLLECT_SUMMARY(all_logs, tsv_name)
         def cons_files = masked_consensus.map { sId, rId, fa -> fa }.collect().ifEmpty([])
-        QC_REPORT(summ.summary, summ.gene_burden, cons_files, tsv_name)
+        // Reference-level extras (cohort report -> take the reference bundle; single-ref is the norm):
+        // GFF enables the per-gene SNP-density panel, the nucmer/repeat BED the masked-regions panel.
+        def report_gff  = file(refGffMap.values().toList().first())
+        def report_mask = ref_bundle.bundle.map { rId, fa, idx, excl -> excl }.first()
+        // Provenance footer: pinned container digest + reference(s).
+        def provenance  = (["container=${params.container}"] + refMap.keySet().collect { "reference=${it}" })
+                          .collect { "\"${it}\"" }.join(' ')
+        QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask, provenance, tsv_name)
     }
 }
