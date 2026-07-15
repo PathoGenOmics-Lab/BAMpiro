@@ -85,3 +85,27 @@ process QC_REPORT {
         ${gate_arg}
     """
 }
+
+process SNP_MATRIX {
+    tag "SNP matrix"
+    publishDir "${params.outdir}", mode: params.publish_mode
+    cpus 1
+    memory { 4.GB * task.attempt }
+
+    input:
+    path(vcfs)              // all per-sample annotated VCFs
+    val(reference)          // reference id the samples were mapped against
+    val(basename)
+
+    output:
+    path("${basename}_snp_matrix.tsv"), emit: matrix
+
+    script:
+    """
+    set -euo pipefail
+    python3 ${projectDir}/bin/build_snp_matrix.py \\
+        --vcfs ${vcfs} \\
+        --reference "${reference}" \\
+        -o ${basename}_snp_matrix.tsv
+    """
+}

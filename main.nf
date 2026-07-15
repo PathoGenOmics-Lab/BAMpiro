@@ -18,7 +18,7 @@ include { CONSENSUS_FASTA } from './modules/consensus'
 include { CALL_BACKBONE as CALL_BACKBONE_RAW; MERGE_VCFS as MERGE_VCFS_RAW } from './modules/variants'
 include { CONSENSUS_FASTA as CONSENSUS_FASTA_RAW } from './modules/consensus'
 include { ANNOTATE_LEGACY_VCF; ANNOTATE_MAIN_VCF; GENERATE_LEGACY_STATS } from './modules/annotation'
-include { COLLECT_SUMMARY; QC_REPORT } from './modules/report'
+include { COLLECT_SUMMARY; QC_REPORT; SNP_MATRIX } from './modules/report'
 
 /* ----------------------------- Configuration Logic ----------------------------- */
 
@@ -443,8 +443,17 @@ workflow {
 
     MULTIQC(qc_collection, multiqc_report_filename)
 
-    // 11. Consolidated QC report (cohort-level): aggregate every per-sample legacy log into one
-    // summary TSV, then render the self-contained interactive HTML + PASS/WARN/FAIL flags.
+    // 11. Cohort-level outputs (QC report + master SNP matrix).
+    // Per-sample annotated VCFs, shared by both: prefer the annotated freebayes VCF (per-alt AD ->
+    // continuous AF + gene/effect); fall back to the annotated main VCF (GT-based AF) if legacy
+    // annotation is off. reference name(s) the samples were mapped against.
+    def report_vcfs = (params.annotate_legacy_vcfs ? freebayes_ann
+                                                   : vcf_for_stats.map { sId, rId, vcf -> vcf })
+                      .collect().ifEmpty([])
+    def ref_name = refMap.keySet().join(',')
+
+    // 11a. Consolidated QC report: aggregate every per-sample legacy log into one summary TSV, then
+    // render the self-contained interactive HTML + PASS/WARN/FAIL flags.
     if (params.make_qc_report) {
         def all_logs = legacy_stats.legacy_log.collect()
         def summ = COLLECT_SUMMARY(all_logs, tsv_name)
@@ -457,13 +466,14 @@ workflow {
         def provenance  = (["container=${params.container}"] + refMap.keySet().collect { "reference=${it}" })
                           .collect { "\"${it}\"" }.join(' ')
         // SNP dynamics: the samplesheet is the metadata source (auto-detects time/group columns; the
-        // panel self-hides if absent). Prefer the annotated freebayes VCF (AD -> continuous AF, plus
-        // gene/effect); fall back to the annotated main VCF (GT-based AF) if legacy annotation is off.
+        // panel self-hides if absent).
         def report_meta = file(params.tsv)
-        def report_vcfs = (params.annotate_legacy_vcfs ? freebayes_ann
-                                                       : vcf_for_stats.map { sId, rId, vcf -> vcf })
-                          .collect().ifEmpty([])
         QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
                   report_meta, report_vcfs, provenance, tsv_name)
+    }
+
+    // 11b. Master SNP matrix: rows = SNP sites, columns = reference/annotation + per-sample AF & depth.
+    if (params.make_snp_matrix) {
+        SNP_MATRIX(report_vcfs, ref_name, tsv_name)
     }
 }

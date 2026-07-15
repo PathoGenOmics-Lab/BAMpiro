@@ -953,7 +953,7 @@ function renderQCspace(){var host=el('qcpca_body'),cap=el('qcpca_caption'),ot=el
   var xt='<text x="'+((pad+W-14)/2)+'" y="'+(H-6)+'" text-anchor="middle" font-size="11" fill="#475569">PC1 ('+P.pev[0].toFixed(1)+'%)</text>';
   var yt='<text transform="rotate(-90 13 '+((14+H-pad)/2)+')" x="13" y="'+((14+H-pad)/2)+'" text-anchor="middle" font-size="11" fill="#475569">PC2 ('+(P.pev[1]<1e-3?'~0%, rank-deficient':P.pev[1].toFixed(1)+'%')+')</text>';
   var load='<div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:8px">'+[0,1].map(function(pc){return '<div style="flex:1;min-width:170px"><div class="dsub" style="margin:2px 0 6px">PC'+(pc+1)+' loadings</div>'+P.load[pc].map(function(l){var w=Math.abs(l.w),col=l.w>=0?'#22a06b':'#e0544f';return '<div class="drow"><span class="dk">'+esc(l.label)+'</span><div class="dbarwrap"><div class="dbar" style="width:'+Math.round(w*100)+'%;background:'+col+'"></div></div><span class="dv">'+(l.w>=0?'+':'')+l.w.toFixed(2)+'</span></div>';}).join('')+'</div>';}).join('')+'</div>';
-  host.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;cursor:crosshair">'+ellSVG+frame+zero+xt+yt+dots+'</svg>'+load;
+  host.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;cursor:crosshair">'+ellSVG+frame+zero+xt+yt+dots+'</svg>'+colorLegend()+load;
   if(cap)cap.innerHTML=PCA_CAPTION;
   if(ot){var uv=visible().filter(function(s){return s.m.qc_mahal!=null;}).sort(function(a,b){return b.m.qc_mahal-a.m.qc_mahal;}).slice(0,8);
     ot.innerHTML='<thead><tr><th class="s" style="text-align:left">Sample</th><th>d²</th><th>QC</th><th style="text-align:left">Top deviating metrics</th></tr></thead><tbody>'+
@@ -991,7 +991,7 @@ function renderRefBias(){var host=el('divcomp_body'),cap=el('divcomp_caption'),q
   var labs='<text x="'+(pad+6)+'" y="'+(H-pad-6)+'" font-size="8.5" font-weight="600" fill="var(--fail)">reference-bias suspect</text>'
     +'<text x="'+(pad+6)+'" y="24" font-size="8.5" font-weight="600" fill="#3f7d55">typical divergence</text>'
     +'<text x="'+(W-16)+'" y="'+(H-pad-6)+'" text-anchor="end" font-size="8.5" font-weight="600" fill="var(--warn)">low coverage</text>';
-  host.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;cursor:crosshair">'+rects+guides+frame+titles+labs+dots+'</svg>';
+  host.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;cursor:crosshair">'+rects+guides+frame+titles+labs+dots+'</svg>'+colorLegend();
   if(qn)qn.innerHTML=[['refbias','reference-bias suspect','var(--fail)'],['lowcov','honest low-coverage','var(--warn)'],['typical','typical divergence','var(--pass)']].map(function(q){return '<span><i style="background:'+q[2]+'"></i>'+q[1]+' <b>'+quad[q[0]]+'</b></span>';}).join('');
   if(cap)cap.innerHTML=REFBIAS_CAPTION;
   var dxb=el('divx');if(dxb)Array.prototype.forEach.call(dxb.querySelectorAll('button'),function(b){b.onclick=function(){st.divx=b.getAttribute('data-x');Array.prototype.forEach.call(dxb.querySelectorAll('button'),function(x){x.classList.toggle('on',x==b);});renderRefBias();};});}
@@ -1137,6 +1137,14 @@ function visible(){return R.samples.filter(function(s){
   if(st.linFilter&&s.lineage!=st.linFilter)return false;
   if(st.q&&s.s.toLowerCase().indexOf(st.q)<0)return false; return true;});}
 function dotColor(s){return st.colorBy=='lineage'?linColor(s.lineage):VCOL[s.v];}
+// shared colour key for every dot plot (adapts to the QC/lineage colour toggle)
+function colorLegend(){
+  var sw='display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px;background:';
+  var items=(st.colorBy=='lineage'
+    ? (R.lineages||[]).map(function(l){return '<span><i style="'+sw+linColor(l)+'"></i>'+esc(l)+'</span>';}).join('')||'<span class="c">no lineage assigned</span>'
+    : '<span><i style="'+sw+VCOL.PASS+'"></i>PASS</span><span><i style="'+sw+VCOL.WARN+'"></i>WARN</span><span><i style="'+sw+VCOL.FAIL+'"></i>FAIL</span>');
+  return '<div class="legend" style="justify-content:center">'+items+'</div>';
+}
 // genome landscape: missing-fraction (0 callable -> 1 missing) mapped to a pale->red heat colour
 function heatCol(mv){if(mv==null)return '#e9edf2';var a=[238,244,240],b=[214,64,58];
   return 'rgb('+Math.round(a[0]+(b[0]-a[0])*mv)+','+Math.round(a[1]+(b[1]-a[1])*mv)+','+Math.round(a[2]+(b[2]-a[2])*mv)+')';}
@@ -1260,16 +1268,12 @@ function renderScatter(){
     ticks+='<line x1="'+gx+'" y1="'+pad+'" x2="'+gx+'" y2="'+(H-pad)+'" stroke="#f0f3f7"/><line x1="'+pad+'" y1="'+gy+'" x2="'+(pad+plot)+'" y2="'+gy+'" stroke="#f0f3f7"/>'+
     '<text x="'+gx+'" y="'+(H-pad+13)+'" font-size="9" fill="#94a3b8" text-anchor="middle">'+shortv(xr[0]+t*(xr[1]-xr[0]),xm.kind)+'</text>'+
     '<text x="'+(pad-6)+'" y="'+(gy+3)+'" font-size="9" fill="#94a3b8" text-anchor="end">'+shortv(yr[0]+t*(yr[1]-yr[0]),ym.kind)+'</text>';});
-  var _sw='display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px;background:';
-  var scLeg=(st.colorBy=='lineage'
-    ? (R.lineages||[]).map(function(l){return '<span><i style="'+_sw+linColor(l)+'"></i>'+esc(l)+'</span>';}).join('')
-    : '<span><i style="'+_sw+VCOL.PASS+'"></i>PASS</span><span><i style="'+_sw+VCOL.WARN+'"></i>WARN</span><span><i style="'+_sw+VCOL.FAIL+'"></i>FAIL</span>');
   host.innerHTML='<svg width="'+S+'" height="'+H+'" id="scsvg" style="display:block;margin:0 auto">'+
     '<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(pad+plot)+'" y2="'+(H-pad)+'" stroke="#cbd5e1"/><line x1="'+pad+'" y1="'+pad+'" x2="'+pad+'" y2="'+(H-pad)+'" stroke="#cbd5e1"/>'+
     ticks+dots+
     '<text x="'+(pad+plot/2)+'" y="'+(H-6)+'" font-size="11" fill="#475569" text-anchor="middle">'+esc(xm.label)+'</text>'+
     '<text x="12" y="'+(pad+ph/2)+'" font-size="11" fill="#475569" text-anchor="middle" transform="rotate(-90 12 '+(pad+ph/2)+')">'+esc(ym.label)+'</text></svg>'+
-    '<div class="legend" style="justify-content:center">'+scLeg+'</div>';
+    colorLegend();
   SGEO={pad:pad,plot:plot,ph:ph,H:H,xr:xr,yr:yr,xk:xk,yk:yk};   // for the rubber-band select inverse-mapping
   var scsvg=el('scsvg'); if(scsvg){var ov=document.createElementNS('http://www.w3.org/2000/svg','rect');
     ov.setAttribute('id','scbrush');ov.setAttribute('fill','rgba(14,139,168,.12)');ov.setAttribute('stroke','#0e8ba8');
