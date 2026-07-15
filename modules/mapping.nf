@@ -89,6 +89,8 @@ process MERGE_AND_MARKDUP {
     output:
     tuple val(sampleId), val(refId), path("${sampleId}.${refId}.final.bam"), path("${sampleId}.${refId}.final.bam.bai"), path(ref_fa), path(exclude_txt), emit: final_bam
     tuple val(sampleId), val(refId), path("${sampleId}.${refId}.dedup.stats"), emit: stats
+    // Published-only CRAM (output_cram=true); the BAM above still feeds the pipeline.
+    path("${sampleId}.${refId}.final.cram*"), optional: true, emit: cram
     
     shell:
     '''
@@ -123,6 +125,13 @@ process MERGE_AND_MARKDUP {
     samtools index !{sampleId}.!{refId}.final.bam
     samtools stats !{sampleId}.!{refId}.final.bam > !{sampleId}.!{refId}.dedup.stats
 
+    # Optional reference-compressed CRAM for publishing (the BAM still feeds the pipeline).
+    if [[ "!{params.output_cram}" == "true" ]]; then
+        samtools faidx !{ref_fa}
+        samtools view -C -T !{ref_fa} -@ !{task.cpus} -o !{sampleId}.!{refId}.final.cram !{sampleId}.!{refId}.final.bam
+        samtools index -@ !{task.cpus} !{sampleId}.!{refId}.final.cram
+    fi
+
     # 4. Cleanup (only the merge intermediate exists, and only in the multi-BAM case)
     rm -f merged.bam
     '''
@@ -150,6 +159,8 @@ process FILTER_READS {
           path("${sampleId}.${refId}.filtered.bam"), path("${sampleId}.${refId}.filtered.bam.bai"),
           path(ref_fa), path("${sampleId}.${refId}.exclude.txt"), emit: filtered_bam
     path("${sampleId}.${refId}.filter_mqc.tsv"), emit: stats
+    // Published-only CRAM (output_cram=true); the BAM above still feeds variant calling.
+    path("${sampleId}.${refId}.filtered.cram*"), optional: true, emit: cram
 
     shell:
     '''
@@ -173,6 +184,13 @@ process FILTER_READS {
           --mul !{mul_npz} --kmin !{params.genmap_min_k} --sentinel !{params.genmap_infinity} $KU $SC \
       | samtools view -b -@ !{task.cpus} -o !{sampleId}.!{refId}.filtered.bam -
     samtools index -@ !{task.cpus} !{sampleId}.!{refId}.filtered.bam
+
+    # Optional reference-compressed CRAM for publishing (analysis keeps using the BAM above).
+    if [[ "!{params.output_cram}" == "true" ]]; then
+        samtools faidx !{ref_fa}
+        samtools view -C -T !{ref_fa} -@ !{task.cpus} -o !{sampleId}.!{refId}.filtered.cram !{sampleId}.!{refId}.filtered.bam
+        samtools index -@ !{task.cpus} !{sampleId}.!{refId}.filtered.cram
+    fi
 
     a=$(samtools view -c !{bam})
     b=$(samtools view -c !{sampleId}.!{refId}.filtered.bam)

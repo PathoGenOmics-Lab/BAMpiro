@@ -12,8 +12,9 @@ process PREPARE_REFERENCE {
     // We keep custom logic here because we NEED to publish the index files (.fai, .bwt, etc.),
     // which the global 'getSavePath' function would filter out.
     publishDir "${params.outdir}/references/${refId}", mode: params.publish_mode, saveAs: { filename ->
-        // Only hide the raw copy of reference.fa to save space (since we have the original input)
-        if (filename == "reference.fa") return null
+        // Hide the raw copy of reference.fa to save space (the original input already exists),
+        // BUT keep it when publishing CRAM so the outputs are self-decodable.
+        if (filename == "reference.fa" && !params.output_cram) return null
         return filename
     }
 

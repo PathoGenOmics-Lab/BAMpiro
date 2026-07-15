@@ -105,11 +105,18 @@ def getSavePath(filename, params) {
         return null
     }
 
-    // A2. Pre-filter dedup BAM: once the length-aware filter runs, filtered.bam is the analysis
-    //     BAM and final.bam is a ~redundant second full BAM. Drop it from the outdir by default
-    //     (still kept in the work dir, so the virgin/raw branch is unaffected). When the filter is
-    //     off, final.bam is the ONLY BAM and this gate does not trigger.
-    if ((lower.endsWith('.final.bam') || lower.endsWith('.final.bam.bai'))
+    // A1b. With output_cram, CRAM is the published alignment form -> suppress the BAM/BAI
+    //      (analysis still runs on the BAM in the work dir; only publishing changes).
+    if (params.output_cram && (lower.endsWith('.bam') || lower.endsWith('.bam.bai'))) {
+        return null
+    }
+
+    // A2. Pre-filter dedup alignment: once the length-aware filter runs, filtered.* is the analysis
+    //     alignment and final.* is a ~redundant second full copy. Drop it from the outdir by
+    //     default (still kept in the work dir, so the virgin/raw branch is unaffected). When the
+    //     filter is off, final.* is the ONLY alignment and this gate does not trigger. Matches both
+    //     .final.bam(.bai) and .final.cram(.crai).
+    if ((lower.contains('.final.bam') || lower.contains('.final.cram'))
         && params.dynamic_read_filter && !params.publish_prefilter_bam) {
         return null
     }
