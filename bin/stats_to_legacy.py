@@ -213,8 +213,9 @@ def calc_breadth_of_coverage(stats_file, genome_size, min_dp=1):
                 if len(parts) < 4:
                     continue
                 # samtools stats COV format: COV  [depth_range]  depth  count
-                # e.g. COV	[1-1]	1	1234   (parts[2]=depth, parts[3]=#bases)
-                depth_range = parts[1].strip('[]')
+                # e.g. COV	[1-1]	1	1234   (parts[2]=depth, parts[3]=#bases). The overflow bin is
+                # [1000<]; strip the '<'/'>'/'=' so those deep-covered bases are not dropped as ValueError.
+                depth_range = parts[1].strip('[]').strip('<>=')
                 try:
                     if '-' in depth_range:
                         low = int(depth_range.split('-')[0])
@@ -247,7 +248,7 @@ def cov_histogram_stats(stats_file, genome_size):
                 p = line.rstrip('\n').split('\t')
                 if len(p) < 4:
                     continue
-                rng = p[1].strip('[]')
+                rng = p[1].strip('[]').strip('<>=')   # '[1000<]' overflow bin -> '1000' (not a ValueError)
                 try:
                     if '-' in rng:
                         lo, hi = rng.split('-', 1)

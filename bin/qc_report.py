@@ -171,9 +171,8 @@ def consensus_stats(path):
     with op(path, "rt", encoding="utf-8", errors="replace") as fh:
         for line in fh:
             if line.startswith(">"):
-                if name is not None:
-                    break
-                name = line[1:].split()[0]
+                if name is None:            # keep the first record's id, but keep reading ALL records so a
+                    name = line[1:].split()[0]  # multi-contig consensus is measured whole-genome, not contig 1 only
             else:
                 chunks.append(line.strip())
     seq = "".join(chunks).upper()
@@ -2774,7 +2773,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div id="modal" class="modal"><div class="modalcard"><button class="modalx" id="modalx" aria-label="close">×</button><div id="modalbody"></div></div></div>
 <div id="tt"></div>
 <div id="infopop"></div>
-<script>const REPORT=__JSON__;</script>
+<script>var REPORT=__JSON__;</script>
 <script>__JS__</script>
 </body></html>"""
 

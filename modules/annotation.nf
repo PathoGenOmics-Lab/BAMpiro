@@ -24,17 +24,18 @@ process ANNOTATE_CANONICAL {
     val canonical_db
 
     output:
-    tuple val(sampleId), path("${sampleId}.canonical.ann.vcf.gz"), emit: out
+    tuple val(sampleId), path("${sampleId}.${refId}.canonical.ann.vcf.gz"), emit: out
 
     script:
     """
     set -euo pipefail
-    # Drop any existing ANN, then annotate against the canonical genome DB.
+    # Drop any existing ANN, then annotate against the canonical genome DB. refId is in the name so a
+    # sample mapped to more than one reference does not produce a file-name collision downstream.
     ( bcftools annotate -x INFO/ANN "${vcf_in}" -Ov 2>/dev/null || zcat -f "${vcf_in}" ) > stripped.vcf
-    snpEff ann -v ${canonical_db} stripped.vcf 2> ${sampleId}.canonical.snpeff.log \\
+    snpEff ann -v ${canonical_db} stripped.vcf 2> ${sampleId}.${refId}.canonical.snpeff.log \\
       | awk 'BEGIN{FS="\\t"; OFS="\\t"} /^#/{print;next} /^\\[/{next} NF>=8{print}' \\
-      | bgzip -c > ${sampleId}.canonical.ann.vcf.gz
-    tabix -f -p vcf ${sampleId}.canonical.ann.vcf.gz 2>/dev/null || : > ${sampleId}.canonical.ann.vcf.gz.tbi
+      | bgzip -c > ${sampleId}.${refId}.canonical.ann.vcf.gz
+    tabix -f -p vcf ${sampleId}.${refId}.canonical.ann.vcf.gz 2>/dev/null || : > ${sampleId}.${refId}.canonical.ann.vcf.gz.tbi
     """
 }
 

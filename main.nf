@@ -464,8 +464,10 @@ workflow {
         def cons_files = masked_consensus.map { sId, rId, fa -> fa }.collect().ifEmpty([])
         // Reference-level extras (cohort report -> take the reference bundle; single-ref is the norm):
         // GFF enables the per-gene SNP-density panel, the nucmer/repeat BED the masked-regions panel.
-        def report_gff  = file(refGffMap.values().toList().first())
-        def report_mask = ref_bundle.bundle.map { rId, fa, idx, excl -> excl }.first()
+        def report_ref  = refGffMap.keySet().toList().first()   // deterministic: the first reference
+        def report_gff  = file(refGffMap[report_ref])
+        def report_mask = ref_bundle.bundle.filter { rId, fa, idx, excl -> rId == report_ref }
+                                           .map { rId, fa, idx, excl -> excl }.first()
         // Provenance footer: pinned container digest + reference(s).
         def provenance  = (["container=${params.container}"] + refMap.keySet().collect { "reference=${it}" })
                           .collect { "\"${it}\"" }.join(' ')
