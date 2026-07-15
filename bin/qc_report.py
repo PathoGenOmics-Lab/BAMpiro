@@ -1709,6 +1709,7 @@ function renderADNA(){
 }
 
 var DYNCOL={fixation:'#2f6fed',emergence:'#1f9d6b',loss:'#e6893a',nonsyn:'#d1495b',high_impact:'#7c3aed'};
+var DYNHELP={emergence:'Emergence: the variant is (near-)absent at the first timepoint, then rises above the emergence threshold - a new allele appearing in this series.',fixation:'Fixation: the allele frequency reaches near 1.0 by the last timepoint - the variant has (almost) taken over.',loss:'Loss: the variant is present early then falls back toward 0 - an allele being lost from the series.',nonsyn:'Non-synonymous: the variant changes the protein (missense / stop / frameshift / splice / inframe indel), per snpEff - potentially functional.',high_impact:'High impact: snpEff predicts a HIGH-impact effect (frameshift, stop gained/lost...) - likely to disrupt the gene.'};
 var dynState={sel:null,q:''};
 function dynHasFlag(v){return v.flags&&v.flags.length;}
 function dynColor(flags){ if(!flags)return '#9fb0c3'; if(flags.indexOf('fixation')>=0)return DYNCOL.fixation; if(flags.indexOf('emergence')>=0)return DYNCOL.emergence; if(flags.indexOf('loss')>=0)return DYNCOL.loss; if(flags.indexOf('high_impact')>=0)return DYNCOL.high_impact; return '#5b6b7e'; }
@@ -1717,7 +1718,7 @@ function dynMiniChart(v,th){
   function X(i){ return ml+(n<=1?pw/2:(i/(n-1))*pw); }
   function Y(a){ return mt+(1-a)*ph; }
   var col=dynColor(v.flags), nonsyn=v.flags&&v.flags.indexOf('nonsyn')>=0;
-  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block">';
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block"><title>Allele frequency (0-1, vertical) across timepoints (horizontal). Hover a point for its exact value.</title>';
   [0,0.5,1].forEach(function(a){ svg+='<line x1="'+ml+'" y1="'+Y(a).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(a).toFixed(1)+'" stroke="#eef2f7"/><text x="'+(ml-5)+'" y="'+(Y(a)+3.5).toFixed(1)+'" text-anchor="end" font-size="10.5" fill="#8a97a8">'+a.toFixed(1)+'</text>'; });
   if(th){ [[th.emerge,DYNCOL.emergence],[th.fix,DYNCOL.fixation]].forEach(function(t){ svg+='<line x1="'+ml+'" y1="'+Y(t[0]).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(t[0]).toFixed(1)+'" stroke="'+t[1]+'" stroke-dasharray="3 3" opacity="0.3"/>'; }); }
   var pts=v.traj.map(function(a,i){return X(i).toFixed(1)+','+Y(a).toFixed(1);}).join(' ');
@@ -1747,12 +1748,12 @@ function renderDynamics(){
   }
   host.innerHTML=
     '<div class="dyn-controls">'+
-      '<input id="dynsearch" class="dyn-search" type="search" placeholder="&#128269; search gene..." value="'+esc(dynState.q)+'">'+
-      '<button class="dyn-btn" id="dynFlag">flagged genes</button>'+
-      '<button class="dyn-btn" id="dynAll">all</button>'+
-      '<button class="dyn-btn" id="dynNone">clear</button>'+
+      '<input id="dynsearch" class="dyn-search" type="search" title="Type a gene name to filter the gene chips and the grid below" placeholder="&#128269; search gene..." value="'+esc(dynState.q)+'">'+
+      '<button class="dyn-btn" id="dynFlag" title="Show only genes that have at least one flagged variant">flagged genes</button>'+
+      '<button class="dyn-btn" id="dynAll" title="Select every gene that has a moving variant">all</button>'+
+      '<button class="dyn-btn" id="dynNone" title="Deselect all genes">clear</button>'+
       '<span class="dyn-count" id="dynCount"></span></div>'+
-    '<div class="dyn-legend"><span><i style="background:'+DYNCOL.emergence+'"></i>emergence</span><span><i style="background:'+DYNCOL.fixation+'"></i>fixation</span><span><i style="background:'+DYNCOL.loss+'"></i>loss</span><span><i style="border:2px solid '+DYNCOL.nonsyn+';background:#fff"></i>non-synonymous</span></div>'+
+    '<div class="dyn-legend"><span title="'+DYNHELP.emergence+'"><i style="background:'+DYNCOL.emergence+'"></i>emergence</span><span title="'+DYNHELP.fixation+'"><i style="background:'+DYNCOL.fixation+'"></i>fixation</span><span title="'+DYNHELP.loss+'"><i style="background:'+DYNCOL.loss+'"></i>loss</span><span title="'+DYNHELP.nonsyn+'"><i style="border:2px solid '+DYNCOL.nonsyn+';background:#fff"></i>non-synonymous</span></div>'+
     '<div class="dyn-genechips" id="dynchips"></div>'+
     '<div class="dyn-grid" id="dyngrid"></div>';
   function paintChips(){
@@ -1760,7 +1761,7 @@ function renderDynamics(){
     var list=geneList.filter(function(g){return !q||g.toLowerCase().indexOf(q)>=0;});
     el('dynchips').innerHTML=list.length?list.map(function(g){
       var nf=genes[g].filter(dynHasFlag).length;
-      return '<button class="dyn-chip'+(dynState.sel[g]?' sel':'')+'" data-g="'+esc(g)+'">'+esc(g)+' <b>'+genes[g].length+'</b>'+(nf?'<i class="dyn-dot" title="'+nf+' flagged"></i>':'')+'</button>';
+      return '<button class="dyn-chip'+(dynState.sel[g]?' sel':'')+'" data-g="'+esc(g)+'" title="Click to toggle. '+genes[g].length+' variant trajectory(ies)'+(nf?(', '+nf+' flagged'):'')+'">'+esc(g)+' <b>'+genes[g].length+'</b>'+(nf?'<i class="dyn-dot" title="'+nf+' flagged variant(s) in this gene"></i>':'')+'</button>';
     }).join(''):'<span class="c">no gene matches "'+esc(dynState.q)+'"</span>';
     Array.prototype.forEach.call(el('dynchips').querySelectorAll('.dyn-chip'),function(b){ b.onclick=function(){ var g=b.getAttribute('data-g'); if(dynState.sel[g])delete dynState.sel[g]; else dynState.sel[g]=1; paintChips(); paintGrid(); }; });
   }
@@ -1772,12 +1773,12 @@ function renderDynamics(){
     el('dyngrid').innerHTML=sel.map(function(g){
       var vs=genes[g].slice().sort(function(a,b){ return ((dynHasFlag(b)?1:0)-(dynHasFlag(a)?1:0)) || (String(a.pos)>String(b.pos)?1:-1); });
       var cards=vs.map(function(v){
-        var chips=(v.flags||[]).map(function(f){return '<span class="dyn-fchip" style="background:'+(DYNCOL[f]||'#8895a6')+'">'+f+'</span>';}).join('');
+        var chips=(v.flags||[]).map(function(f){return '<span class="dyn-fchip" style="background:'+(DYNCOL[f]||'#8895a6')+'" title="'+(DYNHELP[f]||f)+'">'+f+'</span>';}).join('');
         return '<div class="dyn-card">'+
-          '<div class="dyn-card-h"><span class="dyn-pos">'+esc(v.pos)+'</span><span class="dyn-grp" title="connected series">'+esc(v.group)+'</span></div>'+
-          '<div class="dyn-eff">'+esc(v.eff||'variant')+(v.alt?(' &#183; &#8594;'+esc(v.alt)):'')+'</div>'+
+          '<div class="dyn-card-h"><span class="dyn-pos" title="Genomic position (contig:position) of this SNP">'+esc(v.pos)+'</span><span class="dyn-grp" title="Connected series this variant belongs to (the metadata group column, e.g. patient / passage line)">'+esc(v.group)+'</span></div>'+
+          '<div class="dyn-eff" title="Predicted variant effect (snpEff) and the alternate allele">'+esc(v.eff||'variant')+(v.alt?(' &#183; &#8594;'+esc(v.alt)):'')+'</div>'+
           dynMiniChart(v,th)+
-          '<div class="dyn-card-f">'+(chips||'<span class="c">no event</span>')+'<span class="dyn-traj">'+v.traj.map(function(a){return a.toFixed(2);}).join(' &#8594; ')+'</span></div>'+
+          '<div class="dyn-card-f">'+(chips||'<span class="c" title="no emergence / fixation / loss / non-synonymous event for this variant">no event</span>')+'<span class="dyn-traj" title="Allele frequency at each timepoint, in chronological order">'+v.traj.map(function(a){return a.toFixed(2);}).join(' &#8594; ')+'</span></div>'+
         '</div>';
       }).join('');
       return '<div class="dyn-genecard"><div class="dyn-gene-h">'+esc(g)+'<span class="c">'+vs.length+' variant(s), '+vs.filter(dynHasFlag).length+' flagged</span></div><div class="dyn-cards">'+cards+'</div></div>';
