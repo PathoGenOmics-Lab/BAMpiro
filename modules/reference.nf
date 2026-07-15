@@ -18,7 +18,7 @@ process PREPARE_REFERENCE {
     }
 
     cpus 4
-    memory '16 GB'
+    memory '8 GB'
 
     input:
     tuple val(refId), path(fasta)

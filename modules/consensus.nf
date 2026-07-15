@@ -15,7 +15,7 @@ process CONSENSUS_FASTA {
     publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     cpus 1
-    memory '4 GB'
+    memory { 4.GB * task.attempt }
 
     input:
     // Input tuple: SampleID, RefID, VCF (all positions), TBI, Mask Sites, Ref Fasta, Excluded Regions

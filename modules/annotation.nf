@@ -13,7 +13,7 @@ process ANNOTATE_LEGACY_VCF {
     // Use getSampleDir for nested output support
     publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     cpus 2
-    memory '8 GB'
+    memory { 6.GB * task.attempt }
 
     input:
     tuple val(sampleId), val(refId), val(label), path(vcf_in), path(snpeff_config), path(data_dir)
@@ -56,7 +56,7 @@ process ANNOTATE_MAIN_VCF {
     // Use getSampleDir for nested output support
     publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     cpus 2
-    memory '16 GB'
+    memory { 8.GB * task.attempt }
 
     input:
     tuple val(sampleId), val(refId), path(vcf_gz), path(vcf_tbi), path(snpeff_config), path(data_dir)

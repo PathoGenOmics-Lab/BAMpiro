@@ -34,7 +34,7 @@ process MAPPING_PE {
     bwa-mem2 mem -t !{task.cpus} \
       -R "@RG\\tID:!{sampleId}.!{runId}.PE\\tSM:!{sampleId}\\tPL:ILLUMINA" \
       !{ref_fa} !{r1} !{r2} | \
-      samtools sort -@ !{task.cpus} -o !{sampleId}__!{runId}.pe.sorted.bam -
+      samtools sort -@ !{task.cpus} -l 1 -o !{sampleId}__!{runId}.pe.sorted.bam -
     '''
 }
 
@@ -61,7 +61,7 @@ process MAPPING_SE {
     bwa-mem2 mem -t !{task.cpus} \
       -R "@RG\\tID:!{sampleId}.!{runId}.SE\\tSM:!{sampleId}\\tPL:ILLUMINA" \
       !{ref_fa} !{reads_se} | \
-      samtools sort -@ !{task.cpus} -o !{sampleId}__!{runId}.se.sorted.bam -
+      samtools sort -@ !{task.cpus} -l 1 -o !{sampleId}__!{runId}.se.sorted.bam -
     '''
 }
 
@@ -137,7 +137,7 @@ process FILTER_READS {
     publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
 
     cpus 4
-    memory '8 GB'
+    memory { 4.GB * task.attempt }
 
     input:
     // final_bam tuple + the per-reference mappability track and repeat BED (joined by refId in main.nf)

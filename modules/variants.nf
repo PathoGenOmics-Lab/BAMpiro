@@ -15,8 +15,9 @@ process CALL_FREEBAYES {
     // getSavePath handles the filtering of intermediate files if needed.
     publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
-    cpus 4
-    memory '16 GB'
+    // FreeBayes is single-threaded unless region-parallel is enabled; only bgzip uses extra cores.
+    cpus { params.freebayes_parallel ? (params.freebayes_parallel_jobs as int) : 2 }
+    memory { 8.GB * task.attempt }
 
     input:
     tuple val(sampleId), val(refId), path(bam), path(bai), path(ref_fa), path(exclude_txt)
@@ -62,13 +63,25 @@ process CALL_FREEBAYES {
         EXCL_ARG="-T ^exclude.regions.tsv"
     fi
 
-    # 2. Run FreeBayes
-    freebayes -f !{ref_fa} -p !{params.freebayes_ploidy} \\
-      --min-alternate-count !{params.freebayes_min_alt_count} \\
-      --min-alternate-fraction !{params.freebayes_min_alt_fraction} \\
-      --min-mapping-quality !{params.freebayes_min_map_qual} \\
-      --min-base-quality !{params.freebayes_min_base_qual} \\
-      !{bam} > raw_freebayes.vcf
+    # 2. Run FreeBayes (optionally region-parallel; params.freebayes_parallel)
+    if [[ "!{params.freebayes_parallel}" == "true" ]]; then
+      samtools faidx !{ref_fa}
+      fasta_generate_regions.py !{ref_fa}.fai !{params.freebayes_parallel_chunk} > fb_regions.txt
+      freebayes-parallel fb_regions.txt !{task.cpus} \\
+        -f !{ref_fa} -p !{params.freebayes_ploidy} \\
+        --min-alternate-count !{params.freebayes_min_alt_count} \\
+        --min-alternate-fraction !{params.freebayes_min_alt_fraction} \\
+        --min-mapping-quality !{params.freebayes_min_map_qual} \\
+        --min-base-quality !{params.freebayes_min_base_qual} \\
+        !{bam} > raw_freebayes.vcf
+    else
+      freebayes -f !{ref_fa} -p !{params.freebayes_ploidy} \\
+        --min-alternate-count !{params.freebayes_min_alt_count} \\
+        --min-alternate-fraction !{params.freebayes_min_alt_fraction} \\
+        --min-mapping-quality !{params.freebayes_min_map_qual} \\
+        --min-base-quality !{params.freebayes_min_base_qual} \\
+        !{bam} > raw_freebayes.vcf
+    fi
 
     # Compress Raw Output
     bgzip -@ !{task.cpus} -c raw_freebayes.vcf > !{sampleId}.!{refId}.freebayes.raw.vcf.gz
@@ -146,8 +159,9 @@ process CALL_FREEBAYES {
 
 process CALL_BACKBONE {
     tag "Backbone: ${sampleId}"
-    cpus 4
-    memory '16 GB'
+    // samtools mpileup is single-threaded; only bgzip uses extra cores.
+    cpus 2
+    memory { 6.GB * task.attempt }
     
     input:
     tuple val(sampleId), val(refId), path(bam), path(bai), path(ref_fa)
@@ -275,9 +289,10 @@ process MERGE_VCFS {
     // Use getSampleDir for nested output support
     publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
-    cpus 4
-    memory '8 GB'
-    
+    // bcftools (concat/sort/view) on a bacterial VCF is light and mostly single-threaded.
+    cpus 2
+    memory { 4.GB * task.attempt }
+
     input:
     // outLabel is "" for the normal (masked) all.pos and ".raw" for the virgin one.
     tuple val(sampleId), val(refId), path(snps_vcf), path(snps_tbi), path(back_vcf), path(back_tbi), path(hdr_template), val(outLabel)
@@ -354,8 +369,9 @@ process CALL_FREEBAYES_RAW {
     // the UNfiltered bam, with no legacy outputs and no publishing -> feeds only the virgin
     // consensus so it shows the pre-filter variant set. Mirrors CALL_FREEBAYES steps 2/3/5/6/8.
     tag "FreeBayes(raw): ${sampleId}"
-    cpus 4
-    memory '16 GB'
+    // FreeBayes is single-threaded unless region-parallel is enabled.
+    cpus { params.freebayes_parallel ? (params.freebayes_parallel_jobs as int) : 2 }
+    memory { 8.GB * task.attempt }
 
     input:
     tuple val(sampleId), val(refId), path(bam), path(bai), path(ref_fa), path(exclude_txt)
@@ -374,12 +390,24 @@ process CALL_FREEBAYES_RAW {
     EXCL_ARG=""
     if [[ "!{params.exclude_repeats}" == "true" && -s exclude.regions.tsv ]]; then EXCL_ARG="-T ^exclude.regions.tsv"; fi
 
-    freebayes -f !{ref_fa} -p !{params.freebayes_ploidy} \\
-      --min-alternate-count !{params.freebayes_min_alt_count} \\
-      --min-alternate-fraction !{params.freebayes_min_alt_fraction} \\
-      --min-mapping-quality !{params.freebayes_min_map_qual} \\
-      --min-base-quality !{params.freebayes_min_base_qual} \\
-      !{bam} > raw_freebayes.vcf
+    if [[ "!{params.freebayes_parallel}" == "true" ]]; then
+      samtools faidx !{ref_fa}
+      fasta_generate_regions.py !{ref_fa}.fai !{params.freebayes_parallel_chunk} > fb_regions.txt
+      freebayes-parallel fb_regions.txt !{task.cpus} \\
+        -f !{ref_fa} -p !{params.freebayes_ploidy} \\
+        --min-alternate-count !{params.freebayes_min_alt_count} \\
+        --min-alternate-fraction !{params.freebayes_min_alt_fraction} \\
+        --min-mapping-quality !{params.freebayes_min_map_qual} \\
+        --min-base-quality !{params.freebayes_min_base_qual} \\
+        !{bam} > raw_freebayes.vcf
+    else
+      freebayes -f !{ref_fa} -p !{params.freebayes_ploidy} \\
+        --min-alternate-count !{params.freebayes_min_alt_count} \\
+        --min-alternate-fraction !{params.freebayes_min_alt_fraction} \\
+        --min-mapping-quality !{params.freebayes_min_map_qual} \\
+        --min-base-quality !{params.freebayes_min_base_qual} \\
+        !{bam} > raw_freebayes.vcf
+    fi
 
     bcftools norm -m - -a -f !{ref_fa} raw_freebayes.vcf | bcftools view -e 'GT="0/0" || GT="0"' -Ov -o normalized.vcf
 
