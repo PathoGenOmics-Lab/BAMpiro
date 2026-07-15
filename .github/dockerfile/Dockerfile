@@ -68,7 +68,8 @@ ENV PATHOTYPR_DATA=/opt/pathotypr
 RUN mkdir -p ${PATHOTYPR_DATA} && \
     wget -q -O ${PATHOTYPR_DATA}/lineage_markers.tsv "https://zenodo.org/records/19210044/files/pathotypr_lineage_markers_v1.0.0.tsv?download=1" && \
     wget -q -O ${PATHOTYPR_DATA}/dr_markers.tsv       "https://zenodo.org/records/19210044/files/pathotypr_dr_markers_v1.0.0.tsv?download=1" && \
-    wget -q -O ${PATHOTYPR_DATA}/rf_model.pathotypr   "https://zenodo.org/records/19210044/files/pathotypr_rf_model_v1.0.0.pathotypr?download=1"
+    wget -q -O ${PATHOTYPR_DATA}/rf_model.pathotypr   "https://zenodo.org/records/19210044/files/pathotypr_rf_model_v1.0.0.pathotypr?download=1" && \
+    wget -q -O ${PATHOTYPR_DATA}/reference.fasta      "https://zenodo.org/records/3497110/files/MTB_ancestor_reference.fasta?download=1"
 
 # 3c. Pre-download the H37Rv snpEff database so variants can also be annotated in H37Rv / Mycobrowser
 # numbering for the report's dual amino-acid display (see qc_report.py --vcfs-h37rv). Adjust the genome
