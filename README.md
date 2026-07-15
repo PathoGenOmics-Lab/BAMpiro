@@ -29,8 +29,9 @@ __and Mireia Coscolla<sup>1</sup>__
 * **Robust QC:** `FastP` for cleaning and `Kraken2` for taxonomic contamination checks.
 * **Variant Calling:** `FreeBayes` with customizable ploidy (1 or 2) and strict filtering.
 * **Backbone Generation:** Creates "All-sites" VCFs (WT + Variants) suitable for phylogenetic tree construction.
-* **Lineage/DR SNPs Classification:** Optional integration with **Pathotypr** (Needed custom input files).
-* **Reporting:** Generates statistic logs and a dynamic **MultiQC** report.
+* **Lineage & Drug-Resistance Typing:** Alignment-free (k-mer) MTBC lineage + WHO drug-resistance genotyping with **Pathotypr**, bundled in the container and **reference-agnostic** (it types straight from the reads, so calls are correct even when samples are mapped to a non-H37Rv reference).
+* **Interactive QC Report:** A single self-contained HTML dashboard (20 panels: QC stats, lineages, genome landscape, SNP dynamics, epistasis, SNP matrix, drug resistance, …) plus a machine-readable per-sample `qc_flags.tsv`, alongside the classic **MultiQC** report.
+* **Dual Amino-Acid Numbering:** Optionally re-annotates variants against a canonical reference (H37Rv by default) so the report shows each protein change in both numberings, with links to the Mycobrowser locus.
 
 ---
 
@@ -38,12 +39,12 @@ __and Mireia Coscolla<sup>1</sup>__
 
 1.  **Reference:** Indexing + Repeat masking + SnpEff DB building.
 2.  **QC:** Read validation -> Kraken2 (Taxonomy) -> FastP (Trimming).
-3.  **Pathotypr:** (Optional) Rapid lineage classification from reads.
-4.  **Mapping:** `bwa-mem2` alignment -> Merge runs -> Mark Duplicates (`samtools`).
+3.  **Pathotypr:** (Optional) Alignment-free MTBC lineage (nested sub-lineage) **and** WHO drug-resistance typing from reads.
+4.  **Mapping:** `bwa-mem2` alignment -> Merge runs -> Mark Duplicates (`samtools`) -> length-aware read masking (`genmap`).
 5.  **Variants:** `FreeBayes` calling + `mpileup` for backbone generation.
 6.  **Consensus:** Fasta generation masking low-coverage/low-quality sites.
-7.  **Annotation:** `SnpEff` annotation of main and legacy VCFs.
-8.  **Stats:** Aggregation of all metrics into a single MultiQC report.
+7.  **Annotation:** `SnpEff` annotation of main and legacy VCFs (+ optional canonical/H37Rv pass for dual amino-acid numbering).
+8.  **Report:** Aggregation into the classic **MultiQC** report **and** the interactive **HTML QC report** (`qc_report.py`) with per-sample PASS/WARN/FAIL flags.
 
 ---
 
@@ -79,7 +80,7 @@ T00001	RUN1	/data/T1_R1.fq.gz	/data/T1_R2.fq.gz	H37Rv	/refs/tb.fa	/refs/tb.gff	1
 ECOLI_1	RUN2	/data/EC_R1.fq.gz	/data/EC_R2.fq.gz	K12	/refs/ecoli.fa	/refs/ecoli.gff	562
 ```
 ## Usage
-By default, the pipeline assumes M. tuberculosis settings (Ploidy=2 to detect mixed infections, Pathotypr enabled).
+By default, the pipeline assumes M. tuberculosis settings (Ploidy=2 to detect mixed infections). Lineage/DR typing is **off** by default — enable it with `--run_pathotypr true`.
 ```
 nextflow run main.nf \
     --tsv samples.tsv \
@@ -108,10 +109,29 @@ You can customize the pipeline execution by providing parameters via the command
 | **Input/Output** | `--tsv` | `samples_legio.tsv` | Path to the input sample sheet (TSV). |
 | | `--outdir` | `results_bampiro` | Directory where results will be saved. |
 | | `--threads` | `8` | Max CPUs per process (where applicable). |
-| **Pathotypr** | `--run_pathotypr` | `false` | Set to `true` to enable lineage classification. |
-| | `--pathotypr_bin` | *(path)* | Path to the Pathotypr binary executable. |
-| | `--pathotypr_markers` | *(path)* | Path to the lineage markers file. |
-| | `--pathotypr_ref` | *(path)* | Reference fasta used for Pathotypr. |
+| | `--container` | *(pinned digest)* | Container image. Defaults to a pinned `paururo/bambard` digest for reproducibility. |
+| | `--nested_output` | `true` | Nest per-sample folders (e.g. `MP001` → `MP/00/1`). |
+| | `--publish_mode` | `copy` | `copy` duplicates outputs into `outdir`; `link` hardlinks them to the work dir. |
+| | `--output_cram` | `false` | Publish the alignment as CRAM (~40–50% smaller) instead of BAM. |
+| **Lineage & DR (Pathotypr)** | `--run_pathotypr` | `false` | Enable alignment-free MTBC lineage + WHO drug-resistance typing. |
+| | `--pathotypr_bin` | `pathotypr` | Executable name (on `PATH` inside the container). |
+| | `--pathotypr_ref` | `/opt/pathotypr/reference.fasta` | MTBC-ancestor FASTA the markers are defined on (bundled). |
+| | `--pathotypr_markers` | `/opt/pathotypr/lineage_markers.tsv` | Zenodo lineage markers (bundled). |
+| | `--pathotypr_dr_markers` | `/opt/pathotypr/dr_markers.tsv` | Zenodo WHO drug-resistance markers (bundled). |
+| | `--pathotypr_rf_model` | `/opt/pathotypr/rf_model.pathotypr` | Zenodo pre-trained RF lineage model (bundled). |
+| | `--pathotypr_min_alt` | `95` | Min alt-allele % for a DR call. Lower it (10–25) to catch heteroresistant / minority alleles. |
+| **Dual AA numbering** | `--annotate_canonical` | `false` | Re-annotate variants against a canonical snpEff DB for dual (H37Rv) numbering. |
+| | `--canonical_snpeff_db` | `Mycobacterium_tuberculosis_h37rv` | Canonical snpEff genome for the second annotation. |
+| | `--canonical_label` | `H37Rv` | How that numbering is labelled in the report. |
+| **QC Report** | `--make_qc_report` | `true` | Build the interactive HTML QC report + `qc_flags.tsv`. |
+| | `--make_snp_matrix` | `true` | Also emit the master SNP-matrix TSV. |
+| | `--report_gate` | `false` | Fail the run if any sample is flagged **FAIL**. |
+| | `--report_depth_min` | `10` | Gate: min mean depth (all `report_*` cut-offs are editable live in the report). |
+| | `--report_breadth_min` | `90` | Gate: min breadth %. |
+| | `--report_missing_max` | `10` | Gate: max missing %. |
+| | `--report_dup_max` | `40` | Gate: max duplication %. |
+| | `--report_iupac_max` | `2` | Gate: max IUPAC (ambiguous) %. |
+| | `--report_mapping_min` | `80` | Gate: min mapped %. |
 | **QC & Filter** | `--kraken2_db` | *(path)* | Path to the Kraken2 database directory. |
 | | `--fastp_min_length` | `35` | Discard reads shorter than this length. |
 | **Mapping/Backbone**| `--allpos_min_cov` | `30` | Minimum coverage to call a site "WT" (otherwise "NC"). |
@@ -120,7 +140,8 @@ You can customize the pipeline execution by providing parameters via the command
 | **Variant Calling** | `--freebayes_ploidy` | `2` | Ploidy (1 for haploid, 2 for mixed/diploid). |
 | | `--freebayes_min_map_qual`| `30` | Min mapping quality to use a read. |
 | | `--freebayes_min_base_qual`| `20` | Min base quality to use a base. |
-| | `--freebayes_min_alt_frac`| `0.05` | Min fraction of alt reads to propose a variant. |
+| | `--freebayes_min_alt_fraction`| `0.05` | Min fraction of alt reads to propose a variant. |
+| | `--freebayes_min_alt_count`| `2` | Min alt-supporting reads to propose a variant. |
 | **VAF & Filters** | `--hom_threshold` | `0.90` | Frequency ≥ 0.90 is called **Homozygous**. |
 | | `--het_min_frac` | `0.10` | Frequency between 0.10 and 0.90 is **Heterozygous**. |
 | | `--filter_min_dp` | `30` | Minimum depth required to call a variant. |
@@ -130,14 +151,67 @@ You can customize the pipeline execution by providing parameters via the command
 | | `--consensus_mask_char` | `X` | Character for masked/low-quality sites. |
 | | `--consensus_nocall_char`| `-` | Character for no-coverage sites (gaps). |
 | **Flags** | `--exclude_repeats` | `true` | Mask self-aligned repetitive regions from reference. |
+| | `--annotate_main_vcf` | `true` | Run SnpEff on the main VCF. |
 | | `--annotate_legacy_vcfs`| `true` | Run SnpEff on split VCFs (homo/het/indel). |
+
+> **More knobs.** `nextflow.config` also exposes the length-aware read filter (`genmap_*`, `dynamic_read_filter`, `mappability_*`), the reference-bias consensus gate (`consensus_ref_*`), the virgin/unmasked consensus (`keep_virgin_consensus`, `virgin_full_freebayes`), the region-parallel FreeBayes (`freebayes_parallel*`), and the backbone/masking options (`allpos_*`, `mask_baq_dropouts`). See the commented `params { … }` block for the full, annotated list.
+
+## 📊 Interactive QC Report
+
+Every run produces a **single self-contained HTML file** (`<samplesheet>_qc_report.html` — no internet or CDN needed) that folds the whole cohort into one interactive dashboard, plus a machine-readable `<samplesheet>_qc_flags.tsv` of per-sample **PASS/WARN/FAIL** verdicts. It is built by `bin/qc_report.py` and controlled by `--make_qc_report` (default `true`).
+
+**Live & interactive**
+
+* **Live thresholds & presets** — edit any QC cut-off (depth, breadth, missing, duplication, mapping, IUPAC, Ti/Tv, SNP-z, heteroplasmy, mixed-lineage) and the whole report re-flags instantly. Presets: *gate defaults*, *strict (modern WGS)*, *lenient (aDNA / low-cov)*.
+* **Collapsible table-of-contents sidebar** with scroll-spy; panels with no data hide themselves (and their nav link).
+* **Per-section (i) info popovers** explaining each analysis and its caveats.
+* **Exclusion basket** — tick samples (via the table, a drag-box in the scatter, or *basket all flagged*) and export `exclusion.tsv` / `keep_list.txt` for downstream phylogeny.
+* Most panels have a fullscreen (⤢) view; the whole report prints / saves to PDF.
+
+**Panels** (grouped as in the sidebar):
+
+| Group | Panels |
+| :--- | :--- |
+| **Overview** | General statistics (value-coloured, sortable, filterable, TSV export) · Per-lineage summary · Distributions (beeswarm / bar / histogram) |
+| **Correlation & structure** | Metric-pair scatter (box-select to basket) · Metric correlation heatmap · QC-space PCA (+ most-unusual-samples table) · Divergence vs completeness |
+| **Genome & genes** | Consensus completeness · Genome landscape (per-position callability / variant heatmap, gene search, mask-region toggle) · Functional annotation (snpEff classes) · Functional gene burden · Variable genes (SNP-density hotspots) |
+| **Evolution** | Temporal sampling overview · Selection pN/pS (dN/dS, eskaks) · aDNA damage authentication (mapDamage) |
+| **Variants over time** | **SNP dynamics** (allele-frequency trajectories over time, per-timepoint DP bars, zoom, series filter) · **Epistasis** (co-varying variant pairs, permutation *p* + BH-FDR *q*, cards / matrix / table views) · **SNP matrix** (site × sample AF matrix, metadata column filter, TSV export) · **Drug resistance** |
+| **Quality** | Flagged samples (with the exact failing margin) |
+
+Optional panels appear only when their input is present: SNP dynamics / epistasis / SNP matrix need `--metadata` + the per-sample VCFs; gene burden needs the cohort burden TSV; pN/pS needs an eskaks TSV; drug resistance needs the pathotypr DR calls; aDNA needs mapDamage output.
+
+## 🧬 Lineage & Drug-Resistance Typing (Pathotypr)
+
+`--run_pathotypr true` runs [**Pathotypr**](https://github.com/PathoGenOmics-Lab/pathotypr) — alignment-free (k-mer) MTBC lineage + WHO drug-resistance genotyping — **directly from the container** (a bioconda build; the old hard-coded cluster binary is gone). Because it types straight from the reads using diagnostic k-mers, it is **reference-agnostic**: lineage and DR calls are correct even when your samples were mapped to a non-H37Rv reference.
+
+Each sample gets two `split-fastq` passes:
+
+1. **Lineage** — nested sub-lineage classification against the bundled lineage markers → `<sample>.pathotypr.lineage_summary.tsv` (feeds the per-lineage panel and the lineage colours).
+2. **Drug resistance** — WHO-catalogue markers, gated by `--pathotypr_min_alt` (default `95` = near-fixed only; lower to ~10–25 to also catch heteroresistant / minority alleles) → per-sample DR mutations, aggregated into `<samplesheet>_dr.tsv` and shown in the **Drug resistance** panel (a sample × drug matrix with the worst WHO grade per drug, plus a per-mutation table).
+
+The marker panels and pre-trained model (Zenodo v1.0.0, DOI [10.5281/zenodo.19210044](https://doi.org/10.5281/zenodo.19210044)) and the MTBC-ancestor reference are **bundled in the image** under `/opt/pathotypr/`; override any of them with `--pathotypr_ref` / `--pathotypr_markers` / `--pathotypr_dr_markers` / `--pathotypr_rf_model` if you supply your own.
+
+### Dual amino-acid numbering (H37Rv / Mycobrowser)
+
+With `--annotate_canonical true`, each sample's variants are re-annotated with a canonical snpEff database (`--canonical_snpeff_db`, default H37Rv) *in addition to* your mapping reference. The report then shows every amino-acid change in **both** numberings (the used reference + `--canonical_label`, default `H37Rv`) and links each gene to its Mycobrowser locus (`Rv…`). Turn it off for non-MTB organisms, or point `--canonical_snpeff_db` at another snpEff genome. This is only meaningful when the mapping reference shares the canonical reference's coordinates.
 
 ## Output Structure
 The pipeline organizes results by `sampleId`. Below is a detailed breakdown of the output files using a sample named `MP00091` mapped against reference `LENS`.
+Run/cohort-level deliverables land at the top of `outdir` and are prefixed with the sample-sheet name (here `samples_legio`); per-sample files live under their `sampleId` folder.
 ```text
 results_bampiro/
+├── samples_legio_qc_report.html          # 🌟 INTERACTIVE consolidated QC report (self-contained HTML)
+├── samples_legio_qc_flags.tsv            # Per-sample PASS/WARN/FAIL verdicts
+├── samples_legio_summary.tsv             # Cohort metrics table (feeds the report)
+├── samples_legio_snp_matrix.tsv          # Master SNP matrix (site × sample AF & depth)
+├── samples_legio_gene_burden.tsv         # Per-gene functional burden (cohort)
+├── samples_legio_dr.tsv                  # 💊 Drug-resistance calls (pathotypr; only if --run_pathotypr)
+│
 ├── multiqc/
 │   └── samples_legio_multiqc_report.html   # 📊 Aggregate Report (QC, Mapping, Variants summary)
+│
+├── pipeline_info/                        # Nextflow execution timeline / report / trace + software versions
 │
 ├── references/
 │   └── LENS/                               # Processed Reference indices & SnpEff DB
@@ -145,10 +219,11 @@ results_bampiro/
 └── MP00091/                                # 📁 Per-Sample Results Directory
     │
     ├── MP00091.LENS.final.bam              # 🧬 Merged, Coordinate-sorted, Deduplicated BAM
-    ├── MP00091.LENS.final.bam.bai          # BAM Index
+    ├── MP00091.LENS.final.bam.bai          # BAM Index  (or .cram with --output_cram)
     │
     ├── MP00091.LENS.ann.vcf.gz             # 🎯 MAIN OUTPUT: Annotated Variants (SNPs/Indels)
     ├── MP00091.LENS.ann.vcf.gz.tbi         # Index for the main VCF
+    ├── MP00091.LENS.canonical.ann.vcf.gz   # 🧬 Variants re-annotated vs the canonical ref (only if --annotate_canonical)
     │
     ├── MP00091.LENS.all.pos.vcf.gz         # 🦴 BACKBONE: VCF containing ALL positions (WT + Variants)
     │                                       # (Ideal for phylogenetic supermatrices)
@@ -167,21 +242,35 @@ results_bampiro/
         ├── MP00091...fastp.html/.json      # -> Trimming quality reports
         ├── MP00091...kraken.report         # -> Taxonomic classification report
         ├── MP00091.LENS.snpeff.csv         # -> Variant effect statistics
+        ├── MP00091.pathotypr.lineage_summary.tsv  # -> Pathotypr lineage/sub-lineage call (only if --run_pathotypr)
+        ├── MP00091.dr_mutations.tsv        # -> Pathotypr per-sample DR mutations (only if --run_pathotypr)
         └── Locus_to_exclude_LENS.txt       # -> List of repetitive regions excluded from calling
 ```
 ## Directory Layout
 ```
 BAMpiro/
-├── bin/                     # Python scripts (stats_to_legacy.py, WGS_fasta_allpos.py)
+├── bin/                     # Python helpers
+│   ├── stats_to_legacy.py         # Per-sample metrics -> legacy log (parses the pathotypr lineage call)
+│   ├── collect_summary.py         # Aggregate per-sample logs -> cohort summary + gene-burden TSVs
+│   ├── collect_dr.py              # Aggregate pathotypr DR calls -> run drug-resistance TSV
+│   ├── build_snp_matrix.py        # Build the master SNP matrix (site × sample)
+│   ├── qc_report.py               # Build the interactive self-contained HTML QC report
+│   ├── WGS_fasta_allpos.py        # Consensus FASTA from the all-positions VCF
+│   ├── build_min_unique_len.py    # Per-reference mappability track (genmap)
+│   └── filter_reads_mappability.py  # Length-aware read filter
+├── assets/
+│   └── mycolorsTB_nature.tsv     # Canonical MTBC lineage colour palette (report)
 ├── modules/                 # Nextflow DSL2 Modules
-│   ├── qc.nf                # FastP, Kraken, MultiQC
-│   ├── mapping.nf           # BWA, MarkDup
+│   ├── qc.nf                # FastP, Kraken, MultiQC, software versions
+│   ├── mapping.nf           # BWA-MEM2, MarkDup, length-aware read filter
 │   ├── variants.nf          # FreeBayes, Backbone, Merge
-│   ├── annotation.nf        # SnpEff, Stats Legacy
+│   ├── annotation.nf        # SnpEff (main / legacy / canonical), legacy stats
 │   ├── consensus.nf         # Consensus Fasta
-│   ├── utils.nf             # Clean publish dir
-│   ├── pathotypr.nf         # Pathotypr Logic
-│   └── reference.nf         # Reference Prep
+│   ├── report.nf            # Cohort summary, SNP matrix, DR collection, QC report
+│   ├── pathotypr.nf         # Lineage + drug-resistance typing
+│   ├── reference.nf         # Reference Prep
+│   └── utils.nf             # Publish-path routing / clean publish dir
+├── .github/dockerfile/      # Container recipe (bundles pathotypr + Zenodo panels + H37Rv snpEff DB)
 ├── nextflow.config          # Global configuration & params
 ├── main.nf                  # Main workflow entry point
 └── README.md                # This file
@@ -268,9 +357,13 @@ The Docker container (`paururo/bambard:latest`) includes the following tools:
 | **SnpEff** | `5.4.0a` | Variant annotation and effect prediction |
 | **FastP** | `1.0.1` | Fast all-in-one read pre-processing |
 | **Kraken2** | `2.17.1` | Taxonomic classification |
+| **Genmap** | *(bioconda)* | Genome mappability (length-aware read filter) |
+| **Pathotypr** | *(bioconda)* | Alignment-free MTBC lineage + WHO drug-resistance typing |
 | **MultiQC** | `1.33` | Aggregate results reporting |
 | **Bedtools** | `2.31.1` | Genome arithmetic |
 | **BLAST** | `2.17.0` | Sequence alignment search |
 | **MUMmer4** | `4.0.1` | Efficient sequence alignment (used for repeat masking) |
 | **Biopython** | `1.86` | Biological computation library |
 | **Pandas** | `2.3.3` | Data analysis library |
+
+The image also bundles, under `/opt/pathotypr/`, Pathotypr's marker panels + pre-trained RF model (Zenodo v1.0.0, DOI [10.5281/zenodo.19210044](https://doi.org/10.5281/zenodo.19210044)) and the MTBC-ancestor reference, plus the pre-downloaded **H37Rv snpEff database** (`Mycobacterium_tuberculosis_h37rv`) — so lineage/DR typing and dual amino-acid annotation run offline and reproducibly. `nextflow.config` pins the image to a specific digest; override it with `--container`.
