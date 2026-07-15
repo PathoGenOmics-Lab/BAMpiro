@@ -891,6 +891,7 @@ th .infoi,.dyn-legend .infoi{background:#dde5f0}
 .dyn-aa{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums}
 .rvtag{font-size:10.5px;color:#8a97a8;text-decoration:none;font-weight:600;white-space:nowrap}
 .rvtag:hover{color:var(--accent);text-decoration:underline}
+.aah37{color:#8a97a8;font-weight:600;font-size:.9em}
 .dyn-card-f{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
 .dyn-fchip{color:#fff;border-radius:7px;padding:2px 9px;font-size:12px;font-weight:500}
 .dyn-traj{font-size:12.5px;color:#5a6a7c;font-variant-numeric:tabular-nums;margin-left:auto}
@@ -984,6 +985,8 @@ function linColor(lab){return (lab!=null&&LINCOL[lab])?LINCOL[lab]:'#b8c2cf';}
 R.gene_map=R.gene_map||{};
 function geneRv(g){ return (g&&R.gene_map[g])||''; }   // Mycobrowser (H37Rv) locus tag for a gene, or ''
 function geneRvTag(g){ var rv=geneRv(g); return rv?(' <a class="rvtag" href="https://mycobrowser.epfl.ch/genes/'+esc(rv)+'" target="_blank" rel="noopener" title="Mycobrowser locus tag of '+esc(g)+' (opens mycobrowser.epfl.ch)">'+esc(rv)+'</a>'):''; }
+// amino-acid change in the used-reference numbering, plus the H37Rv/Mycobrowser one in brackets when it differs
+function aaDual(aa,aaH){ if(!aa) return ''; return esc(aa)+((aaH&&aaH!==aa)?(' <span class="aah37" title="same variant in H37Rv / Mycobrowser numbering">[H37Rv '+esc(aaH)+']</span>'):''); }
 var thr=Object.assign({},R.thresholds);
 var athr=Object.assign({},R.anc_thresholds||{});      // ancient (aDNA) threshold view
 function actv(s){return (s.anc&&R.n_ancient)?athr:thr;}   // active threshold set for a sample
@@ -1917,7 +1920,7 @@ function renderDynamics(){
   if(sec)sec.style.display='';
   var th=D.thresholds||{emerge:0.25,fix:0.9,loss:0.1};
   var vars=[];
-  D.groups.forEach(function(g){ g.series.forEach(function(s){ vars.push({gene:s.gene||'(intergenic)',pos:s.pos,group:g.group,times:g.times,traj:s.traj,dp:s.dp,flags:s.flags,eff:s.eff,imp:s.imp,alt:s.alt,aa:s.aa}); }); });
+  D.groups.forEach(function(g){ g.series.forEach(function(s){ vars.push({gene:s.gene||'(intergenic)',pos:s.pos,group:g.group,times:g.times,traj:s.traj,dp:s.dp,flags:s.flags,eff:s.eff,imp:s.imp,alt:s.alt,aa:s.aa,aa_h37rv:s.aa_h37rv}); }); });
   // per-series (group) metadata + the fields usable as a series filter: group-invariant (one value per
   // series, so timepoint/date -> the trajectory axis -> excluded) and with >1 value across series.
   var groupMeta={}; D.groups.forEach(function(g){ groupMeta[g.group]=g.meta||{}; });
@@ -1991,7 +1994,7 @@ function renderDynamics(){
         var posNum=String(v.pos).split(':').pop();
         cards.push('<div class="dyn-card'+(flagged?' flagged':'')+'">'+
           '<div class="dyn-card-h"><span class="dyn-cardgene" title="Gene (click its chip above to toggle)">'+esc(v.gene||'(intergenic)')+'</span>'+geneRvTag(v.gene)+(singleGroup?'':'<span class="dyn-grp" title="Connected series this variant belongs to (the metadata group column, e.g. patient / passage line)">'+esc(v.group)+'</span>')+'<span class="dyn-pos" title="Genomic position (contig:position) of this SNP: '+esc(v.pos)+'">'+esc(posNum)+'</span></div>'+
-          '<div class="dyn-eff" title="Predicted effect (snpEff) and protein change HGVS.p: ref amino acid, codon position, alt amino acid">'+esc(v.eff||'variant')+(v.aa?(' &#183; <b class="dyn-aa">'+esc(v.aa)+'</b>'):(v.alt?(' &#183; &#8594;'+esc(v.alt)):''))+'</div>'+
+          '<div class="dyn-eff" title="Predicted effect (snpEff) and protein change HGVS.p: ref amino acid, codon position, alt amino acid">'+esc(v.eff||'variant')+(v.aa?(' &#183; <b class="dyn-aa">'+aaDual(v.aa,v.aa_h37rv)+'</b>'):(v.alt?(' &#183; &#8594;'+esc(v.alt)):''))+'</div>'+
           dynMiniChart(v,th,dynShowDP)+
           '<div class="dyn-card-f">'+(chips||'<span class="c" title="no emergence / fixation / loss / non-synonymous event for this variant">no event</span>')+'<span class="dyn-traj" title="Allele frequency at each timepoint, in chronological order">'+v.traj.map(function(a){return a.toFixed(2);}).join(' &#8594; ')+'</span></div>'+
         '</div>');
@@ -2083,7 +2086,7 @@ function renderEpistasis(){
       var rec=(p.n>1)?('<span class="epi-recur" title="seen in '+p.n+' independent series'+(p.consistent?' with the same sign - recurrent':'')+'">&#8635; '+p.n+' series</span>'):('<span title="from a single series">series '+esc(p.group)+'</span>');
       return '<div class="epi-card '+p.direction+'">'+
         '<div class="epi-card-h"><span class="epi-badge '+p.direction+'">r = '+(p.r>0?'+':'')+p.r.toFixed(2)+'</span><span class="epi-tier epi-'+p.tier+'" title="permutation p = '+p.p+', FDR q = '+p.q+'">'+p.tier+'</span></div>'+
-        '<div class="epi-pair"><span style="color:'+EPICOL.A+'"><b>'+esc(p.geneA||'(intergenic)')+'</b>'+geneRvTag(p.geneA)+' '+posn(p.posA)+(p.aaA?(' '+esc(p.aaA)):'')+'</span><span class="epi-vs">'+arrow+'</span><span style="color:'+EPICOL.B+'"><b>'+esc(p.geneB||'(intergenic)')+'</b>'+geneRvTag(p.geneB)+' '+posn(p.posB)+(p.aaB?(' '+esc(p.aaB)):'')+'</span></div>'+
+        '<div class="epi-pair"><span style="color:'+EPICOL.A+'"><b>'+esc(p.geneA||'(intergenic)')+'</b>'+geneRvTag(p.geneA)+' '+posn(p.posA)+(p.aaA?(' '+aaDual(p.aaA,p.aaA_h37rv)):'')+'</span><span class="epi-vs">'+arrow+'</span><span style="color:'+EPICOL.B+'"><b>'+esc(p.geneB||'(intergenic)')+'</b>'+geneRvTag(p.geneB)+' '+posn(p.posB)+(p.aaB?(' '+aaDual(p.aaB,p.aaB_h37rv)):'')+'</span></div>'+
         epiMiniChart(p)+
         '<div class="epi-card-f"><span title="permutation p-value / Benjamini-Hochberg FDR q-value">p '+p.p.toFixed(3)+' &#183; q '+p.q.toFixed(3)+'</span>'+rec+'</div>'+
       '</div>';
@@ -2122,8 +2125,8 @@ function renderEpistasis(){
     h+='<div class="epitbl-wrap"><table class="epitbl"><thead><tr>'+COLS.map(function(c){return '<th data-k="'+c[0]+'">'+c[1]+(k===c[0]?(asc?' &#9650;':' &#9660;'):'')+'</th>';}).join('')+'</tr></thead><tbody>';
     if(!rows.length){ h+='<tr><td colspan="'+COLS.length+'" class="c" style="padding:20px;text-align:center">no variant pair matches the current filter.</td></tr>'; }
     rows.forEach(function(p){
-      var a='<b style="color:'+EPICOL.A+'">'+esc(p.geneA||'(intergenic)')+'</b>'+geneRvTag(p.geneA)+' '+String(p.posA).split(':').pop()+(p.aaA?(' '+esc(p.aaA)):'');
-      var b='<b style="color:'+EPICOL.B+'">'+esc(p.geneB||'(intergenic)')+'</b>'+geneRvTag(p.geneB)+' '+String(p.posB).split(':').pop()+(p.aaB?(' '+esc(p.aaB)):'');
+      var a='<b style="color:'+EPICOL.A+'">'+esc(p.geneA||'(intergenic)')+'</b>'+geneRvTag(p.geneA)+' '+String(p.posA).split(':').pop()+(p.aaA?(' '+aaDual(p.aaA,p.aaA_h37rv)):'');
+      var b='<b style="color:'+EPICOL.B+'">'+esc(p.geneB||'(intergenic)')+'</b>'+geneRvTag(p.geneB)+' '+String(p.posB).split(':').pop()+(p.aaB?(' '+aaDual(p.aaB,p.aaB_h37rv)):'');
       h+='<tr><td>'+a+' <span class="epi-vs">'+(p.direction==='concordant'?'&#8596;':'&#8646;')+'</span> '+b+'</td>'+
         '<td>'+p.direction+'</td>'+
         '<td class="epitbl-r" style="color:'+(p.r>=0?'#2f8f5b':'#a24a8f')+'">'+(p.r>0?'+':'')+p.r.toFixed(2)+'</td>'+
@@ -2219,7 +2222,7 @@ function renderSnpMatrix(){
     var nameRow='<tr><th class="snpmx-info snpmx-corner" style="top:'+stop+'px">SNP '+esc(M.reference?('('+M.reference+')'):'')+'</th>'+
       vi.map(function(i){var s=samples[i];return '<th class="snpmx-hcell" style="top:'+stop+'px" title="'+esc(s)+'"><span class="snpmx-h">'+esc(s)+'</span></th>';}).join('')+'</tr>';
     var body='<tbody>'+shown.map(function(r){
-      var lbl='<b>'+esc(r.gene||r.contig)+'</b>'+geneRvTag(r.gene)+' '+r.pos+' '+esc(r.ref)+'&#8594;'+esc(r.alt)+(r.aa?(' <span class="snpmx-aa">'+esc(r.aa)+'</span>'):'');
+      var lbl='<b>'+esc(r.gene||r.contig)+'</b>'+geneRvTag(r.gene)+' '+r.pos+' '+esc(r.ref)+'&#8594;'+esc(r.alt)+(r.aa?(' <span class="snpmx-aa">'+aaDual(r.aa,r.aa_h37rv)+'</span>'):'');
       var cells=vi.map(function(i){var c=r.cells[i], s=samples[i];
         if(!c) return '<td class="snpmx-cell snpmx-empty" title="'+esc(s)+' - not called"></td>';
         var afTxt=c[0].toFixed(2).replace(/^0/,'').replace(/^1\.00$/,'1');
@@ -2855,7 +2858,7 @@ def parse_vcfs(paths):
                     dp = _dyn_dp(c[8], c[9]) if len(c) >= 10 else None
                     gene, eff, imp, aa = _dyn_ann(c[7])
                     out[sample][f'{chrom}:{pos}'] = {'ref': ref, 'alt': alt.split(',')[0], 'gene': gene,
-                                                     'eff': eff, 'imp': imp, 'aa': aa,
+                                                     'eff': eff, 'imp': imp, 'aa': aa, 'aa_h37rv': '',
                                                      'af': round(af, 4), 'dp': dp}
         except OSError:
             continue
@@ -2908,7 +2911,7 @@ def build_dynamics(metadata, variants, sample_meta=None, emerge=0.25, fix=0.90, 
                 flags.append('high_impact')
             series.append({'pos': pos, 'gene': (meta or {}).get('gene', ''), 'eff': (meta or {}).get('eff', ''),
                            'imp': (meta or {}).get('imp', ''), 'alt': (meta or {}).get('alt', ''),
-                           'aa': (meta or {}).get('aa', ''),
+                           'aa': (meta or {}).get('aa', ''), 'aa_h37rv': (meta or {}).get('aa_h37rv', ''),
                            'traj': [round(x, 4) for x in traj], 'dp': dps, 'flags': flags})
         if not series:
             continue
@@ -3011,8 +3014,8 @@ def build_epistasis(dynamics, min_r=0.8, min_points=3, top=300, perm=2000):
         # reproducible regardless of dict/set iteration order. crc32 is deterministic (unlike hash()).
         seed = zlib.crc32(('%s|%s' % (key[0], key[1])).encode('utf-8'))
         p = _perm_p(rec['straj'], mean_r, B=perm, seed=seed)
-        out.append({'geneA': A.get('gene', ''), 'posA': A['pos'], 'aaA': A.get('aa', ''), 'effA': A.get('eff', ''),
-                    'geneB': B.get('gene', ''), 'posB': B['pos'], 'aaB': B.get('aa', ''), 'effB': B.get('eff', ''),
+        out.append({'geneA': A.get('gene', ''), 'posA': A['pos'], 'aaA': A.get('aa', ''), 'aaA_h37rv': A.get('aa_h37rv', ''), 'effA': A.get('eff', ''),
+                    'geneB': B.get('gene', ''), 'posB': B['pos'], 'aaB': B.get('aa', ''), 'aaB_h37rv': B.get('aa_h37rv', ''), 'effB': B.get('eff', ''),
                     'r': round(mean_r, 3), 'n': len(rs), 'rmin': round(min(rs), 3), 'rmax': round(max(rs), 3),
                     'direction': 'concordant' if mean_r > 0 else 'discordant',
                     'p': p, 'consistent': (n_pos == len(rs) or n_pos == 0),
@@ -3077,10 +3080,10 @@ def build_snp_matrix(variants, reference='', max_sites=8000):
             except ValueError:
                 continue
             st = sites.setdefault(key, {'contig': contig, 'pos': ipos, 'ref': v.get('ref', ''),
-                                        'alt': set(), 'gene': '', 'eff': '', 'aa': '', 'cells': {}})
+                                        'alt': set(), 'gene': '', 'eff': '', 'aa': '', 'aa_h37rv': '', 'cells': {}})
             if v.get('alt'):
                 st['alt'].add(v['alt'])
-            for k in ('gene', 'eff', 'aa'):
+            for k in ('gene', 'eff', 'aa', 'aa_h37rv'):
                 if v.get(k) and not st[k]:
                     st[k] = v[k]
             st['cells'][sidx[s]] = [v['af'], v.get('dp')]
@@ -3090,7 +3093,7 @@ def build_snp_matrix(variants, reference='', max_sites=8000):
         ordered = sorted(sites.values(), key=lambda x: -len(x['cells']))[:max_sites]
         ordered.sort(key=lambda x: (x['contig'], x['pos']))
     rows = [{'contig': x['contig'], 'pos': x['pos'], 'ref': x['ref'], 'alt': ','.join(sorted(x['alt'])),
-             'gene': x['gene'], 'eff': x['eff'], 'aa': x['aa'], 'n': len(x['cells']), 'cells': x['cells']}
+             'gene': x['gene'], 'eff': x['eff'], 'aa': x['aa'], 'aa_h37rv': x['aa_h37rv'], 'n': len(x['cells']), 'cells': x['cells']}
             for x in ordered]
     return {'samples': samples, 'reference': reference, 'rows': rows,
             'total_sites': len(sites), 'truncated': truncated}
@@ -3126,6 +3129,9 @@ def main():
                          "and group (patient/series/cluster) columns -> the SNP dynamics panel. Auto-detected.")
     ap.add_argument("--vcfs", nargs="*", default=[],
                     help="Optional per-sample annotated VCFs -> per-SNP allele frequencies for the dynamics panel.")
+    ap.add_argument("--vcfs-h37rv", nargs="*", default=[],
+                    help="Optional per-sample VCFs annotated against H37Rv -> the H37Rv/Mycobrowser amino-acid "
+                         "position shown alongside the used-reference one (matched by sample + contig:pos).")
     ap.add_argument("--gate", action="store_true")
     args = ap.parse_args()
     thr = {k: getattr(args, k) for k in DEF}
@@ -3237,6 +3243,14 @@ def main():
             provenance[k.strip()] = v.strip()
 
     _variants = parse_vcfs(args.vcfs)   # parsed once, feeds both the dynamics panel and the SNP matrix
+    if args.vcfs_h37rv:   # attach the H37Rv/Mycobrowser amino-acid change per variant (matched by sample + contig:pos)
+        _h37 = parse_vcfs(args.vcfs_h37rv)
+        for _s, _pm in _variants.items():
+            _hs = _h37.get(_s, {})
+            for _key, _v in _pm.items():
+                _hv = _hs.get(_key)
+                if _hv and _hv.get('aa'):
+                    _v['aa_h37rv'] = _hv['aa']
     _sample_meta = parse_sample_meta(args.metadata)   # shared by the dynamics filter and the SNP matrix header
     _dynamics = build_dynamics(parse_metadata(args.metadata), _variants, _sample_meta)   # feeds dynamics + epistasis
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
