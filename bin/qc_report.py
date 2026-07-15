@@ -814,17 +814,24 @@ th .infoi,.dyn-legend .infoi{background:#dde5f0}
 .dyn-traj{font-size:12.5px;color:#5a6a7c;font-variant-numeric:tabular-nums;margin-left:auto}
 .dyn-empty{padding:36px;text-align:center;color:var(--mut);font-size:14.5px;border:1px dashed var(--line);border-radius:14px}
 /* SNP matrix (explorable heatmap) */
-.snpmx-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
-.snpmx-wrap{overflow:auto;max-height:72vh;border:1px solid var(--line);border-radius:12px}
+.snpmx-controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.snpmx-toggle{font-size:12.5px;color:var(--mut);display:flex;align-items:center;gap:5px;cursor:pointer}
+.snpmx-metanote{font-size:12px;color:var(--mut);margin-bottom:10px}
+.snpmx-wrap{overflow:auto;max-height:74vh;border:1px solid var(--line);border-radius:12px}
 table.snpmx{border-collapse:separate;border-spacing:0;font-size:12px;width:auto}
 table.snpmx th,table.snpmx td{border-bottom:1px solid #eef2f6}
-table.snpmx thead th{position:sticky;top:0;background:#f7f9fc;z-index:5}
+table.snpmx thead th{position:sticky;background:#f7f9fc;z-index:5}   /* top offset set inline per header row */
+table.snpmx .snpmx-metacell{font-size:10px;text-align:center;color:#1c2b3a;padding:2px 4px;height:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70px;border-bottom:1px solid #fff}
+table.snpmx .snpmx-metalabel{font-size:10.5px;font-weight:600;color:#556579;text-align:right;padding:2px 12px;height:22px}
 table.snpmx .snpmx-hcell{padding:4px 1px;vertical-align:bottom;height:104px}
 table.snpmx .snpmx-h{writing-mode:vertical-rl;transform:rotate(180deg);font-size:11px;color:#556579;font-weight:600;white-space:nowrap;display:inline-block;max-height:96px;overflow:hidden;text-overflow:ellipsis}
 table.snpmx .snpmx-info{position:sticky;left:0;background:var(--panel);z-index:4;text-align:left;padding:5px 13px;border-right:1px solid var(--line);white-space:nowrap;font-size:12.5px}
 table.snpmx thead .snpmx-info{z-index:6;background:#f7f9fc}
 .snpmx-aa{color:var(--accent);font-weight:700}
-table.snpmx td.snpmx-cell{min-width:32px;text-align:center;color:#0f2431;font-size:9.5px;font-variant-numeric:tabular-nums;padding:3px 2px}
+table.snpmx td.snpmx-cell{min-width:32px;text-align:center;color:#0f2431;font-variant-numeric:tabular-nums;padding:3px 2px}
+table.snpmx td.snpmx-cell.wdp{min-width:42px}
+.snpmx-af{display:block;font-weight:600;font-size:10px}
+.snpmx-dp{display:block;font-size:8.5px;color:#5a6a7c;line-height:1.15}
 table.snpmx td.snpmx-empty{background:repeating-linear-gradient(45deg,#f6f8fb,#f6f8fb 3px,#eef2f7 3px,#eef2f7 6px)}
 table.snpmx tbody tr:hover td.snpmx-info{background:#fafcfe}
 """
@@ -1821,40 +1828,61 @@ function renderDynamics(){
 }
 
 function snpAfColor(af){return 'rgba(31,120,180,'+(0.16+af*0.8).toFixed(2)+')';}
+var SNPMX_PAL=['#bcd0ea','#f3d1b0','#c3e0c9','#f0c4cf','#d6c9ec','#b8e0dd','#eadfb0','#dfe4ea','#f2c4c4','#cdd1a8','#e6c3e0','#b9d6ee'];
 function renderSnpMatrix(){
   var host=el('snpmx_body'), sec=el('snpmatrix'); if(!host)return;
   var M=R.snp_matrix;
   if(!(M&&M.rows&&M.rows.length)){ if(sec)sec.style.display='none'; var nv=el('nav-snpmx'); if(nv)nv.style.display='none'; return; }
   if(sec)sec.style.display='';
   var samples=M.samples, MAXR=400;
+  var meta=(R.sample_meta&&R.sample_meta.fields&&R.sample_meta.fields.length)?R.sample_meta:null;
+  var metaMaps={};
+  if(meta){ meta.fields.forEach(function(f){ var m={},k=0; samples.forEach(function(s){var v=(meta.rows[s]||{})[f]; if(v&&!(v in m)){m[v]=SNPMX_PAL[k%SNPMX_PAL.length];k++;}}); metaMaps[f]=m; }); }
+  function metaColor(f,v){ return (v&&metaMaps[f]&&metaMaps[f][v])?metaMaps[f][v]:'#eef2f7'; }
   host.innerHTML=
     '<div class="snpmx-controls">'+
       '<input id="snpmxq" class="dyn-search" type="search" placeholder="&#128269; filter by gene / position / amino acid...">'+
+      '<label class="snpmx-toggle"><input type="checkbox" id="snpmxdp" checked> show depth</label>'+
       '<button class="dyn-btn" id="snpmxdl" title="Download the full matrix as a wide TSV (all sites, per-sample AF and depth)">&#8595; download matrix (TSV)</button>'+
       '<span class="dyn-count" id="snpmxcount"></span></div>'+
+    (meta?('<div class="snpmx-metanote">column levels from the samplesheet: '+meta.fields.map(function(f){return '<b>'+esc(f)+'</b>';}).join(' &#183; ')+' &#183; hover a header cell for its value</div>'):'')+
     '<div class="snpmx-wrap"><table class="snpmx" id="snpmxtable"></table></div>';
   function draw(){
-    var q=(el('snpmxq').value||'').toLowerCase();
+    var q=(el('snpmxq').value||'').toLowerCase(), showDP=el('snpmxdp').checked;
     var rows=M.rows.filter(function(r){return !q||(r.gene&&r.gene.toLowerCase().indexOf(q)>=0)||String(r.pos).indexOf(q)>=0||(r.aa&&r.aa.toLowerCase().indexOf(q)>=0);});
     el('snpmxcount').textContent=rows.length+' of '+M.total_sites+' SNP sites'+(rows.length>MAXR?(' (showing '+MAXR+')'):'')+(M.truncated?' - full matrix in the TSV':'');
-    var shown=rows.slice(0,MAXR);
-    var head='<thead><tr><th class="snpmx-info">SNP '+esc(M.reference?('('+M.reference+')'):'')+'</th>'+
-      samples.map(function(s){return '<th class="snpmx-hcell" title="'+esc(s)+'"><span class="snpmx-h">'+esc(s)+'</span></th>';}).join('')+'</tr></thead>';
+    var shown=rows.slice(0,MAXR), mh=22, nf=meta?meta.fields.length:0;
+    var metaRows=meta?meta.fields.map(function(f,k){
+      return '<tr>'+'<th class="snpmx-info snpmx-metalabel" style="top:'+(k*mh)+'px">'+esc(f)+'</th>'+
+        samples.map(function(s){var v=(meta.rows[s]||{})[f]||''; return '<th class="snpmx-metacell" style="top:'+(k*mh)+'px;background:'+metaColor(f,v)+'" title="'+esc(f)+': '+esc(v||'-')+'">'+esc(v)+'</th>';}).join('')+'</tr>';
+    }).join(''):'';
+    var stop=nf*mh;
+    var nameRow='<tr><th class="snpmx-info snpmx-corner" style="top:'+stop+'px">SNP '+esc(M.reference?('('+M.reference+')'):'')+'</th>'+
+      samples.map(function(s){return '<th class="snpmx-hcell" style="top:'+stop+'px" title="'+esc(s)+'"><span class="snpmx-h">'+esc(s)+'</span></th>';}).join('')+'</tr>';
     var body='<tbody>'+shown.map(function(r){
       var lbl='<b>'+esc(r.gene||r.contig)+'</b> '+r.pos+' '+esc(r.ref)+'&#8594;'+esc(r.alt)+(r.aa?(' <span class="snpmx-aa">'+esc(r.aa)+'</span>'):'');
       var cells=samples.map(function(s,i){var c=r.cells[i];
         if(!c) return '<td class="snpmx-cell snpmx-empty" title="'+esc(s)+' - not called"></td>';
-        return '<td class="snpmx-cell" style="background:'+snpAfColor(c[0])+'" title="'+esc(s)+'  AF='+c[0].toFixed(3)+(c[1]!=null?('  DP='+c[1]):'')+'">'+c[0].toFixed(2).replace(/^0/,'').replace(/^1\.00$/,'1')+'</td>';
+        var afTxt=c[0].toFixed(2).replace(/^0/,'').replace(/^1\.00$/,'1');
+        var dpTxt=(showDP&&c[1]!=null)?('<span class="snpmx-dp">'+c[1]+'</span>'):'';
+        return '<td class="snpmx-cell'+(showDP?' wdp':'')+'" style="background:'+snpAfColor(c[0])+'" title="'+esc(s)+'  AF='+c[0].toFixed(3)+(c[1]!=null?('  DP='+c[1]):'')+'"><span class="snpmx-af">'+afTxt+'</span>'+dpTxt+'</td>';
       }).join('');
       return '<tr><td class="snpmx-info">'+lbl+'</td>'+cells+'</tr>';
     }).join('')+'</tbody>';
-    el('snpmxtable').innerHTML=head+body;
+    el('snpmxtable').innerHTML='<thead>'+metaRows+nameRow+'</thead>'+body;
   }
   el('snpmxq').oninput=draw;
+  el('snpmxdp').onchange=draw;
   el('snpmxdl').onclick=function(){
     var hdr=['reference','contig','pos','ref_allele','alt_allele','gene','effect','aa_change'];
+    if(meta) meta.fields.forEach(function(){});
     samples.forEach(function(s){hdr.push(s+'|AF');hdr.push(s+'|DP');});
     var lines=[hdr.join('\t')];
+    if(meta){ meta.fields.forEach(function(f){
+      var row=['# '+f,'','','','','','',''];
+      samples.forEach(function(s){var v=(meta.rows[s]||{})[f]||''; row.push(v); row.push('');});
+      lines.push(row.join('\t'));
+    }); }
     M.rows.forEach(function(r){var row=[M.reference||r.contig,r.contig,r.pos,r.ref,r.alt,r.gene,r.eff,r.aa];
       samples.forEach(function(s,i){var c=r.cells[i]; if(c){row.push(c[0].toFixed(4));row.push(c[1]==null?'':c[1]);}else{row.push('');row.push('');}});
       lines.push(row.join('\t'));});
@@ -2263,6 +2291,48 @@ def _dyn_num(x):
     return float(m.group()) if m else None
 
 
+_META_SKIP = {'r1', 'r2', 'reffasta', 'refgff', 'refid', 'taxid', 'runid'}
+
+
+def parse_sample_meta(path):
+    """{'fields':[col...], 'rows':{sample:{col:value}}} for the user's annotation columns of the
+    samplesheet (everything except the sample id and the pipeline's file/reference columns), in
+    samplesheet order -> one column-header level per field. None if nothing usable."""
+    if not path or not os.path.exists(path):
+        return None
+    header, rows = None, []
+    try:
+        with _dyn_open(path) as fh:
+            for line in fh:
+                if not line.strip() or line.startswith('#'):
+                    continue
+                cells = line.rstrip('\n').split('\t')
+                if header is None:
+                    header = [c.strip() for c in cells]
+                    continue
+                rows.append(cells)
+    except OSError:
+        return None
+    if not header:
+        return None
+    si = next((i for i, h in enumerate(header) if _DYN_SAMPLE_RE.match(h.strip())), 0)
+    fields = [(i, h) for i, h in enumerate(header)
+              if i != si and h.strip() and h.strip().lower() not in _META_SKIP]
+    if not fields:
+        return None
+    out = {}
+    for r in rows:
+        if si >= len(r):
+            continue
+        s = r[si].strip()
+        if not s or s in out:
+            continue
+        out[s] = {h: (r[i].strip() if i < len(r) else '') for i, h in fields}
+    if not out:
+        return None
+    return {'fields': [h for _, h in fields], 'rows': out}
+
+
 def parse_metadata(path):
     """{sample: {'time','tnum','group'}} auto-detecting sample/time/group columns; {} if unusable."""
     if not path or not os.path.exists(path):
@@ -2644,6 +2714,7 @@ def main():
                "n_ancient": n_ancient, "anc_thresholds": anc_thr, "provenance": provenance,
                "dynamics": build_dynamics(parse_metadata(args.metadata), _variants),
                "snp_matrix": build_snp_matrix(_variants, provenance.get('reference', '')),
+               "sample_meta": parse_sample_meta(args.metadata),
                "metrics": [{"key": k, "label": l, "kind": kind, "dir": d} for k, l, kind, d in METRICS],
                "extra": extra_metrics,
                "samples": jsamples}
