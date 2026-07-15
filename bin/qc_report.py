@@ -1791,9 +1791,13 @@ function renderDynamics(){
   });
   function passFilter(grp){ var m=groupMeta[grp]||{}; for(var f in dynFilter){ if(dynFilter[f]){ var vals=m[f]||[]; if(vals.indexOf(dynFilter[f])<0) return false; } } return true; }
   function filterActive(){ for(var f in dynFilter){ if(dynFilter[f]) return true; } return false; }
-  var genes, geneList;
+  var genes, geneList, singleGroup=false, visGroupName='';
   function recompute(){
-    genes={}; vars.forEach(function(v){ if(passFilter(v.group)){ (genes[v.gene]=genes[v.gene]||[]).push(v); } });
+    genes={}; var gset={};
+    vars.forEach(function(v){ if(passFilter(v.group)){ (genes[v.gene]=genes[v.gene]||[]).push(v); gset[v.group]=1; } });
+    var gkeys=Object.keys(gset);
+    singleGroup=gkeys.length<=1;   // one visible series -> the per-card group tag is redundant
+    visGroupName=gkeys.length===1?gkeys[0]:'';
     geneList=Object.keys(genes).sort(function(a,b){
       var fa=genes[a].filter(dynHasFlag).length, fb=genes[b].filter(dynHasFlag).length;
       return fb-fa || genes[b].length-genes[a].length || a.localeCompare(b);
@@ -1832,14 +1836,14 @@ function renderDynamics(){
   function paintGrid(){
     var q=dynState.q.toLowerCase();
     var sel=geneList.filter(function(g){return dynState.sel[g] && (!q||g.toLowerCase().indexOf(q)>=0);});
-    el('dynCount').textContent=sel.length+' of '+geneList.length+' genes shown'+(filterActive()?' (series filtered)':'');
+    el('dynCount').innerHTML=sel.length+' of '+geneList.length+' genes shown'+(singleGroup&&visGroupName?(' &#183; series <b>'+esc(visGroupName)+'</b>'):'')+(filterActive()?' (filtered)':'');
     if(!sel.length){ el('dyngrid').innerHTML='<div class="dyn-empty">&#128204; '+(geneList.length?(dynState.q?('no selected gene matches &quot;'+esc(dynState.q)+'&quot;'):'Search and select one or more genes above to see the allele-frequency trajectories of their variants.'):'no variant trajectory matches the current series filter.')+'</div>'; return; }
     el('dyngrid').innerHTML=sel.map(function(g){
       var vs=genes[g].slice().sort(function(a,b){ return ((dynHasFlag(b)?1:0)-(dynHasFlag(a)?1:0)) || (String(a.pos)>String(b.pos)?1:-1); });
       var cards=vs.map(function(v){
         var chips=(v.flags||[]).map(function(f){return '<span class="dyn-fchip" style="background:'+(DYNCOL[f]||'#8895a6')+'" title="'+(DYNHELP[f]||f)+'">'+f+'</span>';}).join('');
         return '<div class="dyn-card">'+
-          '<div class="dyn-card-h"><span class="dyn-pos" title="Genomic position (contig:position) of this SNP">'+esc(v.pos)+'</span><span class="dyn-grp" title="Connected series this variant belongs to (the metadata group column, e.g. patient / passage line)">'+esc(v.group)+'</span></div>'+
+          '<div class="dyn-card-h"><span class="dyn-pos" title="Genomic position (contig:position) of this SNP">'+esc(v.pos)+'</span>'+(singleGroup?'':'<span class="dyn-grp" title="Connected series this variant belongs to (the metadata group column, e.g. patient / passage line)">'+esc(v.group)+'</span>')+'</div>'+
           '<div class="dyn-eff" title="Predicted effect (snpEff) and protein change HGVS.p: ref amino acid, codon position, alt amino acid">'+esc(v.eff||'variant')+(v.aa?(' &#183; <b class="dyn-aa">'+esc(v.aa)+'</b>'):(v.alt?(' &#183; &#8594;'+esc(v.alt)):''))+'</div>'+
           dynMiniChart(v,th)+
           '<div class="dyn-card-f">'+(chips||'<span class="c" title="no emergence / fixation / loss / non-synonymous event for this variant">no event</span>')+'<span class="dyn-traj" title="Allele frequency at each timepoint, in chronological order">'+v.traj.map(function(a){return a.toFixed(2);}).join(' &#8594; ')+'</span></div>'+
