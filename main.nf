@@ -78,6 +78,7 @@ header.eachWithIndex { h,i -> col[h]=i }
 def refMap    = [:]
 def refGffMap = [:] 
 def expectedMap = [:].withDefault{0}
+def seenRuns = [:].withDefault{0}
 def peList = []
 def seList = []
 def hasTax = false
@@ -89,10 +90,10 @@ lines.drop(1).each { raw ->
 
     def p = line.split('\t', -1)
 
-    def sampleId = cleanStr(p[col.sampleId])
+    def sampleId = sanitizeId(p[col.sampleId])
     def r1Str    = cleanStr(p[col.r1])
     def r2Str    = col.containsKey('r2') ? cleanStr(p[col.r2]) : null
-    def refId    = cleanStr(p[col.refId])
+    def refId    = sanitizeId(p[col.refId])
     def refFasta = cleanStr(p[col.refFasta])
     def refGff   = cleanStr(p[col.refGff])
     def taxId    = col.containsKey('taxId') ? cleanStr(p[col.taxId]) : null
@@ -113,6 +114,12 @@ lines.drop(1).each { raw ->
     if (!runId) runId = inferRunId(r1Str)
     runId = sanitizeId(runId)
     if (!runId) runId = "run"
+
+    // Guarantee a unique run token per (sampleId, refId): lane-split inputs with no runId column
+    // infer the same basename for every lane -> identical BAM names collide in the merge group.
+    def runKey = "${sampleId}||${refId}||${runId}"
+    def runN = (seenRuns[runKey] = seenRuns[runKey] + 1)
+    if (runN > 1) runId = "${runId}_${runN}"
 
     if (!new File(r1Str).exists()) throw new RuntimeException("R1 not found: ${r1Str}")
     if (mode == "PE" && !new File(r2Str).exists()) throw new RuntimeException("R2 not found: ${r2Str}")
@@ -367,17 +374,15 @@ workflow {
         .groupTuple()
         .map { sId, jsons -> tuple(sId, jsons[0]) } // Take first JSON if multiple
 
-    // Prepare BAM Stats
-    def bam_stats_ch = final_bams.stats.map { stats ->
-        def name_parts = stats.name.tokenize('.')
-        def sId = name_parts[0]
-        def rId = name_parts[1]
-        tuple(sId, rId, stats)
-    }
+    // BAM stats already carry (sampleId, refId) as vals -- do NOT re-parse the filename with
+    // tokenize('.'), which truncates any dotted refId (e.g. NC_000962.3) and breaks the join.
+    def bam_stats_ch = final_bams.stats // [sId, rId, stats]
 
     // Join logic for Stats
     def vcf_bam_joined = vcf_for_stats.join(bam_stats_ch, by: [0,1]) // [sId, rId, vcf, stats]
-    def vcf_bam_fastp = vcf_bam_joined.join(json_ch, by: 0) // [sId, rId, vcf, stats, json]
+    // combine (not join) on sampleId: one json per sample must fan out to EVERY (sample,ref)
+    // row, else a sample mapped to >1 reference silently loses all but one reference's stats.
+    def vcf_bam_fastp = vcf_bam_joined.combine(json_ch, by: 0) // [sId, rId, vcf, stats, json]
 
     // Join with Reference Index (Using COMBINE to reuse reference)
     def ready_no_patho = vcf_bam_fastp
@@ -411,13 +416,18 @@ workflow {
     GENERATE_LEGACY_STATS(final_stats_input)
 
     // 10. MultiQC Report
-    // Collect all relevant metrics from previous processes
+    // Collect all relevant metrics from previous processes.
+    // FastP JSONs and Kraken reports are reference-independent (QC of the raw reads), so a sample
+    // mapped to >1 reference emits identically-named copies from parallel tasks. Deduplicate by
+    // filename before collecting, otherwise MultiQC hits a fatal input-name collision.
+    def fastp_json_mqc = fastp_pe.json.mix(fastp_se.json).unique { it.name }
+    def kraken_mqc     = ch_kraken_reports.unique { it.name }
     def qc_collection = Channel.empty()
-        .mix(fastp_pe.json.mix(fastp_se.json)) // FastP
-        .mix(final_bams.stats)                 // Samtools
-        .mix(ch_kraken_reports)                // Kraken
-        .mix(ch_snpeff_stats)                  // SnpEff
-        .mix(filter_stats)                     // Length-aware read filter (drop rate)
+        .mix(fastp_json_mqc)                          // FastP
+        .mix(final_bams.stats.map { s, r, st -> st }) // Samtools (drop the (sId,rId) key -> bare path)
+        .mix(kraken_mqc)                              // Kraken
+        .mix(ch_snpeff_stats)                         // SnpEff
+        .mix(filter_stats)                            // Length-aware read filter (drop rate)
         .collect()
 
     MULTIQC(qc_collection, multiqc_report_filename)

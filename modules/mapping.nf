@@ -85,7 +85,7 @@ process MERGE_AND_MARKDUP {
 
     output:
     tuple val(sampleId), val(refId), path("${sampleId}.${refId}.final.bam"), path("${sampleId}.${refId}.final.bam.bai"), path(ref_fa), path(exclude_txt), emit: final_bam
-    path("${sampleId}.${refId}.dedup.stats"), emit: stats
+    tuple val(sampleId), val(refId), path("${sampleId}.${refId}.dedup.stats"), emit: stats
     
     shell:
     '''
