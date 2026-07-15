@@ -66,7 +66,12 @@ process CONSENSUS_FASTA {
       --nocall-char ${params.consensus_nocall_char} \\
       > ${sampleId}.${refId}${outLabel}.consensus.log 2>&1
 
-    # Rename the Fasta header to match the Sample ID (instead of the reference ID)
-    sed -i "s/^>.*/>${sampleId}${outLabel}/" ${sampleId}.${refId}${outLabel}.consensus.fasta
+    # Rename the header(s) to the Sample ID. Single-contig -> ">sample"; multi-contig -> prefix each
+    # contig (">sample_contig") so a blanket rewrite doesn't collapse every record to one name.
+    if [ "\$(grep -c '^>' ${sampleId}.${refId}${outLabel}.consensus.fasta)" -gt 1 ]; then
+        sed -i "s/^>/>${sampleId}${outLabel}_/" ${sampleId}.${refId}${outLabel}.consensus.fasta
+    else
+        sed -i "s/^>.*/>${sampleId}${outLabel}/" ${sampleId}.${refId}${outLabel}.consensus.fasta
+    fi
     """
 }

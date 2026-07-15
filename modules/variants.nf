@@ -76,7 +76,7 @@ process CALL_FREEBAYES {
 
     # 3. Normalize Variants
     bcftools norm -m - -a -f !{ref_fa} raw_freebayes.vcf | \
-    bcftools view -e 'GT="0/0"' -Ov -o normalized.vcf
+    bcftools view -e 'GT="0/0" || GT="0"' -Ov -o normalized.vcf
     
     # 4. Generate Mask Sites (Positions with low allelic balance support)
     ( bcftools view \$EXCL_ARG --types snps,mnps \\
@@ -108,16 +108,29 @@ process CALL_FREEBAYES {
     bcftools view \$EXCL_ARG --types indels    -i "\$hom_rule" -Ov -o !{sampleId}.!{refId}.var.homo.indel.vcf normalized.vcf
 
     # 8. Format for Backbone Integration
-    # Adds ADP, WT, HET, HOM, NC tags to INFO/FORMAT for the consensus step
-    awk 'BEGIN{OFS="\\t"}
+    # Adds ADP, WT, HET, HOM, NC tags to INFO/FORMAT for the consensus step. INFO is tokenised on ';'
+    # (anchored ^DP=/^RO=/^AO=) so DP is never grabbed from a look-alike field, and the genotype is
+    # re-validated with RO/AO.
+    awk -v HETMIN=!{params.het_min_frac} 'BEGIN{OFS="\\t"}
       /^##/ { print; next }
       /^#CHROM/ { print; next }
       {
-        dp=0
-        if (match(\$8, /DP=[0-9]+/)) { s=substr(\$8,RSTART,RLENGTH); split(s,a,"="); dp=a[2] }
+        dp=0; ro=0; ao=0
+        ni=split(\$8,I,";")
+        for(k=1;k<=ni;k++){
+          if(I[k] ~ /^DP=/){ v=I[k]; sub(/^DP=/,"",v); dp=v+0 }
+          else if(I[k] ~ /^RO=/){ v=I[k]; sub(/^RO=/,"",v); ro=v+0 }
+          else if(I[k] ~ /^AO=/){ v=I[k]; sub(/^AO=/,"",v); split(v,ax,","); ao=ax[1]+0 }
+        }
         if (dp==0) { n=split(\$9,fmt,":"); m=split(\$10,dat,":"); for(i=1;i<=n;i++) if(fmt[i]=="DP") dp=dat[i] }
+        if (dp==0) dp=ro+ao
         if (dp==0) dp=1
         split(\$10,b,":"); gtype=b[1]
+        # Re-validate het: 'bcftools norm -m -' splits a multiallelic 1/2 into biallelic records whose
+        # reference index 0 is an ARTIFACT (RO~0). A het whose reference allele is essentially
+        # unsupported is not a real het -> homozygous-alt (matches the af-based hom/het rule and stops
+        # the reference base leaking into the consensus IUPAC).
+        if ((gtype=="0/1" || gtype=="1/0") && (ro+ao)>0 && ro/(ro+ao) < HETMIN) gtype="1/1"
         het=0; hom=0
         if (gtype=="0/1" || gtype=="1/0") het=1
         else if (gtype=="1/1") hom=1
@@ -185,9 +198,15 @@ process CALL_BACKBONE {
     # well covered but BAQ collapses it to <= consensus_min_dp (indel-adjacent
     # homopolymer artifact), so the consensus masks it (X) instead of leaving a gap.
     if [[ "!{params.mask_baq_dropouts}" == "true" ]]; then
-        paste \\
-          <(samtools mpileup -aa -B -f !{ref_fa} -Q !{params.allpos_min_bq} -d !{params.allpos_max_depth} !{bam}) \\
-          <(samtools mpileup -aa    -f !{ref_fa} -Q !{params.allpos_min_bq} -d !{params.allpos_max_depth} !{bam}) \\
+        # Materialise both pileups to files (NOT process substitution): a mpileup that dies mid-stream
+        # inside <(...) is invisible to 'set -euo pipefail', and paste would then pad the truncated
+        # BAQ column with empties -> dp_baq=0 -> every tail position falsely flagged 'baq_dropout'.
+        # Writing to files makes the failure fatal, and we assert equal line counts before pasting.
+        samtools mpileup -aa -B -f !{ref_fa} -Q !{params.allpos_min_bq} -d !{params.allpos_max_depth} !{bam} > mpileup_nobaq.txt
+        samtools mpileup -aa    -f !{ref_fa} -Q !{params.allpos_min_bq} -d !{params.allpos_max_depth} !{bam} > mpileup_baq.txt
+        n1=\$(wc -l < mpileup_nobaq.txt); n2=\$(wc -l < mpileup_baq.txt)
+        if [ "\$n1" -ne "\$n2" ]; then echo "ERROR: mpileup line counts differ (\$n1 vs \$n2) -- truncated stream" >&2; exit 1; fi
+        paste mpileup_nobaq.txt mpileup_baq.txt \\
         | awk -v MINCOV=!{params.allpos_min_cov} -v GAPDP=!{params.consensus_min_dp} -v OFS="\\t" '
             function count_bases(s,   i,n,c,num){
               RO_G=0; AO_G=0; i=1; n=length(s)
@@ -246,6 +265,7 @@ process CALL_BACKBONE {
     fi
 
     safe_tabix backbone.vcf.gz
+    rm -f mpileup_nobaq.txt mpileup_baq.txt
     """
 }
 
@@ -361,7 +381,7 @@ process CALL_FREEBAYES_RAW {
       --min-base-quality !{params.freebayes_min_base_qual} \\
       !{bam} > raw_freebayes.vcf
 
-    bcftools norm -m - -a -f !{ref_fa} raw_freebayes.vcf | bcftools view -e 'GT="0/0"' -Ov -o normalized.vcf
+    bcftools norm -m - -a -f !{ref_fa} raw_freebayes.vcf | bcftools view -e 'GT="0/0" || GT="0"' -Ov -o normalized.vcf
 
     base_filt="(FMT/DP >= !{params.filter_min_dp} || INFO/DP >= !{params.filter_min_dp}) && INFO/SAF[0] >= !{params.min_alt_fwd} && INFO/SAR[0] >= !{params.min_alt_rev}"
     af_guard="(INFO/AO[0] + INFO/RO) > 0"
@@ -372,15 +392,22 @@ process CALL_FREEBAYES_RAW {
     bcftools view \$EXCL_ARG --types snps -i "\$hom_rule || \$het_rule" normalized.vcf > valid_snps.vcf || true
     [ -s valid_snps.vcf ] || bcftools view -h normalized.vcf > valid_snps.vcf
 
-    awk 'BEGIN{OFS="\\t"}
+    awk -v HETMIN=!{params.het_min_frac} 'BEGIN{OFS="\\t"}
       /^##/ { print; next }
       /^#CHROM/ { print; next }
       {
-        dp=0
-        if (match(\$8, /DP=[0-9]+/)) { s=substr(\$8,RSTART,RLENGTH); split(s,a,"="); dp=a[2] }
+        dp=0; ro=0; ao=0
+        ni=split(\$8,I,";")
+        for(k=1;k<=ni;k++){
+          if(I[k] ~ /^DP=/){ v=I[k]; sub(/^DP=/,"",v); dp=v+0 }
+          else if(I[k] ~ /^RO=/){ v=I[k]; sub(/^RO=/,"",v); ro=v+0 }
+          else if(I[k] ~ /^AO=/){ v=I[k]; sub(/^AO=/,"",v); split(v,ax,","); ao=ax[1]+0 }
+        }
         if (dp==0) { n=split(\$9,fmt,":"); m=split(\$10,dat,":"); for(i=1;i<=n;i++) if(fmt[i]=="DP") dp=dat[i] }
+        if (dp==0) dp=ro+ao
         if (dp==0) dp=1
         split(\$10,b,":"); gtype=b[1]
+        if ((gtype=="0/1" || gtype=="1/0") && (ro+ao)>0 && ro/(ro+ao) < HETMIN) gtype="1/1"
         het=0; hom=0
         if (gtype=="0/1" || gtype=="1/0") het=1
         else if (gtype=="1/1") hom=1
