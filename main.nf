@@ -18,7 +18,7 @@ include { CONSENSUS_FASTA } from './modules/consensus'
 include { CALL_BACKBONE as CALL_BACKBONE_RAW; MERGE_VCFS as MERGE_VCFS_RAW } from './modules/variants'
 include { CONSENSUS_FASTA as CONSENSUS_FASTA_RAW } from './modules/consensus'
 include { ANNOTATE_LEGACY_VCF; ANNOTATE_MAIN_VCF; GENERATE_LEGACY_STATS } from './modules/annotation'
-include { COLLECT_SUMMARY; QC_REPORT; SNP_MATRIX } from './modules/report'
+include { COLLECT_SUMMARY; COLLECT_DR; QC_REPORT; SNP_MATRIX } from './modules/report'
 
 /* ----------------------------- Configuration Logic ----------------------------- */
 
@@ -245,7 +245,7 @@ workflow {
 
         // Combine summaries for later statistics / the QC report
         patho_results    = run_pe.summary.mix(run_se.summary)
-        patho_dr_results = run_pe.dr_summary.mix(run_se.dr_summary)
+        patho_dr_results = run_pe.dr_mutations.mix(run_se.dr_mutations)
     }
 
     // 5. Mapping (BWA)
@@ -472,8 +472,14 @@ workflow {
         // SNP dynamics: the samplesheet is the metadata source (auto-detects time/group columns; the
         // panel self-hides if absent).
         def report_meta = file(params.tsv)
+        // Drug-resistance calls (pathotypr DR run -> one run TSV); NO_FILE when pathotypr is off.
+        def dr_report = params.run_pathotypr
+            ? COLLECT_DR(patho_dr_results.map { sId, f -> f }.collect(), tsv_name).dr
+            : file("NO_FILE")
+        // H37Rv-annotated VCFs for the dual amino-acid numbering (H37Rv annotation pass; NO_FILE for now).
+        def report_vcfs_h37rv = file("NO_FILE")
         QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
-                  report_meta, report_vcfs, provenance, tsv_name)
+                  report_meta, report_vcfs, report_vcfs_h37rv, dr_report, provenance, tsv_name)
     }
 
     // 11b. Master SNP matrix: rows = SNP sites, columns = reference/annotation + per-sample AF & depth.

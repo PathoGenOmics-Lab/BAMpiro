@@ -34,6 +34,26 @@ process COLLECT_SUMMARY {
     """
 }
 
+process COLLECT_DR {
+    tag "DR calls"
+    publishDir "${params.outdir}", mode: params.publish_mode
+    cpus 1
+    memory '2 GB'
+
+    input:
+    path(dr_mutations)      // every sample's ${sampleId}.dr_mutations.tsv (pathotypr DR run)
+    val(basename)
+
+    output:
+    path("${basename}_dr.tsv"), emit: dr
+
+    script:
+    """
+    set -euo pipefail
+    python3 ${projectDir}/bin/collect_dr.py -o ${basename}_dr.tsv ${dr_mutations}
+    """
+}
+
 process QC_REPORT {
     tag "QC report"
     publishDir "${params.outdir}", mode: params.publish_mode
@@ -48,6 +68,8 @@ process QC_REPORT {
     path(mask_bed)          // reference repeat/exclude BED -> masked-regions / callability panel
     path(metadata)          // samplesheet/metadata TSV -> SNP dynamics panel (auto-detects time+group)
     path(vcfs)              // per-sample annotated VCFs -> per-SNP allele frequencies for dynamics
+    path(vcfs_h37rv)        // per-sample VCFs annotated vs H37Rv -> dual amino-acid numbering (may be NO_FILE)
+    path(dr_report)         // run drug-resistance calls TSV (collect_dr) -> Drug resistance panel (may be NO_FILE)
     val(provenance)         // pre-quoted provenance tokens (container=..., reference=...)
     val(basename)
 
@@ -66,12 +88,14 @@ process QC_REPORT {
     MASK_ARG=""; [ -s "${mask_bed}" ] && MASK_ARG="--mask-bed ${mask_bed}"
     MD_ARG=""; [ -s "${metadata}" ] && MD_ARG="--metadata ${metadata}"
     VCF_ARG=""; [ -n "${vcfs}" ] && VCF_ARG="--vcfs ${vcfs}"
+    VH_ARG="";  case "${vcfs_h37rv}" in ""|NO_FILE) ;; *) VH_ARG="--vcfs-h37rv ${vcfs_h37rv}";; esac
+    DR_ARG="";  [ -s "${dr_report}" ] && [ "${dr_report}" != "NO_FILE" ] && DR_ARG="--dr-report ${dr_report}"
     python3 ${projectDir}/bin/qc_report.py \\
         --summary ${summary} \\
         ${cons_arg} \\
         --gene-burden ${gene_burden} \\
         --gff ${gff} \\
-        \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \\
+        \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$DR_ARG \\
         --provenance ${provenance} \\
         --out-html ${basename}_qc_report.html \\
         --out-flags ${basename}_qc_flags.tsv \\

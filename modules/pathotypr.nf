@@ -9,12 +9,12 @@ include { getSavePath; getSampleDir } from './utils'
     Reference-agnostic: the diagnostic k-mers are built from the MTBC-ancestor
     reference the markers are defined on, so calls do NOT depend on the reference
     the sample was mapped against. Two split-fastq passes per sample:
-      - lineage markers (nested sub-lineage)  -> emit: summary
-      - WHO drug-resistance markers           -> emit: dr_summary
-
-    NOTE: confirm the split-fastq flags and output filenames of bioconda pathotypr
-    v1.0.0 with `pathotypr split-fastq --help`; the cp normalisation below adapts
-    whatever it writes to the fixed names the stats/report steps read.
+      - lineage markers (nested sub-lineage) -> emit: summary   (${prefix}_summary.tsv:
+        genome / lineage:count / major_lineage; parsed by stats_to_legacy.py)
+      - WHO drug-resistance markers          -> emit: dr_mutations (${prefix}_<s>_mutations.tsv:
+        pos/ref/alt/ref_count/alt_count/alt_fraction/lineage_path[=drug;resistance;marker;grade;gene;mutation];
+        aggregated by collect_dr.py for the report's Drug-resistance panel)
+    pathotypr v1.0.0 CLI verified: split-fastq -i -r -m -o --paired --nested-classification --threads.
 ==================================================================== */
 
 process RUN_PATHOTYPR_PE {
@@ -31,24 +31,23 @@ process RUN_PATHOTYPR_PE {
     val pathotypr_bin
 
     output:
-    tuple val(sampleId), path("${sampleId}.pathotypr.lineage.summary.tsv"), emit: summary
-    tuple val(sampleId), path("${sampleId}.pathotypr.dr.summary.tsv"),      emit: dr_summary
+    tuple val(sampleId), path("${sampleId}.pathotypr.lineage_summary.tsv"), emit: summary
+    tuple val(sampleId), path("${sampleId}.dr_mutations.tsv"),              emit: dr_mutations
     path("${sampleId}.pathotypr.*"), emit: results
 
     script:
     """
     set -euo pipefail
-    # Lineage (nested sub-lineage classification)
+    # Lineage (nested sub-lineage classification) -> \${prefix}_summary.tsv
     ${pathotypr_bin} split-fastq -i ${r1} -i ${r2} --paired \\
         --reference ${ref_fasta_pathotypr} --markers ${lineage_markers} \\
         --nested-classification --output-prefix ${sampleId}.pathotypr.lineage --threads ${task.cpus}
-    # Drug resistance (WHO catalogue markers)
+    # Drug resistance (WHO catalogue markers) -> \${prefix}_<sample>_mutations.tsv
     ${pathotypr_bin} split-fastq -i ${r1} -i ${r2} --paired \\
         --reference ${ref_fasta_pathotypr} --markers ${dr_markers} \\
         --output-prefix ${sampleId}.pathotypr.dr --threads ${task.cpus}
-    # Normalise to the fixed names the stats/report steps read (adapt to pathotypr's actual outputs)
-    [ -f ${sampleId}.pathotypr.lineage.summary.tsv ] || cp "\$(ls ${sampleId}.pathotypr.lineage*.tsv | head -1)" ${sampleId}.pathotypr.lineage.summary.tsv
-    [ -f ${sampleId}.pathotypr.dr.summary.tsv ]      || cp "\$(ls ${sampleId}.pathotypr.dr*.tsv | head -1)"      ${sampleId}.pathotypr.dr.summary.tsv
+    # Fix the DR detail file name to carry our sampleId (pathotypr names the sample after the FASTQ)
+    cp "\$(ls ${sampleId}.pathotypr.dr_*_mutations.tsv | head -1)" ${sampleId}.dr_mutations.tsv
     """
 }
 
@@ -66,8 +65,8 @@ process RUN_PATHOTYPR_SE {
     val pathotypr_bin
 
     output:
-    tuple val(sampleId), path("${sampleId}.pathotypr.lineage.summary.tsv"), emit: summary
-    tuple val(sampleId), path("${sampleId}.pathotypr.dr.summary.tsv"),      emit: dr_summary
+    tuple val(sampleId), path("${sampleId}.pathotypr.lineage_summary.tsv"), emit: summary
+    tuple val(sampleId), path("${sampleId}.dr_mutations.tsv"),              emit: dr_mutations
     path("${sampleId}.pathotypr.*"), emit: results
 
     script:
@@ -79,7 +78,6 @@ process RUN_PATHOTYPR_SE {
     ${pathotypr_bin} split-fastq -i ${r1} \\
         --reference ${ref_fasta_pathotypr} --markers ${dr_markers} \\
         --output-prefix ${sampleId}.pathotypr.dr --threads ${task.cpus}
-    [ -f ${sampleId}.pathotypr.lineage.summary.tsv ] || cp "\$(ls ${sampleId}.pathotypr.lineage*.tsv | head -1)" ${sampleId}.pathotypr.lineage.summary.tsv
-    [ -f ${sampleId}.pathotypr.dr.summary.tsv ]      || cp "\$(ls ${sampleId}.pathotypr.dr*.tsv | head -1)"      ${sampleId}.pathotypr.dr.summary.tsv
+    cp "\$(ls ${sampleId}.pathotypr.dr_*_mutations.tsv | head -1)" ${sampleId}.dr_mutations.tsv
     """
 }
