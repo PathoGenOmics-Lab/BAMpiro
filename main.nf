@@ -218,8 +218,9 @@ workflow {
     def fastp_pe = FASTP_PE(pe_final)
     def fastp_se = FASTP_SE(se_final)
     
-    // 4. Pathotypr (Optional Lineage Classification)
-    def patho_results = Channel.empty()
+    // 4. Pathotypr (Optional lineage + drug-resistance typing; k-mer, reference-agnostic)
+    def patho_results    = Channel.empty()   // lineage summary per sample
+    def patho_dr_results = Channel.empty()   // drug-resistance summary per sample
 
     if (params.run_pathotypr) {
         // Reshape channels for Pathotypr
@@ -230,6 +231,7 @@ workflow {
             patho_pe_ch,
             file(params.pathotypr_ref),
             file(params.pathotypr_markers),
+            file(params.pathotypr_dr_markers),
             params.pathotypr_bin
         )
 
@@ -237,11 +239,13 @@ workflow {
             patho_se_ch,
             file(params.pathotypr_ref),
             file(params.pathotypr_markers),
+            file(params.pathotypr_dr_markers),
             params.pathotypr_bin
         )
-        
-        // Combine summaries for later statistics
-        patho_results = run_pe.summary.mix(run_se.summary)
+
+        // Combine summaries for later statistics / the QC report
+        patho_results    = run_pe.summary.mix(run_se.summary)
+        patho_dr_results = run_pe.dr_summary.mix(run_se.dr_summary)
     }
 
     // 5. Mapping (BWA)
