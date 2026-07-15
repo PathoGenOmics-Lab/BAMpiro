@@ -50,7 +50,8 @@ def main():
                         header = [h.strip().lower() for h in c]
                         continue
                     d = dict(zip(header, c))
-                    parts = (d.get('lineage_path', '') or '').split(';')
+                    # maxsplit=5 keeps a ';' inside the last field (mutation, e.g. a compound descriptor)
+                    parts = (d.get('lineage_path', '') or '').split(';', 5)
                     lp = dict(zip(_LP, parts))
                     try:
                         af = '%.4f' % (float(d.get('alt_fraction', '')) / 100.0)

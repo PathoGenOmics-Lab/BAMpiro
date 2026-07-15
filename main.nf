@@ -474,14 +474,13 @@ workflow {
         def report_meta = file(params.tsv)
         // Drug-resistance calls (pathotypr DR run -> one run TSV); NO_FILE when pathotypr is off.
         def dr_report = params.run_pathotypr
-            ? COLLECT_DR(patho_dr_results.map { sId, f -> f }.collect(), tsv_name).dr
+            ? COLLECT_DR(patho_dr_results.map { sId, f -> f }.collect().ifEmpty([]), tsv_name).dr
             : file("NO_FILE")
         // Canonical-reference-annotated VCFs for the dual amino-acid numbering (off unless annotate_canonical).
-        def canon_src = params.annotate_legacy_vcfs
-            ? freebayes_ann.map { sId, rId, vcf, tbi -> tuple(sId, rId, vcf) }
-            : vcf_for_stats
+        // vcf_for_stats is the per-sample (sId,rId,vcf) channel; its positions match report_vcfs, so the
+        // report's sample+position merge finds each variant's canonical amino-acid change.
         def report_vcfs_h37rv = params.annotate_canonical
-            ? ANNOTATE_CANONICAL(canon_src, params.canonical_snpeff_db).out
+            ? ANNOTATE_CANONICAL(vcf_for_stats, params.canonical_snpeff_db).out
                              .map { sId, vcf -> vcf }.collect().ifEmpty([])
             : file("NO_FILE")
         QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
