@@ -1246,7 +1246,7 @@ function renderPlots(){
 }
 
 function renderScatter(){
-  var host=el('scatter'); var W=Math.min(host.classList.contains('expanded')?880:560,(host.clientWidth||520)); var S=Math.max(300,W); var pad=42, plot=S-pad-14, H=(host.classList.contains('expanded')?Math.min(660,S):340), ph=H-pad-14;
+  var host=el('scatter'); var W=Math.min(host.classList.contains('expanded')?880:700,(host.clientWidth||560)); var S=Math.max(300,W); var pad=42, plot=S-pad-14, H=(host.classList.contains('expanded')?Math.min(660,S):340), ph=H-pad-14;
   var xk=st.sx,yk=st.sy,xm=MET[xk],ym=MET[yk];
   var rows=R.samples.filter(function(s){return s.m[xk]!=null&&s.m[yk]!=null;});
   if(!rows.length){host.innerHTML='<div class="pad nd">no data for these axes</div>';return;}
@@ -1260,11 +1260,16 @@ function renderScatter(){
     ticks+='<line x1="'+gx+'" y1="'+pad+'" x2="'+gx+'" y2="'+(H-pad)+'" stroke="#f0f3f7"/><line x1="'+pad+'" y1="'+gy+'" x2="'+(pad+plot)+'" y2="'+gy+'" stroke="#f0f3f7"/>'+
     '<text x="'+gx+'" y="'+(H-pad+13)+'" font-size="9" fill="#94a3b8" text-anchor="middle">'+shortv(xr[0]+t*(xr[1]-xr[0]),xm.kind)+'</text>'+
     '<text x="'+(pad-6)+'" y="'+(gy+3)+'" font-size="9" fill="#94a3b8" text-anchor="end">'+shortv(yr[0]+t*(yr[1]-yr[0]),ym.kind)+'</text>';});
-  host.innerHTML='<svg width="'+S+'" height="'+H+'" id="scsvg">'+
+  var _sw='display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px;background:';
+  var scLeg=(st.colorBy=='lineage'
+    ? (R.lineages||[]).map(function(l){return '<span><i style="'+_sw+linColor(l)+'"></i>'+esc(l)+'</span>';}).join('')
+    : '<span><i style="'+_sw+VCOL.PASS+'"></i>PASS</span><span><i style="'+_sw+VCOL.WARN+'"></i>WARN</span><span><i style="'+_sw+VCOL.FAIL+'"></i>FAIL</span>');
+  host.innerHTML='<svg width="'+S+'" height="'+H+'" id="scsvg" style="display:block;margin:0 auto">'+
     '<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(pad+plot)+'" y2="'+(H-pad)+'" stroke="#cbd5e1"/><line x1="'+pad+'" y1="'+pad+'" x2="'+pad+'" y2="'+(H-pad)+'" stroke="#cbd5e1"/>'+
     ticks+dots+
     '<text x="'+(pad+plot/2)+'" y="'+(H-6)+'" font-size="11" fill="#475569" text-anchor="middle">'+esc(xm.label)+'</text>'+
-    '<text x="12" y="'+(pad+ph/2)+'" font-size="11" fill="#475569" text-anchor="middle" transform="rotate(-90 12 '+(pad+ph/2)+')">'+esc(ym.label)+'</text></svg>';
+    '<text x="12" y="'+(pad+ph/2)+'" font-size="11" fill="#475569" text-anchor="middle" transform="rotate(-90 12 '+(pad+ph/2)+')">'+esc(ym.label)+'</text></svg>'+
+    '<div class="legend" style="justify-content:center">'+scLeg+'</div>';
   SGEO={pad:pad,plot:plot,ph:ph,H:H,xr:xr,yr:yr,xk:xk,yk:yk};   // for the rubber-band select inverse-mapping
   var scsvg=el('scsvg'); if(scsvg){var ov=document.createElementNS('http://www.w3.org/2000/svg','rect');
     ov.setAttribute('id','scbrush');ov.setAttribute('fill','rgba(14,139,168,.12)');ov.setAttribute('stroke','#0e8ba8');
