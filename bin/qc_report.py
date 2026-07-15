@@ -1290,9 +1290,9 @@ function renderCorr(){
   var pool=visible();
   if(pool.length<4||keys.length<2){host.innerHTML='<div class="pad nd">not enough data for a correlation matrix (need >= 4 samples in view).</div>';return;}
   var vals={}; keys.forEach(function(k){vals[k]=pool.map(function(s){return s.m[k];});});
-  var n=keys.length, cell=Math.max(15,Math.min(30,Math.floor((Math.min(host.clientWidth||520,host.classList.contains('expanded')?900:560)-100)/n)));
-  var padL=94,padT=8, W=padL+n*cell+8, H=padT+n*cell+96;
-  var svg='<svg width="'+W+'" height="'+H+'" id="corrsvg" style="max-width:100%;display:block">';
+  var n=keys.length, cell=Math.max(16,Math.min(34,Math.floor((Math.min(host.clientWidth||560,host.classList.contains('expanded')?1100:940)-110)/n)));
+  var padL=96,padT=8, W=padL+n*cell+8, H=padT+n*cell+128;
+  var svg='<svg width="'+W+'" height="'+H+'" id="corrsvg" style="max-width:100%;display:block;margin:0 auto">';
   keys.forEach(function(k,j){var cx=padL+j*cell+cell/2;
     svg+='<text x="'+cx+'" y="'+(padT+n*cell+12)+'" font-size="8.5" fill="#67788b" text-anchor="end" transform="rotate(-55 '+cx+' '+(padT+n*cell+12)+')">'+esc(MET[k].label)+'</text>';});
   keys.forEach(function(k,i){var cy=padT+i*cell+cell/2;
@@ -1306,7 +1306,7 @@ function renderCorr(){
       ' data-xk="'+keys[j]+'" data-yk="'+keys[i]+'" data-r="'+(r==null?'':r.toFixed(2))+'"'+(i!==j?' style="cursor:pointer"':'')+'/>';
     if(cell>=22&&r!=null)svg+='<text x="'+(cx+(cell-1)/2)+'" y="'+(cy+(cell-1)/2+3)+'" font-size="7.5" fill="'+(Math.abs(r)>0.55?'#fff':'#5b6b7e')+'" text-anchor="middle" pointer-events="none">'+(r>0?'':'-')+Math.abs(r).toFixed(1).replace('0.','.')+'</text>';
   }
-  var ly=padT+n*cell+64;
+  var ly=padT+n*cell+94;
   svg+='<text x="'+padL+'" y="'+(ly-4)+'" font-size="8.5" fill="#94a3b8">Spearman rho</text>';
   for(var g=0;g<=20;g++){var rr=-1+g/10; svg+='<rect x="'+(padL+g*7)+'" y="'+ly+'" width="7" height="9" fill="'+corrCol(rr)+'"/>';}
   svg+='<text x="'+padL+'" y="'+(ly+20)+'" font-size="8" fill="#94a3b8">-1</text>'+
