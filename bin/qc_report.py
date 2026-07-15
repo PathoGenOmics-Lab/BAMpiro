@@ -624,17 +624,37 @@ CSS = r"""
  --sh:0 1px 2px rgba(16,24,40,.04),0 3px 8px rgba(16,24,40,.05);--r:15px}
 *{box-sizing:border-box} html{scroll-behavior:smooth}
 body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,sans-serif;color:var(--ink);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;
+ --tocw:232px;padding-left:var(--tocw);transition:padding-left .2s ease;
  background-color:#eef1f6;
  background-image:radial-gradient(1200px 520px at 50% -260px,#ffffff,transparent 70%),linear-gradient(180deg,#f4f6fa 0%,#e9edf3 100%);
  background-attachment:fixed,fixed;background-repeat:no-repeat,no-repeat}
+body.toc-collapsed{padding-left:0}
 .num,td{font-variant-numeric:tabular-nums} :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 header{position:sticky;top:0;z-index:40;background:rgba(255,255,255,.82);-webkit-backdrop-filter:saturate(1.15) blur(10px);backdrop-filter:saturate(1.15) blur(10px);color:var(--ink);padding:13px 22px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--line);box-shadow:0 1px 0 rgba(16,24,40,.02),0 8px 24px rgba(16,24,40,.035)}
 header .logo{font-weight:700;letter-spacing:-.2px;font-size:16px;display:flex;align-items:center;gap:9px;color:var(--ink)}
 header .logo b{color:var(--accent);font-weight:700}
 header .logo .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(14,139,168,.16)}
 header .meta{color:var(--mut);font-size:12px}
-nav{margin-left:auto;display:flex;gap:2px;overflow:auto} nav::-webkit-scrollbar{display:none}
-nav a{color:#5b6b7e;text-decoration:none;font-size:13.5px;padding:6px 11px;border-radius:8px;white-space:nowrap;font-weight:500} nav a:hover{color:var(--accent);background:var(--accent-soft)}
+/* Left table-of-contents sidebar (collapsible, grouped, scroll-spy) */
+#toc-toggle{position:fixed;top:11px;left:11px;z-index:70;width:34px;height:34px;border:1px solid var(--line);border-radius:9px;background:#fff;color:#33465c;font-size:16px;cursor:pointer;box-shadow:var(--sh);display:flex;align-items:center;justify-content:center;line-height:1}
+#toc-toggle:hover{color:var(--accent);border-color:var(--accent)}
+#toc{position:fixed;left:0;top:0;bottom:0;width:var(--tocw);overflow-y:auto;background:rgba(255,255,255,.97);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-right:1px solid var(--line);z-index:60;padding:54px 12px 26px;transition:transform .2s ease}
+body.toc-collapsed #toc{transform:translateX(-100%)}
+body.toc-collapsed header{padding-left:56px}
+.toc-brand{font-weight:700;font-size:14px;color:var(--ink);padding:0 10px 12px;letter-spacing:-.2px}
+.toc-brand b{color:var(--accent)}
+.toc-group{margin-bottom:4px}
+.toc-gh{display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--mut);padding:9px 10px 4px;cursor:pointer;user-select:none;border-radius:7px}
+.toc-gh:hover{color:var(--ink)}
+.toc-chev{font-size:9px;transition:transform .15s;opacity:.7}
+.toc-group.closed .toc-chev{transform:rotate(-90deg)}
+.toc-group.closed .toc-items{display:none}
+.toc-items{display:flex;flex-direction:column;gap:1px}
+.toc-link{color:#5b6b7e;text-decoration:none;font-size:13.5px;padding:6px 12px;border-radius:8px;font-weight:500;border-left:2px solid transparent}
+.toc-link:hover{color:var(--accent);background:var(--accent-soft)}
+.toc-link.active{color:var(--accent);background:var(--accent-soft);border-left-color:var(--accent);font-weight:600}
+section[id]{scroll-margin-top:18px}
+@media (max-width:860px){ body{padding-left:0} #toc{box-shadow:0 10px 40px rgba(16,24,40,.18)} }
 .wrap{max-width:1180px;margin:0 auto;padding:24px 22px 90px}
 section{margin-top:34px} section:first-of-type{margin-top:24px}
 h2{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);font-weight:600;margin:0 0 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
@@ -767,8 +787,8 @@ tr.lingrp td{background:#f0f5f9;color:#33465c;font-weight:600;font-size:11px;let
 /* modal 'why' block */
 .dwhy{font-size:11.5px;color:#516074;background:var(--soft);border:1px solid var(--line);border-radius:9px;padding:8px 11px;margin-bottom:6px;line-height:1.55} .dwhy b{color:#a01f2d}
 @media print{
-  header,nav,.controls,.provbar #printBtn,#thbox,#athbox,.dd,.chips{display:none!important}
-  body{background:#fff} .wrap{max-width:none;padding:0} .gtable{max-height:none!important;overflow:visible!important}
+  header,nav,#toc,#toc-toggle,.controls,.provbar #printBtn,#thbox,#athbox,.dd,.chips{display:none!important}
+  body{background:#fff;padding-left:0} .wrap{max-width:none;padding:0} .gtable{max-height:none!important;overflow:visible!important}
   section{break-inside:avoid} .panel{box-shadow:none}
 }
 @media (max-width:760px){
@@ -2433,14 +2453,46 @@ if(R.n_ancient)Array.prototype.forEach.call(document.querySelectorAll('#athbox i
 recompute();
 if(!(hadSaved&&Object.keys(st.excl).length))R.samples.forEach(function(s){if(s.v=='FAIL')st.excl[s.s]=1;});  // preselect FAILs unless a saved basket exists
 renderAll();
+(function(){  // left contents sidebar: collapse toggle, collapsible groups, scroll-spy highlight
+  var toc=el('toc'), tg=el('toc-toggle'); if(!toc||!tg)return;
+  tg.onclick=function(){ document.body.classList.toggle('toc-collapsed'); };
+  if(window.innerWidth&&window.innerWidth<860) document.body.classList.add('toc-collapsed');   // start collapsed on small screens
+  Array.prototype.forEach.call(toc.querySelectorAll('.toc-gh'),function(gh){ gh.onclick=function(){ gh.parentNode.classList.toggle('closed'); }; });
+  Array.prototype.forEach.call(toc.querySelectorAll('.toc-group'),function(g){   // hide a whole group if every section in it was self-hidden
+    var any=false; Array.prototype.forEach.call(g.querySelectorAll('.toc-link'),function(a){ if(a.style.display!=='none') any=true; });
+    if(!any) g.style.display='none';
+  });
+  var links=Array.prototype.slice.call(toc.querySelectorAll('.toc-link'));
+  var items=links.map(function(a){ return {a:a, el:el(a.getAttribute('href').slice(1))}; }).filter(function(x){return x.el;});
+  links.forEach(function(a){ a.onclick=function(){ if(window.innerWidth&&window.innerWidth<860) document.body.classList.add('toc-collapsed'); }; });
+  function spy(){
+    var se=document.scrollingElement||document.documentElement, y=se.scrollTop+92, cur=null;
+    items.forEach(function(s){ if(s.el.style.display!=='none' && s.el.offsetTop<=y) cur=s; });
+    if(!cur){ for(var i=0;i<items.length;i++){ if(items[i].el.style.display!=='none'){ cur=items[i]; break; } } }  // above the 1st section -> highlight it
+    links.forEach(function(a){ a.className='toc-link'; });
+    if(cur) cur.a.className='toc-link active';
+  }
+  window.addEventListener('scroll',spy);
+  window.addEventListener('resize',spy);
+  spy();
+})();
 })();
 """
 
 SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>__TITLE__</title>
 <style>__CSS__</style></head><body>
-<header><span class="logo"><b>BAMpiro</b> QC</span><span class="meta" id="meta"></span>
-<nav><a href="#gstats">Stats</a><a href="#linsum" id="nav-lin">Lineages</a><a href="#dist">Distributions</a><a href="#corr">Correlations</a><a href="#corrmatrix">Corr matrix</a><a href="#qcpca" id="nav-pca">QC space</a><a href="#divcomp" id="nav-divcomp">Divergence</a><a href="#cons">Consensus</a><a href="#genome" id="nav-genome">Genome</a><a href="#function" id="nav-function">Function</a><a href="#geneburden" id="nav-geneburden">Gene burden</a><a href="#hotspots" id="nav-hot">Variable genes</a><a href="#temporal" id="nav-temporal">Temporal</a><a href="#pnps" id="nav-pnps">pN/pS</a><a href="#adna" id="nav-adna">aDNA</a><a href="#dynamics" id="nav-dyn">SNP dynamics</a><a href="#epistasis" id="nav-epi">Epistasis</a><a href="#snpmatrix" id="nav-snpmx">SNP matrix</a><a href="#flagged">Flagged</a></nav></header>
+<button id="toc-toggle" title="Show / hide the contents sidebar" aria-label="Toggle contents">&#9776;</button>
+<nav id="toc" aria-label="Contents">
+<div class="toc-brand"><b>BAMpiro</b> QC</div>
+<div class="toc-group"><div class="toc-gh">Overview<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#gstats">Stats</a><a class="toc-link" href="#linsum" id="nav-lin">Lineages</a><a class="toc-link" href="#dist">Distributions</a></div></div>
+<div class="toc-group"><div class="toc-gh">Correlation &amp; structure<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#corr">Correlations</a><a class="toc-link" href="#corrmatrix">Corr matrix</a><a class="toc-link" href="#qcpca" id="nav-pca">QC space</a><a class="toc-link" href="#divcomp" id="nav-divcomp">Divergence</a></div></div>
+<div class="toc-group"><div class="toc-gh">Genome &amp; genes<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#cons">Consensus</a><a class="toc-link" href="#genome" id="nav-genome">Genome</a><a class="toc-link" href="#function" id="nav-function">Function</a><a class="toc-link" href="#geneburden" id="nav-geneburden">Gene burden</a><a class="toc-link" href="#hotspots" id="nav-hot">Variable genes</a></div></div>
+<div class="toc-group"><div class="toc-gh">Evolution<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#temporal" id="nav-temporal">Temporal</a><a class="toc-link" href="#pnps" id="nav-pnps">pN/pS</a><a class="toc-link" href="#adna" id="nav-adna">aDNA</a></div></div>
+<div class="toc-group"><div class="toc-gh">Variants over time<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#dynamics" id="nav-dyn">SNP dynamics</a><a class="toc-link" href="#epistasis" id="nav-epi">Epistasis</a><a class="toc-link" href="#snpmatrix" id="nav-snpmx">SNP matrix</a></div></div>
+<div class="toc-group"><div class="toc-gh">Quality<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#flagged">Flagged</a></div></div>
+</nav>
+<header><span class="logo"><b>BAMpiro</b> QC</span><span class="meta" id="meta"></span></header>
 <div class="wrap">
 <section class="hero"><div class="summary" id="summary"></div><div class="chips" id="chips"></div></section>
 <div class="provbar"><div class="prov" id="prov"></div><button class="btn" id="printBtn" title="expand + print / save as PDF">⎙ print</button></div>
