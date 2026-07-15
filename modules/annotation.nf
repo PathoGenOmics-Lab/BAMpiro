@@ -11,7 +11,7 @@ include { getSavePath; getSampleDir } from './utils'
 process ANNOTATE_LEGACY_VCF {
     tag "AnnLegacy: ${sampleId}"
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     cpus 2
     memory { 6.GB * task.attempt }
 
@@ -54,7 +54,7 @@ process ANNOTATE_LEGACY_VCF {
 process ANNOTATE_MAIN_VCF {
     tag "AnnMain: ${sampleId}"
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     cpus 2
     memory { 8.GB * task.attempt }
 
@@ -91,7 +91,7 @@ process ANNOTATE_MAIN_VCF {
 process GENERATE_LEGACY_STATS {
     tag "Stats: ${sampleId}"
     // Use getSampleDir. getSavePath automatically places .log files into the 'stats/' subfolder.
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     cpus 1
     
     input:

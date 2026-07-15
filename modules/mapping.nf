@@ -12,7 +12,7 @@ process MAPPING_PE {
     tag "Map PE: ${sampleId}"
     // We typically don't publish these intermediate BAMs to save space.
     // If you wanted to publish them, you would use:
-    // publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    // publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     cpus { params.threads as int }
     // A 4.4 Mbp bacterial index is tiny; 6 GB is generous. Escalates on the rare OOM retry.
@@ -41,7 +41,7 @@ process MAPPING_PE {
 process MAPPING_SE {
     tag "Map SE: ${sampleId}"
     // Intermediate BAMs are usually not published
-    // publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    // publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
 
     cpus { params.threads as int }
     // A 4.4 Mbp bacterial index is tiny; 6 GB is generous. Escalates on the rare OOM retry.
@@ -70,7 +70,7 @@ process MERGE_AND_MARKDUP {
     
     // Use getSampleDir for nested output support
     // This handles putting .stats in the stats/ folder and keeping the final .bam in the sample root
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     // --- OOM (Out of Memory) Protection Strategy ---
     // If the process fails with exit code 137 (OOM), it retries with more memory
@@ -134,7 +134,7 @@ process FILTER_READS {
     // if EITHER mate anchors uniquely (concordant-pair rescue). One streaming pass, no re-sort.
     tag "Filter: ${sampleId}"
 
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
 
     cpus 4
     memory { 4.GB * task.attempt }

@@ -13,7 +13,7 @@ process RUN_PATHOTYPR_PE {
     
     // Use getSampleDir for nested output support.
     // getSavePath will automatically place these files into the 'lineage/' subdirectory.
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     cpus 4
     memory '8 GB'
@@ -49,7 +49,7 @@ process RUN_PATHOTYPR_SE {
     tag "PathotyprSE: ${sampleId}"
     
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     cpus 4
     memory '8 GB'

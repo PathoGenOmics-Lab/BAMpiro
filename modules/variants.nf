@@ -13,7 +13,7 @@ process CALL_FREEBAYES {
     
     // Use getSampleDir for nested output support.
     // getSavePath handles the filtering of intermediate files if needed.
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     // FreeBayes is single-threaded unless region-parallel is enabled; only bgzip uses extra cores.
     cpus { params.freebayes_parallel ? (params.freebayes_parallel_jobs as int) : 2 }
@@ -287,7 +287,7 @@ process MERGE_VCFS {
     tag "Merge: ${sampleId}"
     
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     // bcftools (concat/sort/view) on a bacterial VCF is light and mostly single-threaded.
     cpus 2

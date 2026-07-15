@@ -102,7 +102,24 @@ def getSavePath(filename, params) {
         lower.endsWith('.bwt')  ||
         lower.endsWith('.pac')  ||
         lower.endsWith('.sa')) {
-        return null 
+        return null
+    }
+
+    // A2. Pre-filter dedup BAM: once the length-aware filter runs, filtered.bam is the analysis
+    //     BAM and final.bam is a ~redundant second full BAM. Drop it from the outdir by default
+    //     (still kept in the work dir, so the virgin/raw branch is unaffected). When the filter is
+    //     off, final.bam is the ONLY BAM and this gate does not trigger.
+    if ((lower.endsWith('.final.bam') || lower.endsWith('.final.bam.bai'))
+        && params.dynamic_read_filter && !params.publish_prefilter_bam) {
+        return null
+    }
+
+    // A3. All-positions (per-position) VCFs are the consensus substrate. Gate publishing here
+    //     (hoisted OUT of the annotate block so the flags work regardless of annotate_main_vcf).
+    if (lower.contains('all.pos') && (lower.endsWith('.vcf.gz') || lower.endsWith('.vcf.gz.tbi'))) {
+        if (!params.publish_allpos_vcf) return null
+        if (lower.contains('.raw.') && !params.publish_virgin_allpos_vcf) return null
+        return name
     }
 
     // B. ANNOTATION LOGIC (Filter Raw VCFs if annotation is enabled)
@@ -113,15 +130,12 @@ def getSavePath(filename, params) {
     }
 
     if (params.annotate_main_vcf) {
-        if ((lower.endsWith('.vcf.gz') || lower.endsWith('.vcf.gz.tbi')) && 
-            !lower.contains('.ann.') && 
-            !lower.contains('.var.') && 
-            !lower.contains('freebayes.raw')) { 
-            
-            // Keep the All Positions VCF (Backbone)
-            if (lower.contains('all.pos')) {
-                return name
-            }
+        // all.pos is already handled above; here we only drop the un-annotated main/virgin VCFs
+        // (their .ann. versions are the deliverables).
+        if ((lower.endsWith('.vcf.gz') || lower.endsWith('.vcf.gz.tbi')) &&
+            !lower.contains('.ann.') &&
+            !lower.contains('.var.') &&
+            !lower.contains('freebayes.raw')) {
             return null
         }
     }

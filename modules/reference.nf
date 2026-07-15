@@ -11,7 +11,7 @@ process PREPARE_REFERENCE {
 
     // We keep custom logic here because we NEED to publish the index files (.fai, .bwt, etc.),
     // which the global 'getSavePath' function would filter out.
-    publishDir "${params.outdir}/references/${refId}", mode: 'copy', saveAs: { filename ->
+    publishDir "${params.outdir}/references/${refId}", mode: params.publish_mode, saveAs: { filename ->
         // Only hide the raw copy of reference.fa to save space (since we have the original input)
         if (filename == "reference.fa") return null
         return filename
@@ -152,7 +152,7 @@ process BUILD_MAPPABILITY {
 
 process SNPEFF_BUILD_DB {
     tag "SnpEff DB: ${refId}"
-    publishDir "${params.outdir}/references/${refId}/snpeff", mode: 'copy'
+    publishDir "${params.outdir}/references/${refId}/snpeff", mode: params.publish_mode
     cpus 1
     memory '8 GB'
     
