@@ -813,6 +813,20 @@ th .infoi,.dyn-legend .infoi{background:#dde5f0}
 .dyn-fchip{color:#fff;border-radius:7px;padding:2px 9px;font-size:12px;font-weight:500}
 .dyn-traj{font-size:12.5px;color:#5a6a7c;font-variant-numeric:tabular-nums;margin-left:auto}
 .dyn-empty{padding:36px;text-align:center;color:var(--mut);font-size:14.5px;border:1px dashed var(--line);border-radius:14px}
+/* SNP matrix (explorable heatmap) */
+.snpmx-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.snpmx-wrap{overflow:auto;max-height:72vh;border:1px solid var(--line);border-radius:12px}
+table.snpmx{border-collapse:separate;border-spacing:0;font-size:12px;width:auto}
+table.snpmx th,table.snpmx td{border-bottom:1px solid #eef2f6}
+table.snpmx thead th{position:sticky;top:0;background:#f7f9fc;z-index:5}
+table.snpmx .snpmx-hcell{padding:4px 1px;vertical-align:bottom;height:104px}
+table.snpmx .snpmx-h{writing-mode:vertical-rl;transform:rotate(180deg);font-size:11px;color:#556579;font-weight:600;white-space:nowrap;display:inline-block;max-height:96px;overflow:hidden;text-overflow:ellipsis}
+table.snpmx .snpmx-info{position:sticky;left:0;background:var(--panel);z-index:4;text-align:left;padding:5px 13px;border-right:1px solid var(--line);white-space:nowrap;font-size:12.5px}
+table.snpmx thead .snpmx-info{z-index:6;background:#f7f9fc}
+.snpmx-aa{color:var(--accent);font-weight:700}
+table.snpmx td.snpmx-cell{min-width:32px;text-align:center;color:#0f2431;font-size:9.5px;font-variant-numeric:tabular-nums;padding:3px 2px}
+table.snpmx td.snpmx-empty{background:repeating-linear-gradient(45deg,#f6f8fb,#f6f8fb 3px,#eef2f7 3px,#eef2f7 6px)}
+table.snpmx tbody tr:hover td.snpmx-info{background:#fafcfe}
 """
 
 JS = r"""
@@ -1806,7 +1820,50 @@ function renderDynamics(){
   paintChips(); paintGrid();
 }
 
-function renderAll(){renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderFlags();renderCuration();}
+function snpAfColor(af){return 'rgba(31,120,180,'+(0.16+af*0.8).toFixed(2)+')';}
+function renderSnpMatrix(){
+  var host=el('snpmx_body'), sec=el('snpmatrix'); if(!host)return;
+  var M=R.snp_matrix;
+  if(!(M&&M.rows&&M.rows.length)){ if(sec)sec.style.display='none'; var nv=el('nav-snpmx'); if(nv)nv.style.display='none'; return; }
+  if(sec)sec.style.display='';
+  var samples=M.samples, MAXR=400;
+  host.innerHTML=
+    '<div class="snpmx-controls">'+
+      '<input id="snpmxq" class="dyn-search" type="search" placeholder="&#128269; filter by gene / position / amino acid...">'+
+      '<button class="dyn-btn" id="snpmxdl" title="Download the full matrix as a wide TSV (all sites, per-sample AF and depth)">&#8595; download matrix (TSV)</button>'+
+      '<span class="dyn-count" id="snpmxcount"></span></div>'+
+    '<div class="snpmx-wrap"><table class="snpmx" id="snpmxtable"></table></div>';
+  function draw(){
+    var q=(el('snpmxq').value||'').toLowerCase();
+    var rows=M.rows.filter(function(r){return !q||(r.gene&&r.gene.toLowerCase().indexOf(q)>=0)||String(r.pos).indexOf(q)>=0||(r.aa&&r.aa.toLowerCase().indexOf(q)>=0);});
+    el('snpmxcount').textContent=rows.length+' of '+M.total_sites+' SNP sites'+(rows.length>MAXR?(' (showing '+MAXR+')'):'')+(M.truncated?' - full matrix in the TSV':'');
+    var shown=rows.slice(0,MAXR);
+    var head='<thead><tr><th class="snpmx-info">SNP '+esc(M.reference?('('+M.reference+')'):'')+'</th>'+
+      samples.map(function(s){return '<th class="snpmx-hcell" title="'+esc(s)+'"><span class="snpmx-h">'+esc(s)+'</span></th>';}).join('')+'</tr></thead>';
+    var body='<tbody>'+shown.map(function(r){
+      var lbl='<b>'+esc(r.gene||r.contig)+'</b> '+r.pos+' '+esc(r.ref)+'&#8594;'+esc(r.alt)+(r.aa?(' <span class="snpmx-aa">'+esc(r.aa)+'</span>'):'');
+      var cells=samples.map(function(s,i){var c=r.cells[i];
+        if(!c) return '<td class="snpmx-cell snpmx-empty" title="'+esc(s)+' - not called"></td>';
+        return '<td class="snpmx-cell" style="background:'+snpAfColor(c[0])+'" title="'+esc(s)+'  AF='+c[0].toFixed(3)+(c[1]!=null?('  DP='+c[1]):'')+'">'+c[0].toFixed(2).replace(/^0/,'').replace(/^1\.00$/,'1')+'</td>';
+      }).join('');
+      return '<tr><td class="snpmx-info">'+lbl+'</td>'+cells+'</tr>';
+    }).join('')+'</tbody>';
+    el('snpmxtable').innerHTML=head+body;
+  }
+  el('snpmxq').oninput=draw;
+  el('snpmxdl').onclick=function(){
+    var hdr=['reference','contig','pos','ref_allele','alt_allele','gene','effect','aa_change'];
+    samples.forEach(function(s){hdr.push(s+'|AF');hdr.push(s+'|DP');});
+    var lines=[hdr.join('\t')];
+    M.rows.forEach(function(r){var row=[M.reference||r.contig,r.contig,r.pos,r.ref,r.alt,r.gene,r.eff,r.aa];
+      samples.forEach(function(s,i){var c=r.cells[i]; if(c){row.push(c[0].toFixed(4));row.push(c[1]==null?'':c[1]);}else{row.push('');row.push('');}});
+      lines.push(row.join('\t'));});
+    dl(lines.join('\n')+'\n','snp_matrix.tsv','text/tab-separated-values');
+  };
+  draw();
+}
+
+function renderAll(){renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderSnpMatrix();renderFlags();renderCuration();}
 
 // ---- static wiring ----
 el('meta').textContent=R.samples.length+' samples · '+R.generated;
@@ -2076,7 +2133,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>__TITLE__</title>
 <style>__CSS__</style></head><body>
 <header><span class="logo"><b>BAMpiro</b> QC</span><span class="meta" id="meta"></span>
-<nav><a href="#gstats">Stats</a><a href="#linsum" id="nav-lin">Lineages</a><a href="#dist">Distributions</a><a href="#corr">Correlations</a><a href="#corrmatrix">Corr matrix</a><a href="#qcpca" id="nav-pca">QC space</a><a href="#divcomp" id="nav-divcomp">Divergence</a><a href="#cons">Consensus</a><a href="#genome" id="nav-genome">Genome</a><a href="#function" id="nav-function">Function</a><a href="#geneburden" id="nav-geneburden">Gene burden</a><a href="#hotspots" id="nav-hot">Variable genes</a><a href="#temporal" id="nav-temporal">Temporal</a><a href="#pnps" id="nav-pnps">pN/pS</a><a href="#adna" id="nav-adna">aDNA</a><a href="#flagged">Flagged</a></nav></header>
+<nav><a href="#gstats">Stats</a><a href="#linsum" id="nav-lin">Lineages</a><a href="#dist">Distributions</a><a href="#corr">Correlations</a><a href="#corrmatrix">Corr matrix</a><a href="#qcpca" id="nav-pca">QC space</a><a href="#divcomp" id="nav-divcomp">Divergence</a><a href="#cons">Consensus</a><a href="#genome" id="nav-genome">Genome</a><a href="#function" id="nav-function">Function</a><a href="#geneburden" id="nav-geneburden">Gene burden</a><a href="#hotspots" id="nav-hot">Variable genes</a><a href="#temporal" id="nav-temporal">Temporal</a><a href="#pnps" id="nav-pnps">pN/pS</a><a href="#adna" id="nav-adna">aDNA</a><a href="#snpmatrix" id="nav-snpmx">SNP matrix</a><a href="#flagged">Flagged</a></nav></header>
 <div class="wrap">
 <section class="hero"><div class="summary" id="summary"></div><div class="chips" id="chips"></div></section>
 <div class="provbar"><div class="prov" id="prov"></div><button class="btn" id="printBtn" title="expand + print / save as PDF">⎙ print</button></div>
@@ -2152,6 +2209,8 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="panel" id="hotspotsPanel"><div id="hot_body"><div class="hot-note" id="hot_note"></div><div class="gtable" style="max-height:44vh"><table id="hottable"></table></div></div></div></section>
 <section id="dynamics"><h2>SNP dynamics <span class="c">- search &amp; select genes to see the allele-frequency trajectories of their variants over time; events flag emergence / fixation / loss / non-synonymous</span></h2>
 <div class="panel pad" id="dyn_body"></div></section>
+<section id="snpmatrix"><h2>SNP matrix <span class="c">- every SNP site (rows) &#215; sample (columns); each cell is the allele frequency (hover for AF &amp; depth), a striped cell = not called. Filter by gene / position, then download the full matrix as a TSV.</span></h2>
+<div class="panel pad" id="snpmx_body"></div></section>
 <section id="adna"><h2>aDNA damage authentication <span class="c">- terminal deamination per ancient sample; a screen, not a proof of authenticity</span></h2>
 <div class="panel"><div id="adna_body" class="pad"></div></div></section>
 <section id="temporal"><h2>Temporal sampling overview <span class="c">- per-lineage year span parsed from dates + an informative-site proxy; a readiness check for downstream time-resolved analysis, NOT a clock estimate</span></h2>
@@ -2267,6 +2326,30 @@ def _dyn_af(fmt, val):
     return sum(1 for a in alleles if a != '0') / len(alleles)
 
 
+def _dyn_dp(fmt, val):
+    """Total depth at the site: FORMAT DP, else sum(AD), else AO+RO."""
+    d = dict(zip(fmt.split(':'), val.split(':')))
+    if d.get('DP', '.') not in ('.', ''):
+        try:
+            return int(d['DP'])
+        except ValueError:
+            pass
+    if 'AD' in d:
+        try:
+            ad = [int(x) for x in d['AD'].split(',') if x not in ('.', '')]
+            if ad:
+                return sum(ad)
+        except ValueError:
+            pass
+    if 'AO' in d and 'RO' in d:
+        try:
+            return sum(int(x) for x in d['AO'].split(',') if x not in ('.', '')) + \
+                (int(d['RO']) if d['RO'] not in ('.', '') else 0)
+        except ValueError:
+            pass
+    return None
+
+
 def _dyn_ann(info):
     # snpEff ANN fields: 3=gene, 1=effect, 2=impact, 10=HGVS.p (protein change, e.g. p.Ser315Thr)
     for field in info.split(';'):
@@ -2306,9 +2389,11 @@ def parse_vcfs(paths):
                     af = _dyn_af(c[8], c[9]) if len(c) >= 10 else 1.0
                     if af is None:
                         continue
+                    dp = _dyn_dp(c[8], c[9]) if len(c) >= 10 else None
                     gene, eff, imp, aa = _dyn_ann(c[7])
                     out[sample][f'{chrom}:{pos}'] = {'ref': ref, 'alt': alt.split(',')[0], 'gene': gene,
-                                                     'eff': eff, 'imp': imp, 'aa': aa, 'af': round(af, 4)}
+                                                     'eff': eff, 'imp': imp, 'aa': aa,
+                                                     'af': round(af, 4), 'dp': dp}
         except OSError:
             continue
     return out
@@ -2368,6 +2453,42 @@ def build_dynamics(metadata, variants, emerge=0.25, fix=0.90, loss=0.10, min_poi
     if not out_groups:
         return None
     return {'groups': out_groups, 'thresholds': {'emerge': emerge, 'fix': fix, 'loss': loss}}
+
+
+def build_snp_matrix(variants, reference='', max_sites=8000):
+    """Sparse SNP matrix for the report: samples + one row per SNP site with its ref/alt/annotation
+    and only the cells (sample index -> [af, dp]) actually called. Capped to the most-shared sites to
+    bound the embedded HTML size; the pipeline writes the complete matrix TSV separately."""
+    if not variants:
+        return None
+    samples = list(variants.keys())
+    sidx = {s: i for i, s in enumerate(samples)}
+    sites = {}
+    for s, posmap in variants.items():
+        for key, v in posmap.items():
+            contig, _, pos = key.rpartition(':')
+            try:
+                ipos = int(pos)
+            except ValueError:
+                continue
+            st = sites.setdefault(key, {'contig': contig, 'pos': ipos, 'ref': v.get('ref', ''),
+                                        'alt': set(), 'gene': '', 'eff': '', 'aa': '', 'cells': {}})
+            if v.get('alt'):
+                st['alt'].add(v['alt'])
+            for k in ('gene', 'eff', 'aa'):
+                if v.get(k) and not st[k]:
+                    st[k] = v[k]
+            st['cells'][sidx[s]] = [v['af'], v.get('dp')]
+    ordered = sorted(sites.values(), key=lambda x: (x['contig'], x['pos']))
+    truncated = len(ordered) > max_sites
+    if truncated:
+        ordered = sorted(sites.values(), key=lambda x: -len(x['cells']))[:max_sites]
+        ordered.sort(key=lambda x: (x['contig'], x['pos']))
+    rows = [{'contig': x['contig'], 'pos': x['pos'], 'ref': x['ref'], 'alt': ','.join(sorted(x['alt'])),
+             'gene': x['gene'], 'eff': x['eff'], 'aa': x['aa'], 'n': len(x['cells']), 'cells': x['cells']}
+            for x in ordered]
+    return {'samples': samples, 'reference': reference, 'rows': rows,
+            'total_sites': len(sites), 'truncated': truncated}
 
 
 def main():
@@ -2510,6 +2631,7 @@ def main():
             k, v = kv.split("=", 1)
             provenance[k.strip()] = v.strip()
 
+    _variants = parse_vcfs(args.vcfs)   # parsed once, feeds both the dynamics panel and the SNP matrix
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     payload = {"generated": now, "counts": counts, "thresholds": thr, "dist": DIST,
                "genome_len": genome_len, "snp_density_ok": snp_density_ok, "defs": DEFS, "nbins": NBINS,
@@ -2520,7 +2642,8 @@ def main():
                "mask_iv": (mask_iv[:5000] if mask_iv else None),
                "lineages": lineages, "lin_present": len(lineages) > 0,
                "n_ancient": n_ancient, "anc_thresholds": anc_thr, "provenance": provenance,
-               "dynamics": build_dynamics(parse_metadata(args.metadata), parse_vcfs(args.vcfs)),
+               "dynamics": build_dynamics(parse_metadata(args.metadata), _variants),
+               "snp_matrix": build_snp_matrix(_variants, provenance.get('reference', '')),
                "metrics": [{"key": k, "label": l, "kind": kind, "dir": d} for k, l, kind, d in METRICS],
                "extra": extra_metrics,
                "samples": jsamples}
