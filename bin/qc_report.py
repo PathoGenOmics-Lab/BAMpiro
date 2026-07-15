@@ -809,6 +809,8 @@ th .infoi,.dyn-legend .infoi{background:#dde5f0}
 .dyn-eff{font-size:12px;color:#5a6a7c;margin:3px 0 7px;line-height:1.35}
 .dyn-zoom{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--mut)}
 .dyn-zoom input[type=range]{cursor:pointer;accent-color:var(--accent);width:118px}
+.dyn-toggle{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--mut);cursor:pointer}
+.dyn-toggle input{accent-color:#5b8fc9;cursor:pointer}
 .dyn-aa{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums}
 .dyn-card-f{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
 .dyn-fchip{color:#fff;border-radius:7px;padding:2px 9px;font-size:12px;font-weight:500}
@@ -1755,19 +1757,29 @@ var DYNHELP={emergence:'Emergence: the variant is (near-)absent at the first tim
 var dynState={sel:null,q:''};
 var dynFilter={};
 var dynZoom=250;   // trajectory-card width in px (zoom slider); smaller -> more charts per row
+var dynShowDP=true;   // draw the per-timepoint read-depth (DP) bars behind each trajectory
 function dynHasFlag(v){return v.flags&&v.flags.length;}
 function dynColor(flags){ if(!flags)return '#9fb0c3'; if(flags.indexOf('fixation')>=0)return DYNCOL.fixation; if(flags.indexOf('emergence')>=0)return DYNCOL.emergence; if(flags.indexOf('loss')>=0)return DYNCOL.loss; if(flags.indexOf('high_impact')>=0)return DYNCOL.high_impact; return '#5b6b7e'; }
-function dynMiniChart(v,th){
-  var n=v.times.length,W=250,H=150,ml=30,mr=10,mt=10,mb=26,pw=W-ml-mr,ph=H-mt-mb;
+function dynMiniChart(v,th,showDP){
+  var n=v.times.length,W=250,H=150,ml=30,mt=10,mb=26;
+  var dps=v.dp||[], hasDP=showDP&&dps.some(function(d){return d!=null;});
+  var maxDP=1; if(hasDP){ dps.forEach(function(d){ if(d!=null&&d>maxDP)maxDP=d; }); }
+  var mr=hasDP?16:10, pw=W-ml-mr, ph=H-mt-mb;
   function X(i){ return ml+(n<=1?pw/2:(i/(n-1))*pw); }
-  function Y(a){ return mt+(1-a)*ph; }
+  function Y(a){ return mt+(1-a)*ph; }                  // allele frequency (left axis)
+  function YD(d){ return mt+ph-(d/maxDP)*ph; }          // read depth (right axis)
   var col=dynColor(v.flags), nonsyn=v.flags&&v.flags.indexOf('nonsyn')>=0;
-  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block"><title>Allele frequency (0-1, vertical) across timepoints (horizontal). Hover a point for its exact value.</title>';
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block"><title>Allele frequency (0-1, left axis, line) across timepoints'+(hasDP?'; read depth DP as bars with the value on top':'')+'. Hover for exact values.</title>';
   [0,0.5,1].forEach(function(a){ svg+='<line x1="'+ml+'" y1="'+Y(a).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(a).toFixed(1)+'" stroke="#eef2f7"/><text x="'+(ml-5)+'" y="'+(Y(a)+3.5).toFixed(1)+'" text-anchor="end" font-size="10.5" fill="#8a97a8">'+a.toFixed(1)+'</text>'; });
+  if(hasDP){   // depth bars behind the AF line; each bar carries its DP value on top (see the pass after the line)
+    var bw=Math.min(n<=1?18:(pw/n)*0.5, 16);
+    dps.forEach(function(d,i){ if(d==null)return; var x=X(i), y=YD(d), h=(mt+ph)-y; svg+='<rect x="'+(x-bw/2).toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(0,h).toFixed(1)+'" fill="#7ea8d6" opacity="0.45" rx="1.5"><title>t='+esc(v.times[i]==null?i:v.times[i])+'  DP='+d+'</title></rect>'; });
+  }
   if(th){ [[th.emerge,DYNCOL.emergence],[th.fix,DYNCOL.fixation]].forEach(function(t){ svg+='<line x1="'+ml+'" y1="'+Y(t[0]).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(t[0]).toFixed(1)+'" stroke="'+t[1]+'" stroke-dasharray="3 3" opacity="0.3"/>'; }); }
   var pts=v.traj.map(function(a,i){return X(i).toFixed(1)+','+Y(a).toFixed(1);}).join(' ');
   svg+='<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="2.6" stroke-linejoin="round"/>';
-  v.traj.forEach(function(a,i){ svg+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(a).toFixed(1)+'" r="3.6" fill="'+col+'" stroke="'+(nonsyn?DYNCOL.nonsyn:'#fff')+'" stroke-width="'+(nonsyn?1.8:1)+'"><title>t='+esc(v.times[i]==null?i:v.times[i])+'  AF='+a.toFixed(3)+'</title></circle>'; });
+  v.traj.forEach(function(a,i){ svg+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(a).toFixed(1)+'" r="3.6" fill="'+col+'" stroke="'+(nonsyn?DYNCOL.nonsyn:'#fff')+'" stroke-width="'+(nonsyn?1.8:1)+'"><title>t='+esc(v.times[i]==null?i:v.times[i])+'  AF='+a.toFixed(3)+(hasDP&&dps[i]!=null?('  DP='+dps[i]):'')+'</title></circle>'; });
+  if(hasDP){ dps.forEach(function(d,i){ if(d==null)return; svg+='<text x="'+X(i).toFixed(1)+'" y="'+(YD(d)-3).toFixed(1)+'" text-anchor="middle" font-size="8.5" font-weight="600" fill="#3f6fa8" stroke="#fff" stroke-width="2.6" paint-order="stroke" style="paint-order:stroke">'+d+'</text>'; }); }   // DP value on top of each bar
   v.times.forEach(function(t,i){ svg+='<text x="'+X(i).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10.5" fill="#5a6a7c">'+esc(t==null?i:t)+'</text>'; });
   svg+='</svg>';
   return svg;
@@ -1779,7 +1791,7 @@ function renderDynamics(){
   if(sec)sec.style.display='';
   var th=D.thresholds||{emerge:0.25,fix:0.9,loss:0.1};
   var vars=[];
-  D.groups.forEach(function(g){ g.series.forEach(function(s){ vars.push({gene:s.gene||'(intergenic)',pos:s.pos,group:g.group,times:g.times,traj:s.traj,flags:s.flags,eff:s.eff,imp:s.imp,alt:s.alt,aa:s.aa}); }); });
+  D.groups.forEach(function(g){ g.series.forEach(function(s){ vars.push({gene:s.gene||'(intergenic)',pos:s.pos,group:g.group,times:g.times,traj:s.traj,dp:s.dp,flags:s.flags,eff:s.eff,imp:s.imp,alt:s.alt,aa:s.aa}); }); });
   // per-series (group) metadata + the fields usable as a series filter: group-invariant (one value per
   // series, so timepoint/date -> the trajectory axis -> excluded) and with >1 value across series.
   var groupMeta={}; D.groups.forEach(function(g){ groupMeta[g.group]=g.meta||{}; });
@@ -1821,6 +1833,7 @@ function renderDynamics(){
       '<button class="dyn-btn" id="dynFlag" title="Show only genes that have at least one flagged variant">flagged genes</button>'+
       '<button class="dyn-btn" id="dynAll" title="Select every gene that has a moving variant">all</button>'+
       '<button class="dyn-btn" id="dynNone" title="Deselect all genes">clear</button>'+
+      '<label class="dyn-toggle" title="Show a per-timepoint read-depth (DP) bar behind each trajectory"><input type="checkbox" id="dynDP"'+(dynShowDP?' checked':'')+'> depth bars</label>'+
       '<label class="dyn-zoom" title="Resize the trajectory cards - drag left to fit more charts per row"><span>&#128269;&#8211;/+</span><input type="range" id="dynzoom" min="165" max="360" step="5" value="'+dynZoom+'"></label>'+
       '<span class="dyn-count" id="dynCount"></span></div>'+
     filterUI+
@@ -1853,7 +1866,7 @@ function renderDynamics(){
         cards.push('<div class="dyn-card'+(flagged?' flagged':'')+'">'+
           '<div class="dyn-card-h"><span class="dyn-cardgene" title="Gene (click its chip above to toggle)">'+esc(v.gene||'(intergenic)')+'</span>'+(singleGroup?'':'<span class="dyn-grp" title="Connected series this variant belongs to (the metadata group column, e.g. patient / passage line)">'+esc(v.group)+'</span>')+'<span class="dyn-pos" title="Genomic position (contig:position) of this SNP: '+esc(v.pos)+'">'+esc(posNum)+'</span></div>'+
           '<div class="dyn-eff" title="Predicted effect (snpEff) and protein change HGVS.p: ref amino acid, codon position, alt amino acid">'+esc(v.eff||'variant')+(v.aa?(' &#183; <b class="dyn-aa">'+esc(v.aa)+'</b>'):(v.alt?(' &#183; &#8594;'+esc(v.alt)):''))+'</div>'+
-          dynMiniChart(v,th)+
+          dynMiniChart(v,th,dynShowDP)+
           '<div class="dyn-card-f">'+(chips||'<span class="c" title="no emergence / fixation / loss / non-synonymous event for this variant">no event</span>')+'<span class="dyn-traj" title="Allele frequency at each timepoint, in chronological order">'+v.traj.map(function(a){return a.toFixed(2);}).join(' &#8594; ')+'</span></div>'+
         '</div>');
       });
@@ -1865,6 +1878,7 @@ function renderDynamics(){
   el('dynAll').onclick=function(){ dynState.sel={}; geneList.forEach(function(g){dynState.sel[g]=1;}); paintChips(); paintGrid(); };
   el('dynNone').onclick=function(){ dynState.sel={}; paintChips(); paintGrid(); };
   el('dynzoom').oninput=function(){ dynZoom=+this.value; el('dyngrid').style.setProperty('--dyncw', dynZoom+'px'); };
+  el('dynDP').onchange=function(){ dynShowDP=this.checked; paintGrid(); };
   if(dynFields.length){
     Array.prototype.forEach.call(host.querySelectorAll('.dyn-filters select'),function(sel){ sel.onchange=function(){ var f=sel.getAttribute('data-df'); if(sel.value)dynFilter[f]=sel.value; else delete dynFilter[f]; recompute(); paintChips(); paintGrid(); }; });
     el('dynfclear').onclick=function(){ dynFilter={}; Array.prototype.forEach.call(host.querySelectorAll('.dyn-filters select'),function(s){s.value='';}); recompute(); paintChips(); paintGrid(); };
@@ -2562,10 +2576,11 @@ def build_dynamics(metadata, variants, sample_meta=None, emerge=0.25, fix=0.90, 
             allpos.update(variants[s].keys())
         series = []
         for pos in allpos:
-            traj, meta = [], None
+            traj, dps, meta = [], [], None
             for s in samples:
                 v = variants[s].get(pos)
                 traj.append(v['af'] if v else 0.0)
+                dps.append(v.get('dp') if v else None)   # per-timepoint depth (None where not called)
                 if v and meta is None:
                     meta = v
             if max(traj) - min(traj) < min_move:
@@ -2584,7 +2599,7 @@ def build_dynamics(metadata, variants, sample_meta=None, emerge=0.25, fix=0.90, 
             series.append({'pos': pos, 'gene': (meta or {}).get('gene', ''), 'eff': (meta or {}).get('eff', ''),
                            'imp': (meta or {}).get('imp', ''), 'alt': (meta or {}).get('alt', ''),
                            'aa': (meta or {}).get('aa', ''),
-                           'traj': [round(x, 4) for x in traj], 'flags': flags})
+                           'traj': [round(x, 4) for x in traj], 'dp': dps, 'flags': flags})
         if not series:
             continue
         series.sort(key=lambda x: (-(max(x['traj']) - min(x['traj'])), -len(x['flags'])))
