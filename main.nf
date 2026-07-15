@@ -330,17 +330,23 @@ workflow {
 
     // 8. Annotation
     // Annotate Legacy split VCFs (Homo/Het/Indel/Raw)
+    def freebayes_ann = Channel.empty()   // annotated freebayes.raw (AD + snpEff ANN) -> SNP dynamics
     if (params.annotate_legacy_vcfs) {
         def leg_inputs = Channel.empty()
             .mix(fb_out.homo_snp.map   { sId, rId, vcf -> tuple(rId, sId, "var.homo.SNPs", vcf) })
             .mix(fb_out.het_snp.map    { sId, rId, vcf -> tuple(rId, sId, "var.het.SNPs", vcf) })
             .mix(fb_out.homo_indel.map { sId, rId, vcf -> tuple(rId, sId, "var.homo.indel", vcf) })
             .mix(fb_out.raw_fb.map     { sId, rId, vcf, tbi -> tuple(rId, sId, "freebayes.raw", vcf) })
-        
+
         def ann_leg_in = leg_inputs.combine(snpeff_db.db, by: 0)
             .map { rId, sId, lbl, vcf, cfg, dat -> tuple(sId, rId, lbl, vcf, cfg, dat) }
-        
-        ANNOTATE_LEGACY_VCF(ann_leg_in)
+
+        def ann_leg = ANNOTATE_LEGACY_VCF(ann_leg_in)
+        // Keep the annotated freebayes VCF: it carries per-alt AD (true AF) AND gene/effect (ANN),
+        // so the dynamics panel gets continuous allele frequencies without losing gene annotation.
+        freebayes_ann = ann_leg.out
+            .filter { sId, rId, vcf, tbi -> vcf.name.contains('freebayes.raw') }
+            .map { sId, rId, vcf, tbi -> vcf }
     }
 
     // Annotate Main VCF
@@ -451,9 +457,12 @@ workflow {
         def provenance  = (["container=${params.container}"] + refMap.keySet().collect { "reference=${it}" })
                           .collect { "\"${it}\"" }.join(' ')
         // SNP dynamics: the samplesheet is the metadata source (auto-detects time/group columns; the
-        // panel self-hides if absent), per-sample annotated VCFs supply the allele frequencies.
+        // panel self-hides if absent). Prefer the annotated freebayes VCF (AD -> continuous AF, plus
+        // gene/effect); fall back to the annotated main VCF (GT-based AF) if legacy annotation is off.
         def report_meta = file(params.tsv)
-        def report_vcfs = vcf_for_stats.map { sId, rId, vcf -> vcf }.collect().ifEmpty([])
+        def report_vcfs = (params.annotate_legacy_vcfs ? freebayes_ann
+                                                       : vcf_for_stats.map { sId, rId, vcf -> vcf })
+                          .collect().ifEmpty([])
         QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
                   report_meta, report_vcfs, provenance, tsv_name)
     }
