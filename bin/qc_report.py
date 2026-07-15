@@ -816,6 +816,21 @@ th .infoi,.dyn-legend .infoi{background:#dde5f0}
 .dyn-fchip{color:#fff;border-radius:7px;padding:2px 9px;font-size:12px;font-weight:500}
 .dyn-traj{font-size:12.5px;color:#5a6a7c;font-variant-numeric:tabular-nums;margin-left:auto}
 .dyn-empty{padding:36px;text-align:center;color:var(--mut);font-size:14.5px;border:1px dashed var(--line);border-radius:14px}
+/* Epistasis (co-dynamics pairs) */
+.epi-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.dyn-btn.on{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+.epi-legend{display:flex;gap:20px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--mut);margin-bottom:14px}
+.epi-legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.epi-card{border:1px solid var(--line);border-radius:13px;padding:11px 13px;background:var(--soft);display:flex;flex-direction:column}
+.epi-card.discordant{border-color:#e7d2e6}
+.epi-card-h{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.epi-badge{font-size:12px;font-weight:700;border-radius:7px;padding:2px 9px;color:#fff;font-variant-numeric:tabular-nums}
+.epi-badge.concordant{background:#2f8f5b}
+.epi-badge.discordant{background:#a24a8f}
+.epi-dir{font-size:11.5px;color:var(--mut)}
+.epi-pair{font-size:12.5px;color:#3f4e60;margin-bottom:3px;line-height:1.45}
+.epi-vs{color:var(--mut);font-weight:700;margin:0 4px}
+.epi-card-f{font-size:11.5px;color:var(--mut);margin-top:6px}
 /* SNP matrix (explorable heatmap) */
 .snpmx-controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 .snpmx-toggle{font-size:12.5px;color:var(--mut);display:flex;align-items:center;gap:5px;cursor:pointer}
@@ -1886,6 +1901,69 @@ function renderDynamics(){
   paintChips(); paintGrid();
 }
 
+
+var EPICOL={A:'#2f6fed',B:'#e6893a'};
+var epiState={dir:'all',q:'',minr:null};
+function epiMiniChart(p){
+  var times=p.times||[], A=p.trajA||[], B=p.trajB||[], n=times.length;
+  var W=250,H=150,ml=30,mr=12,mt=10,mb=26,pw=W-ml-mr,ph=H-mt-mb;
+  function X(i){ return ml+(n<=1?pw/2:(i/(n-1))*pw); }
+  function Y(a){ return mt+(1-a)*ph; }
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block"><title>Two allele-frequency trajectories over time; parallel lines = concordant, mirrored = discordant. Hover a point for its value.</title>';
+  [0,0.5,1].forEach(function(a){ svg+='<line x1="'+ml+'" y1="'+Y(a).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(a).toFixed(1)+'" stroke="#eef2f7"/><text x="'+(ml-5)+'" y="'+(Y(a)+3.5).toFixed(1)+'" text-anchor="end" font-size="10.5" fill="#8a97a8">'+a.toFixed(1)+'</text>'; });
+  [[A,EPICOL.A],[B,EPICOL.B]].forEach(function(pr){ var t=pr[0],c=pr[1]; var pts=t.map(function(a,i){return X(i).toFixed(1)+','+Y(a).toFixed(1);}).join(' '); svg+='<polyline points="'+pts+'" fill="none" stroke="'+c+'" stroke-width="2.4" stroke-linejoin="round"/>'; t.forEach(function(a,i){ svg+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(a).toFixed(1)+'" r="3" fill="'+c+'"><title>t='+esc(times[i]==null?i:times[i])+'  AF='+a.toFixed(3)+'</title></circle>'; }); });
+  times.forEach(function(t,i){ svg+='<text x="'+X(i).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10.5" fill="#5a6a7c">'+esc(t==null?i:t)+'</text>'; });
+  svg+='</svg>';
+  return svg;
+}
+function renderEpistasis(){
+  var host=el('epi_body'), sec=el('epistasis'); if(!host)return;
+  var E=R.epistasis;
+  if(!(E&&E.pairs&&E.pairs.length)){ if(sec)sec.style.display='none'; var nv=el('nav-epi'); if(nv)nv.style.display='none'; return; }
+  if(sec)sec.style.display='';
+  if(epiState.minr==null) epiState.minr=E.min_r||0.8;
+  var DIRS=[['all','all pairs'],['concordant','same dynamics'],['discordant','opposite dynamics']];
+  host.innerHTML=
+    '<div class="epi-controls">'+
+      '<input id="epiq" class="dyn-search" type="search" title="Filter the pairs by gene name or position" placeholder="&#128269; filter by gene / position..." value="'+esc(epiState.q)+'">'+
+      DIRS.map(function(d){return '<button class="dyn-btn epi-dirbtn'+(epiState.dir===d[0]?' on':'')+'" data-d="'+d[0]+'" title="Show '+d[1]+'">'+d[0]+'</button>';}).join('')+
+      '<label class="dyn-zoom" title="Minimum |Pearson r| for a pair to be shown"><span>|r| &#8805;</span><input type="range" id="epir" min="'+(E.min_r||0.8)+'" max="0.99" step="0.01" value="'+epiState.minr+'"><b id="epirv">'+epiState.minr.toFixed(2)+'</b></label>'+
+      '<span class="dyn-count" id="epicount"></span></div>'+
+    '<div class="epi-legend">'+
+      '<span title="The two variants rise and fall together across the series - candidate linkage or co-selection."><i style="background:#2f8f5b"></i>concordant / same dynamics <span class="infoi">i</span></span>'+
+      '<span title="One variant rises as the other falls across the series - competing lineages / clonal interference."><i style="background:#a24a8f"></i>discordant / opposite dynamics <span class="infoi">i</span></span>'+
+      '<span class="c">Pearson r of the two allele-frequency trajectories within a series (&#8805; '+E.min_points+' timepoints), averaged across the '+E.n_series+' qualifying series.</span>'+
+    '</div>'+
+    '<div class="dyn-grid" id="epigrid"></div>';
+  function posn(x){ return String(x).split(':').pop(); }
+  function draw(){
+    var q=epiState.q.toLowerCase();
+    var list=E.pairs.filter(function(p){
+      if(Math.abs(p.r)<epiState.minr) return false;
+      if(epiState.dir!=='all'&&p.direction!==epiState.dir) return false;
+      if(q && !((p.geneA&&p.geneA.toLowerCase().indexOf(q)>=0)||(p.geneB&&p.geneB.toLowerCase().indexOf(q)>=0)||String(p.posA).indexOf(q)>=0||String(p.posB).indexOf(q)>=0)) return false;
+      return true;
+    });
+    el('epicount').innerHTML=list.length+' pair(s)'+(epiState.dir==='all'?(' &#183; '+E.n_concordant+' concordant / '+E.n_discordant+' discordant'):'');
+    var grid=el('epigrid');
+    if(!list.length){ grid.innerHTML='<div class="dyn-empty" style="grid-column:1/-1">&#128204; no variant pair matches the current filter.</div>'; return; }
+    grid.innerHTML=list.map(function(p){
+      var arrow=p.direction==='concordant'?'&#8596;':'&#8646;';
+      var nlbl=(p.n>1)?(p.n+' series &#183; r '+(p.rmin>0?'+':'')+p.rmin.toFixed(2)+' to '+(p.rmax>0?'+':'')+p.rmax.toFixed(2)):('series '+esc(p.group));
+      return '<div class="epi-card '+p.direction+'">'+
+        '<div class="epi-card-h"><span class="epi-badge '+p.direction+'">r = '+(p.r>0?'+':'')+p.r.toFixed(2)+'</span><span class="epi-dir">'+(p.direction==='concordant'?'same dynamics':'opposite dynamics')+'</span></div>'+
+        '<div class="epi-pair"><span style="color:'+EPICOL.A+'"><b>'+esc(p.geneA||'(intergenic)')+'</b> '+posn(p.posA)+(p.aaA?(' '+esc(p.aaA)):'')+'</span><span class="epi-vs">'+arrow+'</span><span style="color:'+EPICOL.B+'"><b>'+esc(p.geneB||'(intergenic)')+'</b> '+posn(p.posB)+(p.aaB?(' '+esc(p.aaB)):'')+'</span></div>'+
+        epiMiniChart(p)+
+        '<div class="epi-card-f">'+nlbl+'</div>'+
+      '</div>';
+    }).join('');
+  }
+  el('epiq').oninput=function(){ epiState.q=this.value; draw(); };
+  Array.prototype.forEach.call(host.querySelectorAll('.epi-dirbtn'),function(b){ b.onclick=function(){ epiState.dir=b.getAttribute('data-d'); Array.prototype.forEach.call(host.querySelectorAll('.epi-dirbtn'),function(x){x.className='dyn-btn epi-dirbtn'+(x.getAttribute('data-d')===epiState.dir?' on':'');}); draw(); }; });
+  el('epir').oninput=function(){ epiState.minr=+this.value; el('epirv').textContent=epiState.minr.toFixed(2); draw(); };
+  draw();
+}
+
 function snpAfColor(af){return 'rgba(31,120,180,'+(0.16+af*0.8).toFixed(2)+')';}
 var SNPMX_PAL=['#bcd0ea','#f3d1b0','#c3e0c9','#f0c4cf','#d6c9ec','#b8e0dd','#eadfb0','#dfe4ea','#f2c4c4','#cdd1a8','#e6c3e0','#b9d6ee'];
 var snpmxFilter={};
@@ -1974,7 +2052,7 @@ function renderSnpMatrix(){
   draw();
 }
 
-function renderAll(){renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderSnpMatrix();renderFlags();renderCuration();}
+function renderAll(){renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderEpistasis();renderSnpMatrix();renderFlags();renderCuration();}
 
 // ---- static wiring ----
 el('meta').textContent=R.samples.length+' samples · '+R.generated;
@@ -2159,6 +2237,7 @@ if(!(R.pnps&&R.pnps.length)){var ppx=el('pnps');if(ppx)ppx.style.display='none';
 if(!R.n_ancient){var adx=el('adna');if(adx)adx.style.display='none';var nadx=el('nav-adna');if(nadx)nadx.style.display='none';}
 // SNP dynamics: only when the metadata gave connected time-series (else no section at all)
 if(!(R.dynamics&&R.dynamics.groups&&R.dynamics.groups.length)){var dyx=el('dynamics');if(dyx)dyx.style.display='none';var ndyx=el('nav-dyn');if(ndyx)ndyx.style.display='none';}
+if(!(R.epistasis&&R.epistasis.pairs&&R.epistasis.pairs.length)){var epx=el('epistasis');if(epx)epx.style.display='none';var nepx=el('nav-epi');if(nepx)nepx.style.display='none';}
 // genome track selector (Missing / SNPs / Het / Indels) - only offer tracks that have data
 (function(){var host=el('gtrack'); if(!host)return;var avail=GTRACKS.filter(function(g){return gtrackHas(g.k);});
   if(avail.length<=1){host.style.display='none';return;}
@@ -2244,7 +2323,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>__TITLE__</title>
 <style>__CSS__</style></head><body>
 <header><span class="logo"><b>BAMpiro</b> QC</span><span class="meta" id="meta"></span>
-<nav><a href="#gstats">Stats</a><a href="#linsum" id="nav-lin">Lineages</a><a href="#dist">Distributions</a><a href="#corr">Correlations</a><a href="#corrmatrix">Corr matrix</a><a href="#qcpca" id="nav-pca">QC space</a><a href="#divcomp" id="nav-divcomp">Divergence</a><a href="#cons">Consensus</a><a href="#genome" id="nav-genome">Genome</a><a href="#function" id="nav-function">Function</a><a href="#geneburden" id="nav-geneburden">Gene burden</a><a href="#hotspots" id="nav-hot">Variable genes</a><a href="#temporal" id="nav-temporal">Temporal</a><a href="#pnps" id="nav-pnps">pN/pS</a><a href="#adna" id="nav-adna">aDNA</a><a href="#snpmatrix" id="nav-snpmx">SNP matrix</a><a href="#flagged">Flagged</a></nav></header>
+<nav><a href="#gstats">Stats</a><a href="#linsum" id="nav-lin">Lineages</a><a href="#dist">Distributions</a><a href="#corr">Correlations</a><a href="#corrmatrix">Corr matrix</a><a href="#qcpca" id="nav-pca">QC space</a><a href="#divcomp" id="nav-divcomp">Divergence</a><a href="#cons">Consensus</a><a href="#genome" id="nav-genome">Genome</a><a href="#function" id="nav-function">Function</a><a href="#geneburden" id="nav-geneburden">Gene burden</a><a href="#hotspots" id="nav-hot">Variable genes</a><a href="#temporal" id="nav-temporal">Temporal</a><a href="#pnps" id="nav-pnps">pN/pS</a><a href="#adna" id="nav-adna">aDNA</a><a href="#dynamics" id="nav-dyn">SNP dynamics</a><a href="#epistasis" id="nav-epi">Epistasis</a><a href="#snpmatrix" id="nav-snpmx">SNP matrix</a><a href="#flagged">Flagged</a></nav></header>
 <div class="wrap">
 <section class="hero"><div class="summary" id="summary"></div><div class="chips" id="chips"></div></section>
 <div class="provbar"><div class="prov" id="prov"></div><button class="btn" id="printBtn" title="expand + print / save as PDF">⎙ print</button></div>
@@ -2320,6 +2399,8 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="panel" id="hotspotsPanel"><div id="hot_body"><div class="hot-note" id="hot_note"></div><div class="gtable" style="max-height:44vh"><table id="hottable"></table></div></div></div></section>
 <section id="dynamics"><h2>SNP dynamics <span class="c">- search &amp; select genes to see the allele-frequency trajectories of their variants over time; events flag emergence / fixation / loss / non-synonymous</span></h2>
 <div class="panel pad" id="dyn_body"></div></section>
+<section id="epistasis"><h2>Epistasis <span class="c">- pairs of variants whose allele-frequency trajectories move together (concordant) or in opposition (discordant) within a connected series; candidate linked / co-selected / competing SNPs</span></h2>
+<div class="panel pad" id="epi_body"></div></section>
 <section id="snpmatrix"><h2>SNP matrix <span class="c">- every SNP site (rows) &#215; sample (columns); each cell is the allele frequency (hover for AF &amp; depth), a striped cell = not called. Filter by gene / position, then download the full matrix as a TSV.</span></h2>
 <div class="panel pad" id="snpmx_body"></div></section>
 <section id="adna"><h2>aDNA damage authentication <span class="c">- terminal deamination per ancient sample; a screen, not a proof of authenticity</span></h2>
@@ -2618,6 +2699,72 @@ def build_dynamics(metadata, variants, sample_meta=None, emerge=0.25, fix=0.90, 
     return {'groups': out_groups, 'thresholds': {'emerge': emerge, 'fix': fix, 'loss': loss}}
 
 
+def _pearson(x, y):
+    """Pearson correlation of two equal-length trajectories, or None if undefined (n<3 or a flat one)."""
+    n = len(x)
+    if n < 3 or len(y) != n:
+        return None
+    mx, my = sum(x) / n, sum(y) / n
+    sxx = sum((a - mx) ** 2 for a in x)
+    syy = sum((b - my) ** 2 for b in y)
+    if sxx <= 1e-9 or syy <= 1e-9:
+        return None
+    sxy = sum((a - mx) * (b - my) for a, b in zip(x, y))
+    return sxy / ((sxx * syy) ** 0.5)
+
+
+def build_epistasis(dynamics, min_r=0.8, min_points=3, top=300):
+    """Candidate epistatic / linked variant pairs: two SNPs whose allele-frequency trajectories co-vary
+    WITHIN a connected series - concordant (rise/fall together) or discordant (one rises as the other
+    falls). Score = Pearson r of the two trajectories, averaged across every series where both move and
+    the series has >= min_points timepoints. None if nothing qualifies.
+    Built from the dynamics payload (which already holds only the moving variants per series)."""
+    if not dynamics or not dynamics.get('groups'):
+        return None
+    pairs, n_series = {}, 0
+    for g in dynamics['groups']:
+        times = g.get('times') or []
+        if len(set(times)) < min_points:
+            continue
+        n_series += 1
+        series = g.get('series') or []
+        for i in range(len(series)):
+            for j in range(i + 1, len(series)):
+                a, b = series[i], series[j]
+                r = _pearson(a['traj'], b['traj'])
+                if r is None:
+                    continue
+                lo, hi = (a, b) if str(a['pos']) <= str(b['pos']) else (b, a)  # order-independent key
+                key = (lo['pos'], hi['pos'])
+                rec = pairs.get(key)
+                if rec is None:
+                    rec = pairs[key] = {'A': lo, 'B': hi, 'rs': [], 'bestn': -1,
+                                        'times': times, 'trajA': lo['traj'], 'trajB': hi['traj'], 'group': g['group']}
+                rec['rs'].append(r)
+                if len(set(times)) > rec['bestn']:   # keep the richest series for the mini-chart
+                    rec['bestn'] = len(set(times))
+                    rec['times'], rec['trajA'], rec['trajB'], rec['group'] = times, lo['traj'], hi['traj'], g['group']
+    out = []
+    for rec in pairs.values():
+        rs = rec['rs']
+        mean_r = sum(rs) / len(rs)
+        if abs(mean_r) < min_r:
+            continue
+        A, B = rec['A'], rec['B']
+        out.append({'geneA': A.get('gene', ''), 'posA': A['pos'], 'aaA': A.get('aa', ''), 'effA': A.get('eff', ''),
+                    'geneB': B.get('gene', ''), 'posB': B['pos'], 'aaB': B.get('aa', ''), 'effB': B.get('eff', ''),
+                    'r': round(mean_r, 3), 'n': len(rs), 'rmin': round(min(rs), 3), 'rmax': round(max(rs), 3),
+                    'direction': 'concordant' if mean_r > 0 else 'discordant',
+                    'times': rec['times'], 'trajA': rec['trajA'], 'trajB': rec['trajB'], 'group': rec['group']})
+    if not out:
+        return None
+    out.sort(key=lambda p: -abs(p['r']))
+    out = out[:top]
+    return {'pairs': out, 'min_r': min_r, 'min_points': min_points, 'n_series': n_series,
+            'n_concordant': sum(1 for p in out if p['direction'] == 'concordant'),
+            'n_discordant': sum(1 for p in out if p['direction'] == 'discordant')}
+
+
 def build_snp_matrix(variants, reference='', max_sites=8000):
     """Sparse SNP matrix for the report: samples + one row per SNP site with its ref/alt/annotation
     and only the cells (sample index -> [af, dp]) actually called. Capped to the most-shared sites to
@@ -2796,6 +2943,7 @@ def main():
 
     _variants = parse_vcfs(args.vcfs)   # parsed once, feeds both the dynamics panel and the SNP matrix
     _sample_meta = parse_sample_meta(args.metadata)   # shared by the dynamics filter and the SNP matrix header
+    _dynamics = build_dynamics(parse_metadata(args.metadata), _variants, _sample_meta)   # feeds dynamics + epistasis
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     payload = {"generated": now, "counts": counts, "thresholds": thr, "dist": DIST,
                "genome_len": genome_len, "snp_density_ok": snp_density_ok, "defs": DEFS, "nbins": NBINS,
@@ -2806,7 +2954,8 @@ def main():
                "mask_iv": (mask_iv[:5000] if mask_iv else None),
                "lineages": lineages, "lin_present": len(lineages) > 0,
                "n_ancient": n_ancient, "anc_thresholds": anc_thr, "provenance": provenance,
-               "dynamics": build_dynamics(parse_metadata(args.metadata), _variants, _sample_meta),
+               "dynamics": _dynamics,
+               "epistasis": build_epistasis(_dynamics),
                "snp_matrix": build_snp_matrix(_variants, provenance.get('reference', '')),
                "sample_meta": _sample_meta,
                "metrics": [{"key": k, "label": l, "kind": kind, "dir": d} for k, l, kind, d in METRICS],
