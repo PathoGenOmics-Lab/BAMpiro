@@ -817,7 +817,8 @@ th .infoi,.dyn-legend .infoi{background:#dde5f0}
 .snpmx-controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 .snpmx-toggle{font-size:12.5px;color:var(--mut);display:flex;align-items:center;gap:5px;cursor:pointer}
 .snpmx-metanote{font-size:12px;color:var(--mut);margin-bottom:10px}
-.snpmx-filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:9px 13px;background:var(--soft);border:1px solid var(--line);border-radius:10px}
+.snpmx-filters,.dyn-filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:9px 13px;background:var(--soft);border:1px solid var(--line);border-radius:10px}
+.dyn-filters{margin-bottom:14px}
 .snpmx-flabel{font-size:12.5px;color:var(--mut);font-weight:600}
 .snpmx-fsel{font-size:12.5px;color:#33465c;display:flex;align-items:center;gap:5px}
 .snpmx-fsel select{font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:4px 9px;background:#fff;color:#33465c;cursor:pointer}
@@ -1751,6 +1752,7 @@ function renderADNA(){
 var DYNCOL={fixation:'#2f6fed',emergence:'#1f9d6b',loss:'#e6893a',nonsyn:'#d1495b',high_impact:'#7c3aed'};
 var DYNHELP={emergence:'Emergence: the variant is (near-)absent at the first timepoint, then rises above the emergence threshold - a new allele appearing in this series.',fixation:'Fixation: the allele frequency reaches near 1.0 by the last timepoint - the variant has (almost) taken over.',loss:'Loss: the variant is present early then falls back toward 0 - an allele being lost from the series.',nonsyn:'Non-synonymous: the variant changes the protein (missense / stop / frameshift / splice / inframe indel), per snpEff - potentially functional.',high_impact:'High impact: snpEff predicts a HIGH-impact effect (frameshift, stop gained/lost...) - likely to disrupt the gene.'};
 var dynState={sel:null,q:''};
+var dynFilter={};
 function dynHasFlag(v){return v.flags&&v.flags.length;}
 function dynColor(flags){ if(!flags)return '#9fb0c3'; if(flags.indexOf('fixation')>=0)return DYNCOL.fixation; if(flags.indexOf('emergence')>=0)return DYNCOL.emergence; if(flags.indexOf('loss')>=0)return DYNCOL.loss; if(flags.indexOf('high_impact')>=0)return DYNCOL.high_impact; return '#5b6b7e'; }
 function dynMiniChart(v,th){
@@ -1776,16 +1778,37 @@ function renderDynamics(){
   var th=D.thresholds||{emerge:0.25,fix:0.9,loss:0.1};
   var vars=[];
   D.groups.forEach(function(g){ g.series.forEach(function(s){ vars.push({gene:s.gene||'(intergenic)',pos:s.pos,group:g.group,times:g.times,traj:s.traj,flags:s.flags,eff:s.eff,imp:s.imp,alt:s.alt,aa:s.aa}); }); });
-  var genes={}; vars.forEach(function(v){ (genes[v.gene]=genes[v.gene]||[]).push(v); });
-  var geneList=Object.keys(genes).sort(function(a,b){
-    var fa=genes[a].filter(dynHasFlag).length, fb=genes[b].filter(dynHasFlag).length;
-    return fb-fa || genes[b].length-genes[a].length || a.localeCompare(b);
+  // per-series (group) metadata + the fields usable as a series filter: group-invariant (one value per
+  // series, so timepoint/date -> the trajectory axis -> excluded) and with >1 value across series.
+  var groupMeta={}; D.groups.forEach(function(g){ groupMeta[g.group]=g.meta||{}; });
+  var mfields=(R.sample_meta&&R.sample_meta.fields)||[];
+  var dynFields=[], dynFieldVals={};
+  mfields.forEach(function(f){
+    var invariant=true, all={};
+    D.groups.forEach(function(g){ var vals=(g.meta&&g.meta[f])||[]; if(vals.length>1) invariant=false; vals.forEach(function(v){all[v]=1;}); });
+    var distinct=Object.keys(all);
+    if(invariant && distinct.length>1){ dynFields.push(f); dynFieldVals[f]=distinct.sort(); }
   });
+  function passFilter(grp){ var m=groupMeta[grp]||{}; for(var f in dynFilter){ if(dynFilter[f]){ var vals=m[f]||[]; if(vals.indexOf(dynFilter[f])<0) return false; } } return true; }
+  function filterActive(){ for(var f in dynFilter){ if(dynFilter[f]) return true; } return false; }
+  var genes, geneList;
+  function recompute(){
+    genes={}; vars.forEach(function(v){ if(passFilter(v.group)){ (genes[v.gene]=genes[v.gene]||[]).push(v); } });
+    geneList=Object.keys(genes).sort(function(a,b){
+      var fa=genes[a].filter(dynHasFlag).length, fb=genes[b].filter(dynHasFlag).length;
+      return fb-fa || genes[b].length-genes[a].length || a.localeCompare(b);
+    });
+  }
+  recompute();
   if(dynState.sel===null){
     dynState.sel={};
     var fg=geneList.filter(function(g){return genes[g].some(dynHasFlag);});
     (fg.length?fg:geneList.slice(0,6)).forEach(function(g){dynState.sel[g]=1;});
   }
+  var filterUI=dynFields.length?('<div class="dyn-filters"><span class="snpmx-flabel" title="Show only the connected series (patient / passage line...) matching these metadata values. The time axis of each trajectory is unchanged.">filter series:</span>'+
+    dynFields.map(function(f){ return '<label class="snpmx-fsel">'+esc(f)+' <select data-df="'+esc(f)+'"><option value="">all</option>'+
+      dynFieldVals[f].map(function(v){return '<option value="'+esc(v)+'"'+(dynFilter[f]===v?' selected':'')+'>'+esc(v)+'</option>';}).join('')+'</select></label>'; }).join('')+
+    '<button class="dyn-btn" id="dynfclear">clear</button></div>'):'';
   host.innerHTML=
     '<div class="dyn-controls">'+
       '<input id="dynsearch" class="dyn-search" type="search" title="Type a gene name to filter the gene chips and the grid below" placeholder="&#128269; search gene..." value="'+esc(dynState.q)+'">'+
@@ -1793,6 +1816,7 @@ function renderDynamics(){
       '<button class="dyn-btn" id="dynAll" title="Select every gene that has a moving variant">all</button>'+
       '<button class="dyn-btn" id="dynNone" title="Deselect all genes">clear</button>'+
       '<span class="dyn-count" id="dynCount"></span></div>'+
+    filterUI+
     '<div class="dyn-legend"><span title="'+DYNHELP.emergence+'"><i style="background:'+DYNCOL.emergence+'"></i>emergence <span class="infoi">i</span></span><span title="'+DYNHELP.fixation+'"><i style="background:'+DYNCOL.fixation+'"></i>fixation <span class="infoi">i</span></span><span title="'+DYNHELP.loss+'"><i style="background:'+DYNCOL.loss+'"></i>loss <span class="infoi">i</span></span><span title="'+DYNHELP.nonsyn+'"><i style="border:2px solid '+DYNCOL.nonsyn+';background:#fff"></i>non-synonymous <span class="infoi">i</span></span></div>'+
     '<div class="dyn-genechips" id="dynchips"></div>'+
     '<div class="dyn-grid" id="dyngrid"></div>';
@@ -1802,14 +1826,14 @@ function renderDynamics(){
     el('dynchips').innerHTML=list.length?list.map(function(g){
       var nf=genes[g].filter(dynHasFlag).length;
       return '<button class="dyn-chip'+(dynState.sel[g]?' sel':'')+'" data-g="'+esc(g)+'" title="Click to toggle. '+genes[g].length+' variant trajectory(ies)'+(nf?(', '+nf+' flagged'):'')+'">'+esc(g)+' <b>'+genes[g].length+'</b>'+(nf?'<i class="dyn-dot" title="'+nf+' flagged variant(s) in this gene"></i>':'')+'</button>';
-    }).join(''):'<span class="c">no gene matches "'+esc(dynState.q)+'"</span>';
+    }).join(''):'<span class="c">'+(filterActive()?'no gene matches the current series filter':'no gene matches "'+esc(dynState.q)+'"')+'</span>';
     Array.prototype.forEach.call(el('dynchips').querySelectorAll('.dyn-chip'),function(b){ b.onclick=function(){ var g=b.getAttribute('data-g'); if(dynState.sel[g])delete dynState.sel[g]; else dynState.sel[g]=1; paintChips(); paintGrid(); }; });
   }
   function paintGrid(){
     var q=dynState.q.toLowerCase();
     var sel=geneList.filter(function(g){return dynState.sel[g] && (!q||g.toLowerCase().indexOf(q)>=0);});
-    el('dynCount').textContent=sel.length+' of '+geneList.length+' genes shown';
-    if(!sel.length){ el('dyngrid').innerHTML='<div class="dyn-empty">&#128204; '+(dynState.q?('no selected gene matches &quot;'+esc(dynState.q)+'&quot;'):'Search and select one or more genes above to see the allele-frequency trajectories of their variants.')+'</div>'; return; }
+    el('dynCount').textContent=sel.length+' of '+geneList.length+' genes shown'+(filterActive()?' (series filtered)':'');
+    if(!sel.length){ el('dyngrid').innerHTML='<div class="dyn-empty">&#128204; '+(geneList.length?(dynState.q?('no selected gene matches &quot;'+esc(dynState.q)+'&quot;'):'Search and select one or more genes above to see the allele-frequency trajectories of their variants.'):'no variant trajectory matches the current series filter.')+'</div>'; return; }
     el('dyngrid').innerHTML=sel.map(function(g){
       var vs=genes[g].slice().sort(function(a,b){ return ((dynHasFlag(b)?1:0)-(dynHasFlag(a)?1:0)) || (String(a.pos)>String(b.pos)?1:-1); });
       var cards=vs.map(function(v){
@@ -1828,6 +1852,10 @@ function renderDynamics(){
   el('dynFlag').onclick=function(){ dynState.sel={}; geneList.filter(function(g){return genes[g].some(dynHasFlag);}).forEach(function(g){dynState.sel[g]=1;}); paintChips(); paintGrid(); };
   el('dynAll').onclick=function(){ dynState.sel={}; geneList.forEach(function(g){dynState.sel[g]=1;}); paintChips(); paintGrid(); };
   el('dynNone').onclick=function(){ dynState.sel={}; paintChips(); paintGrid(); };
+  if(dynFields.length){
+    Array.prototype.forEach.call(host.querySelectorAll('.dyn-filters select'),function(sel){ sel.onchange=function(){ var f=sel.getAttribute('data-df'); if(sel.value)dynFilter[f]=sel.value; else delete dynFilter[f]; recompute(); paintChips(); paintGrid(); }; });
+    el('dynfclear').onclick=function(){ dynFilter={}; Array.prototype.forEach.call(host.querySelectorAll('.dyn-filters select'),function(s){s.value='';}); recompute(); paintChips(); paintGrid(); };
+  }
   paintChips(); paintGrid();
 }
 
@@ -2484,8 +2512,10 @@ def parse_vcfs(paths):
     return out
 
 
-def build_dynamics(metadata, variants, emerge=0.25, fix=0.90, loss=0.10, min_points=2, min_move=0.15):
-    """Per-connected-group AF trajectories over time, only for SNPs that move. None if nothing to show."""
+def build_dynamics(metadata, variants, sample_meta=None, emerge=0.25, fix=0.90, loss=0.10, min_points=2, min_move=0.15):
+    """Per-connected-group AF trajectories over time, only for SNPs that move. None if nothing to show.
+    sample_meta (parse_sample_meta output) attaches each group's metadata signature so the report can
+    filter the series by any group-invariant field (e.g. patient / lineage)."""
     if not metadata:
         return None
     groups = {}
@@ -2532,8 +2562,15 @@ def build_dynamics(metadata, variants, emerge=0.25, fix=0.90, loss=0.10, min_poi
         if not series:
             continue
         series.sort(key=lambda x: (-(max(x['traj']) - min(x['traj'])), -len(x['flags'])))
+        gmeta = {}
+        if sample_meta and sample_meta.get('fields'):
+            rows = sample_meta.get('rows', {})
+            for f in sample_meta['fields']:
+                vals = sorted({v for v in ((rows.get(s) or {}).get(f) for s in samples) if v})
+                if vals:
+                    gmeta[f] = vals
         out_groups.append({'group': g, 'samples': samples, 'times': times,
-                           'tnums': [metadata[s]['tnum'] for s in samples],
+                           'tnums': [metadata[s]['tnum'] for s in samples], 'meta': gmeta,
                            'series': series, 'n_flagged': sum(1 for x in series if x['flags'])})
     if not out_groups:
         return None
@@ -2717,6 +2754,7 @@ def main():
             provenance[k.strip()] = v.strip()
 
     _variants = parse_vcfs(args.vcfs)   # parsed once, feeds both the dynamics panel and the SNP matrix
+    _sample_meta = parse_sample_meta(args.metadata)   # shared by the dynamics filter and the SNP matrix header
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     payload = {"generated": now, "counts": counts, "thresholds": thr, "dist": DIST,
                "genome_len": genome_len, "snp_density_ok": snp_density_ok, "defs": DEFS, "nbins": NBINS,
@@ -2727,9 +2765,9 @@ def main():
                "mask_iv": (mask_iv[:5000] if mask_iv else None),
                "lineages": lineages, "lin_present": len(lineages) > 0,
                "n_ancient": n_ancient, "anc_thresholds": anc_thr, "provenance": provenance,
-               "dynamics": build_dynamics(parse_metadata(args.metadata), _variants),
+               "dynamics": build_dynamics(parse_metadata(args.metadata), _variants, _sample_meta),
                "snp_matrix": build_snp_matrix(_variants, provenance.get('reference', '')),
-               "sample_meta": parse_sample_meta(args.metadata),
+               "sample_meta": _sample_meta,
                "metrics": [{"key": k, "label": l, "kind": kind, "dir": d} for k, l, kind, d in METRICS],
                "extra": extra_metrics,
                "samples": jsamples}
