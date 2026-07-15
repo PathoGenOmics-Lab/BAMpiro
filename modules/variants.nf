@@ -55,7 +55,8 @@ process CALL_FREEBAYES {
     }
 
     # 1. Handle Excluded Regions (Repeats)
-    awk 'NR>1 && \$1!="" && \$2!="" && \$3!="" {print \$1"\\t"\$2"\\t"\$3}' !{exclude_txt} > exclude.regions.tsv || true
+    # Keep only numeric-coordinate rows -> strips EVERY header (the combined nucmer+genmap exclude has two)
+    awk 'tolower(\$1)!="chrom" && \$2 ~ /^[0-9]+\$/ && \$3 ~ /^[0-9]+\$/ {print \$1"\\t"\$2"\\t"\$3}' !{exclude_txt} > exclude.regions.tsv || true
     EXCL_ARG=""
     if [[ "!{params.exclude_repeats}" == "true" && -s exclude.regions.tsv ]]; then 
         EXCL_ARG="-T ^exclude.regions.tsv"
@@ -348,7 +349,8 @@ process CALL_FREEBAYES_RAW {
     if [ -n "\${SLURM_TMPDIR:-}" ]; then export TMPDIR="\$SLURM_TMPDIR"; else export TMPDIR="./tmp_fbraw"; fi
     mkdir -p "\$TMPDIR"
 
-    awk 'NR>1 && \$1!="" && \$2!="" && \$3!="" {print \$1"\\t"\$2"\\t"\$3}' !{exclude_txt} > exclude.regions.tsv || true
+    # Keep only numeric-coordinate rows -> strips EVERY header (the combined nucmer+genmap exclude has two)
+    awk 'tolower(\$1)!="chrom" && \$2 ~ /^[0-9]+\$/ && \$3 ~ /^[0-9]+\$/ {print \$1"\\t"\$2"\\t"\$3}' !{exclude_txt} > exclude.regions.tsv || true
     EXCL_ARG=""
     if [[ "!{params.exclude_repeats}" == "true" && -s exclude.regions.tsv ]]; then EXCL_ARG="-T ^exclude.regions.tsv"; fi
 

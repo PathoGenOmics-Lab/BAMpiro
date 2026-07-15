@@ -74,7 +74,9 @@ def main():
             for n, L in contigs:
                 mul = tracks[n]
                 nonrep = (mul <= W)                                # a read starting here can anchor within W bp
-                pos_or_neg = np.where(nonrep, np.arange(L), -1)
+                # sentinel -W (not -1): a position with NO anchor start before it (contig start inside a
+                # repeat) then gets distance p-(-W) = p+W >= W and is correctly masked.
+                pos_or_neg = np.where(nonrep, np.arange(L), -W)
                 last_nonrep = np.maximum.accumulate(pos_or_neg)     # last anchor-start at or before each position
                 masked = (np.arange(L) - last_nonrep) >= W          # no anchor start within the preceding W bp
                 d = np.diff(np.r_[np.int8(0), masked.view(np.int8), np.int8(0)])
