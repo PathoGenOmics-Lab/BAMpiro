@@ -45,7 +45,7 @@ process RUN_PATHOTYPR_PE {
     # Drug resistance (WHO catalogue markers) -> \${prefix}_<sample>_mutations.tsv
     ${pathotypr_bin} split-fastq -i ${r1} -i ${r2} --paired \\
         --reference ${ref_fasta_pathotypr} --markers ${dr_markers} \\
-        --output-prefix ${sampleId}.pathotypr.dr --threads ${task.cpus}
+        --output-prefix ${sampleId}.pathotypr.dr --min-alt-percent ${params.pathotypr_min_alt} --threads ${task.cpus}
     # Fix the DR detail file name to carry our sampleId (pathotypr names the sample after the FASTQ)
     cp "\$(ls ${sampleId}.pathotypr.dr_*_mutations.tsv | head -1)" ${sampleId}.dr_mutations.tsv
     """
@@ -77,7 +77,7 @@ process RUN_PATHOTYPR_SE {
         --nested-classification --output-prefix ${sampleId}.pathotypr.lineage --threads ${task.cpus}
     ${pathotypr_bin} split-fastq -i ${r1} \\
         --reference ${ref_fasta_pathotypr} --markers ${dr_markers} \\
-        --output-prefix ${sampleId}.pathotypr.dr --threads ${task.cpus}
+        --output-prefix ${sampleId}.pathotypr.dr --min-alt-percent ${params.pathotypr_min_alt} --threads ${task.cpus}
     cp "\$(ls ${sampleId}.pathotypr.dr_*_mutations.tsv | head -1)" ${sampleId}.dr_mutations.tsv
     """
 }
