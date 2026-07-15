@@ -2324,14 +2324,14 @@ function renderDrug(){
   if(sec)sec.style.display='';
   var samples=D.samples, drugs=D.drugs, calls=D.calls;
   var cell={}, cmut={};
-  calls.forEach(function(c){ var k=c.s+''+c.drug; (cell[k]=cell[k]||[]).push(c.gn); (cmut[k]=cmut[k]||[]).push(c); });
+  calls.forEach(function(c){ (cell[c.s]=cell[c.s]||{}); (cell[c.s][c.drug]=cell[c.s][c.drug]||[]).push(c.gn); (cmut[c.s]=cmut[c.s]||{}); (cmut[c.s][c.drug]=cmut[c.s][c.drug]||[]).push(c); });
   var mx='<div class="dr-mxwrap"><table class="drmx"><thead><tr><th class="dr-corner">sample \\ drug</th>'+
     drugs.map(function(dr){return '<th class="dr-hcell" title="'+esc(dr)+'"><span class="dr-h">'+esc(dr)+'</span></th>';}).join('')+'</tr></thead><tbody>'+
     samples.map(function(s){ return '<tr><th class="dr-row" title="'+esc(s)+'">'+esc(s)+'</th>'+drugs.map(function(dr){
-      var k=s+''+dr, gns=cell[k];
+      var gns=(cell[s]||{})[dr];
       if(!gns) return '<td class="drmx-cell" title="'+esc(s)+' &#183; '+esc(dr)+': no mutation detected"></td>';
       var st=drStatus(gns);
-      var muts=cmut[k].map(function(c){return c.gene+' '+c.mutation+(c.gn?(' (WHO '+c.gn+')'):'');}).join('; ');
+      var muts=((cmut[s]||{})[dr]||[]).map(function(c){return c.gene+' '+c.mutation+(c.gn?(' (WHO '+c.gn+')'):'');}).join('; ');
       return '<td class="drmx-cell" style="background:'+st.c+'" title="'+esc(s)+' &#183; '+esc(dr)+' &#8212; '+esc(muts)+'"><b>'+st.t+'</b></td>';
     }).join('')+'</tr>'; }).join('')+'</tbody></table></div>';
   host.innerHTML=
@@ -3363,12 +3363,15 @@ def main():
             provenance[k.strip()] = v.strip()
 
     _variants = parse_vcfs(args.vcfs)   # parsed once, feeds both the dynamics panel and the SNP matrix
-    if args.vcfs_h37rv:   # attach the H37Rv/Mycobrowser amino-acid change per variant (matched by sample + contig:pos)
+    if args.vcfs_h37rv:   # attach the H37Rv/Mycobrowser amino-acid change per variant
         _h37 = parse_vcfs(args.vcfs_h37rv)
         for _s, _pm in _variants.items():
             _hs = _h37.get(_s, {})
+            # also index by bare position: MTB is single-contig, so a differing contig NAME between the
+            # used-reference and H37Rv VCFs should still match (only the coordinate needs to line up).
+            _hpos = {_k.rpartition(':')[2]: _hv for _k, _hv in _hs.items()}
             for _key, _v in _pm.items():
-                _hv = _hs.get(_key)
+                _hv = _hs.get(_key) or _hpos.get(_key.rpartition(':')[2])
                 if _hv and _hv.get('aa'):
                     _v['aa_h37rv'] = _hv['aa']
     _sample_meta = parse_sample_meta(args.metadata)   # shared by the dynamics filter and the SNP matrix header
