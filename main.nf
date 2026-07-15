@@ -450,6 +450,11 @@ workflow {
         // Provenance footer: pinned container digest + reference(s).
         def provenance  = (["container=${params.container}"] + refMap.keySet().collect { "reference=${it}" })
                           .collect { "\"${it}\"" }.join(' ')
-        QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask, provenance, tsv_name)
+        // SNP dynamics: the samplesheet is the metadata source (auto-detects time/group columns; the
+        // panel self-hides if absent), per-sample annotated VCFs supply the allele frequencies.
+        def report_meta = file(params.tsv)
+        def report_vcfs = vcf_for_stats.map { sId, rId, vcf -> vcf }.collect().ifEmpty([])
+        QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
+                  report_meta, report_vcfs, provenance, tsv_name)
     }
 }

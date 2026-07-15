@@ -46,6 +46,8 @@ process QC_REPORT {
     path(consensus)         // all masked consensus FASTAs (may be empty)
     path(gff)               // reference GFF3 -> per-gene SNP-density hotspots panel
     path(mask_bed)          // reference repeat/exclude BED -> masked-regions / callability panel
+    path(metadata)          // samplesheet/metadata TSV -> SNP dynamics panel (auto-detects time+group)
+    path(vcfs)              // per-sample annotated VCFs -> per-SNP allele frequencies for dynamics
     val(provenance)         // pre-quoted provenance tokens (container=..., reference=...)
     val(basename)
 
@@ -62,12 +64,14 @@ process QC_REPORT {
     # Optional inputs self-hide their panel when absent/empty (parse_gff & parse_bed are tolerant).
     LC_ARG=""; [ -f "${palette}" ] && LC_ARG="--lineage-colors ${palette}"
     MASK_ARG=""; [ -s "${mask_bed}" ] && MASK_ARG="--mask-bed ${mask_bed}"
+    MD_ARG=""; [ -s "${metadata}" ] && MD_ARG="--metadata ${metadata}"
+    VCF_ARG=""; [ -n "${vcfs}" ] && VCF_ARG="--vcfs ${vcfs}"
     python3 ${projectDir}/bin/qc_report.py \\
         --summary ${summary} \\
         ${cons_arg} \\
         --gene-burden ${gene_burden} \\
         --gff ${gff} \\
-        \$MASK_ARG \$LC_ARG \\
+        \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \\
         --provenance ${provenance} \\
         --out-html ${basename}_qc_report.html \\
         --out-flags ${basename}_qc_flags.tsv \\

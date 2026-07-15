@@ -779,6 +779,16 @@ tr.lingrp td{background:#f0f5f9;color:#33465c;font-weight:600;font-size:11px;let
   details.dd .menu{min-width:0;max-width:calc(100vw - 28px);box-sizing:border-box} #thbox{min-width:0!important}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+/* SNP dynamics panel */
+.dyngrp{margin:12px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--soft)}
+.dynhd{margin-bottom:6px}
+.dynleg{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--mut);margin-bottom:8px}
+.dynleg i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.dyntbl{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px}
+.dyntbl th,.dyntbl td{text-align:left;padding:3px 8px;border-bottom:1px solid var(--line)}
+.dyntbl th{color:var(--mut);font-weight:600}
+.dtraj{font-variant-numeric:tabular-nums;color:var(--ink)}
+.dchip{display:inline-block;color:#fff;border-radius:5px;padding:1px 6px;font-size:10px;margin-right:3px}
 """
 
 JS = r"""
@@ -1680,7 +1690,49 @@ function renderADNA(){
   Array.prototype.forEach.call(host.querySelectorAll('.sname'),function(sp){sp.onclick=function(){openDetail(sp.getAttribute('data-s'));};});
 }
 
-function renderAll(){renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderFlags();renderCuration();}
+function renderDynamics(){
+  var host=el('dyn_body'), sec=el('dynamics'); if(!host)return;
+  var D=R.dynamics;
+  if(!(D&&D.groups&&D.groups.length)){ if(sec)sec.style.display='none'; var nv=el('nav-dyn'); if(nv)nv.style.display='none'; return; }
+  if(sec)sec.style.display='';
+  var th=D.thresholds||{emerge:0.25,fix:0.9,loss:0.1};
+  var FCOL={fixation:'#2f6fed',emergence:'#22a06b',loss:'#e6893a',nonsyn:'#d1495b',high_impact:'#7c3aed'};
+  function serColor(f){ if(f.indexOf('fixation')>=0)return FCOL.fixation; if(f.indexOf('emergence')>=0)return FCOL.emergence; if(f.indexOf('loss')>=0)return FCOL.loss; return '#c3ccda'; }
+  var MAXSER=60;
+  var body=D.groups.map(function(g){
+    var n=g.times.length, W=680,H=250, ml=42,mr=14,mt=12,mb=34, pw=W-ml-mr, ph=H-mt-mb;
+    function X(i){ return ml + (n<=1? pw/2 : (i/(n-1))*pw); }
+    function Y(a){ return mt + (1-a)*ph; }
+    var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="max-width:'+W+'px;display:block;font:11px system-ui">';
+    [0,0.25,0.5,0.75,1].forEach(function(a){ svg+='<line x1="'+ml+'" y1="'+Y(a).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(a).toFixed(1)+'" stroke="#eef2f7"/><text x="'+(ml-6)+'" y="'+(Y(a)+3).toFixed(1)+'" text-anchor="end" fill="#8a97a8">'+a.toFixed(2)+'</text>'; });
+    [[th.emerge,FCOL.emergence],[th.fix,FCOL.fixation],[th.loss,FCOL.loss]].forEach(function(t){ svg+='<line x1="'+ml+'" y1="'+Y(t[0]).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(t[0]).toFixed(1)+'" stroke="'+t[1]+'" stroke-dasharray="3 3" opacity="0.35"/>'; });
+    g.times.forEach(function(t,i){ svg+='<text x="'+X(i).toFixed(1)+'" y="'+(H-14)+'" text-anchor="middle" fill="#4a5768">'+esc(t==null?i:t)+'</text>'; });
+    svg+='<text x="'+ml+'" y="'+(H-1)+'" fill="#8a97a8" font-size="10">time / passage &#8594;</text>';
+    g.series.slice(0,MAXSER).forEach(function(s){
+      var col=serColor(s.flags), flagged=s.flags.length>0, nonsyn=s.flags.indexOf('nonsyn')>=0;
+      var pts=s.traj.map(function(a,i){return X(i).toFixed(1)+','+Y(a).toFixed(1);}).join(' ');
+      var tip=esc(s.pos+(s.gene?(' '+s.gene):'')+(s.eff?(' '+s.eff):'')+(s.flags.length?(' ['+s.flags.join(',')+']'):''));
+      svg+='<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="'+(flagged?2:1)+'" opacity="'+(flagged?0.95:0.4)+'"><title>'+tip+'</title></polyline>';
+      s.traj.forEach(function(a,i){ svg+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(a).toFixed(1)+'" r="'+(flagged?3:2)+'" fill="'+col+'" stroke="'+(nonsyn?FCOL.nonsyn:'#fff')+'" stroke-width="'+(nonsyn?1.6:0.6)+'"><title>'+tip+' | AF='+a.toFixed(2)+'</title></circle>'; });
+    });
+    svg+='</svg>';
+    var flagged=g.series.filter(function(s){return s.flags.length;});
+    var tbl='';
+    if(flagged.length){
+      tbl='<table class="dyntbl"><thead><tr><th>position</th><th>gene</th><th>effect</th><th>events</th><th>trajectory</th></tr></thead><tbody>'+
+        flagged.slice(0,40).map(function(s){
+          var chips=s.flags.map(function(f){return '<span class="dchip" style="background:'+(FCOL[f]||'#8895a6')+'">'+f+'</span>';}).join(' ');
+          return '<tr><td>'+esc(s.pos)+'</td><td>'+esc(s.gene||'-')+'</td><td>'+esc(s.eff||'-')+'</td><td>'+chips+'</td><td class="dtraj">'+s.traj.map(function(a){return a.toFixed(2);}).join(' &#8594; ')+'</td></tr>';
+        }).join('')+'</tbody></table>';
+    }
+    var extra=g.series.length>MAXSER?('<span class="c"> (showing '+MAXSER+' most dynamic of '+g.series.length+')</span>'):'';
+    return '<div class="dyngrp"><div class="dynhd"><b>'+esc(g.group)+'</b> <span class="c">- '+g.samples.length+' samples, '+g.n_flagged+' flagged SNP(s)'+extra+'</span></div>'+svg+tbl+'</div>';
+  }).join('');
+  var legend='<div class="dynleg"><span><i style="background:'+FCOL.emergence+'"></i>emergence</span><span><i style="background:'+FCOL.fixation+'"></i>fixation</span><span><i style="background:'+FCOL.loss+'"></i>loss</span><span><i style="border:2px solid '+FCOL.nonsyn+';background:#fff"></i>non-synonymous</span><span class="c" style="margin-left:auto">dashed guides = thresholds; each line = one SNP</span></div>';
+  host.innerHTML=legend+body;
+}
+
+function renderAll(){renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderFlags();renderCuration();}
 
 // ---- static wiring ----
 el('meta').textContent=R.samples.length+' samples · '+R.generated;
@@ -2000,6 +2052,8 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <section id="hotspots"><h2>Variable genes <span class="c">- genes/regions with the most SNPs across the cohort; click a row to mark it on the SNP track</span>
 <input class="gsearch" id="hotq" type="search" placeholder="search gene" style="margin-left:auto"><button class="exp-h" data-panel="hotspotsPanel" data-render="hotspots">⤢ full</button></h2>
 <div class="panel" id="hotspotsPanel"><div id="hot_body"><div class="hot-note" id="hot_note"></div><div class="gtable" style="max-height:44vh"><table id="hottable"></table></div></div></div></section>
+<section id="dynamics"><h2>SNP dynamics <span class="c">- allele-frequency trajectories over time per connected series; points flag emergence / fixation / loss / non-synonymous. Appears only when the metadata carries time + group columns.</span></h2>
+<div class="panel pad" id="dyn_body"></div></section>
 <section id="adna"><h2>aDNA damage authentication <span class="c">- terminal deamination per ancient sample; a screen, not a proof of authenticity</span></h2>
 <div class="panel"><div id="adna_body" class="pad"></div></div></section>
 <section id="temporal"><h2>Temporal sampling overview <span class="c">- per-lineage year span parsed from dates + an informative-site proxy; a readiness check for downstream time-resolved analysis, NOT a clock estimate</span></h2>
@@ -2028,6 +2082,192 @@ def build_html(title, payload):
                  .replace("__JS__", JS).replace("__JSON__", data))
 
 
+# ============================================================================
+#  SNP DYNAMICS (optional): flexible metadata + per-sample VCFs -> per-connected-group
+#  allele-frequency trajectories over time with flagged events. Self-hides if the metadata
+#  has no time+group columns or no VCFs are given.
+# ============================================================================
+_DYN_SAMPLE_RE = re.compile(r'^(sample_?id|sampleid|sample|name|gid|strain|isolate)$', re.I)
+_DYN_TIME_RE   = re.compile(r'(passage|pase|timepoint|time_?point|^time$|^day$|date|week|month|hour|generation|^tp$|visit|^t\d*$)', re.I)
+_DYN_GROUP_RE  = re.compile(r'(group|series|patient|host|subject|cluster|experiment|^line$|replicate|chain|pair|lineage_?id|donor|case|animal)', re.I)
+_DYN_NONSYN    = re.compile(r'missense|stop_gained|stop_lost|start_lost|frameshift|inframe|splice|initiator', re.I)
+
+
+def _dyn_open(path):
+    return gzip.open(path, 'rt', encoding='utf-8', errors='replace') if str(path).endswith('.gz') \
+        else open(path, 'r', encoding='utf-8', errors='replace')
+
+
+def _dyn_num(x):
+    if x is None:
+        return None
+    m = re.search(r'-?\d+\.?\d*', str(x))
+    return float(m.group()) if m else None
+
+
+def parse_metadata(path):
+    """{sample: {'time','tnum','group'}} auto-detecting sample/time/group columns; {} if unusable."""
+    if not path or not os.path.exists(path):
+        return {}
+    header, rows = None, []
+    try:
+        with _dyn_open(path) as fh:
+            for line in fh:
+                if not line.strip() or line.startswith('#'):
+                    continue
+                cells = line.rstrip('\n').split('\t')
+                if header is None:
+                    header = [c.strip() for c in cells]
+                    continue
+                rows.append(cells)
+    except OSError:
+        return {}
+    if not header:
+        return {}
+    def find(rx):
+        for i, h in enumerate(header):
+            if rx.search(h.replace(' ', '_')):
+                return i
+        return None
+    si = next((i for i, h in enumerate(header) if _DYN_SAMPLE_RE.match(h.strip())), 0)
+    ti, gi = find(_DYN_TIME_RE), find(_DYN_GROUP_RE)
+    out = {}
+    for r in rows:
+        if si >= len(r):
+            continue
+        s = r[si].strip()
+        if not s or s in out:
+            continue
+        out[s] = {'time':  r[ti].strip() if (ti is not None and ti < len(r)) else None,
+                  'tnum':  _dyn_num(r[ti]) if (ti is not None and ti < len(r)) else None,
+                  'group': r[gi].strip() if (gi is not None and gi < len(r)) else None}
+    return out
+
+
+def _dyn_af(fmt, val):
+    """First-alt allele fraction: AD/AO+RO (true AF) else GT dosage (hom 1.0 / het 0.5)."""
+    d = dict(zip(fmt.split(':'), val.split(':')))
+    if 'AD' in d:
+        try:
+            ad = [int(x) for x in d['AD'].split(',') if x not in ('.', '')]
+            if len(ad) >= 2 and sum(ad) > 0:
+                return sum(ad[1:]) / sum(ad)
+        except ValueError:
+            pass
+    if 'AO' in d and 'RO' in d:
+        try:
+            ao = sum(int(x) for x in d['AO'].split(',') if x not in ('.', ''))
+            ro = int(d['RO']) if d['RO'] not in ('.', '') else 0
+            if ao + ro > 0:
+                return ao / (ao + ro)
+        except ValueError:
+            pass
+    alleles = [a for a in d.get('GT', './.').replace('|', '/').split('/') if a not in ('.', '')]
+    if not alleles:
+        return None
+    return sum(1 for a in alleles if a != '0') / len(alleles)
+
+
+def _dyn_ann(info):
+    for field in info.split(';'):
+        if field.startswith('ANN='):
+            a = field[4:].split(',')[0].split('|')
+            return (a[3] if len(a) > 3 else ''), (a[1] if len(a) > 1 else ''), (a[2] if len(a) > 2 else '')
+    return '', '', ''
+
+
+def parse_vcfs(paths):
+    """{sample: {'chrom:pos': {ref,alt,gene,eff,imp,af}}} from annotated per-sample VCFs (SNPs only).
+    Sample = the VCF #CHROM last column, so filenames are irrelevant."""
+    out = {}
+    for p in paths or []:
+        if not p or not os.path.exists(p):
+            continue
+        try:
+            with _dyn_open(p) as fh:
+                sample = None
+                for line in fh:
+                    if line.startswith('##'):
+                        continue
+                    if line.startswith('#CHROM'):
+                        cols = line.rstrip('\n').split('\t')
+                        sample = cols[9] if len(cols) > 9 else os.path.basename(p).split('.')[0]
+                        out.setdefault(sample, {})
+                        continue
+                    if sample is None:
+                        continue
+                    c = line.rstrip('\n').split('\t')
+                    if len(c) < 8:
+                        continue
+                    chrom, pos, ref, alt = c[0], c[1], c[3], c[4]
+                    if alt in ('.', '') or len(ref) != 1 or any(len(a) != 1 for a in alt.split(',')):
+                        continue
+                    af = _dyn_af(c[8], c[9]) if len(c) >= 10 else 1.0
+                    if af is None:
+                        continue
+                    gene, eff, imp = _dyn_ann(c[7])
+                    out[sample][f'{chrom}:{pos}'] = {'ref': ref, 'alt': alt.split(',')[0], 'gene': gene,
+                                                     'eff': eff, 'imp': imp, 'af': round(af, 4)}
+        except OSError:
+            continue
+    return out
+
+
+def build_dynamics(metadata, variants, emerge=0.25, fix=0.90, loss=0.10, min_points=2, min_move=0.15):
+    """Per-connected-group AF trajectories over time, only for SNPs that move. None if nothing to show."""
+    if not metadata:
+        return None
+    groups = {}
+    for s, md in metadata.items():
+        g = md.get('group')
+        if g and s in variants:
+            groups.setdefault(g, []).append(s)
+    out_groups = []
+    for g, samples in sorted(groups.items()):
+        samples = sorted(samples, key=lambda s: (metadata[s]['tnum'] is None,
+                                                 metadata[s]['tnum'] if metadata[s]['tnum'] is not None else 0,
+                                                 str(metadata[s]['time'])))
+        times = [metadata[s]['time'] for s in samples]
+        if len(set(times)) < min_points:
+            continue
+        allpos = set()
+        for s in samples:
+            allpos.update(variants[s].keys())
+        series = []
+        for pos in allpos:
+            traj, meta = [], None
+            for s in samples:
+                v = variants[s].get(pos)
+                traj.append(v['af'] if v else 0.0)
+                if v and meta is None:
+                    meta = v
+            if max(traj) - min(traj) < min_move:
+                continue
+            flags = []
+            if traj[0] <= loss and max(traj) >= emerge:
+                flags.append('emergence')
+            if traj[-1] >= fix and traj[0] < fix:
+                flags.append('fixation')
+            if traj[0] >= emerge and traj[-1] <= loss:
+                flags.append('loss')
+            if meta and _DYN_NONSYN.search(meta.get('eff', '')):
+                flags.append('nonsyn')
+            if meta and meta.get('imp', '') == 'HIGH':
+                flags.append('high_impact')
+            series.append({'pos': pos, 'gene': (meta or {}).get('gene', ''), 'eff': (meta or {}).get('eff', ''),
+                           'imp': (meta or {}).get('imp', ''), 'alt': (meta or {}).get('alt', ''),
+                           'traj': [round(x, 4) for x in traj], 'flags': flags})
+        if not series:
+            continue
+        series.sort(key=lambda x: (-(max(x['traj']) - min(x['traj'])), -len(x['flags'])))
+        out_groups.append({'group': g, 'samples': samples, 'times': times,
+                           'tnums': [metadata[s]['tnum'] for s in samples],
+                           'series': series, 'n_flagged': sum(1 for x in series if x['flags'])})
+    if not out_groups:
+        return None
+    return {'groups': out_groups, 'thresholds': {'emerge': emerge, 'fix': fix, 'loss': loss}}
+
+
 def main():
     ap = argparse.ArgumentParser(description="sBAMpiro interactive QC report + flags.")
     ap.add_argument("--summary", required=True)
@@ -2053,6 +2293,11 @@ def main():
                     help="Cohort per-gene dN/dS TSV (eskaks) -> the Selection pN/pS panel (optional; a cohort analysis, not per-sample QC).")
     ap.add_argument("--provenance", nargs="*", default=[],
                     help="key=value provenance pairs surfaced in the report header (reference, container, commit...).")
+    ap.add_argument("--metadata", default=None,
+                    help="Optional TSV (e.g. the samplesheet) with a sample column + time (passage/timepoint) "
+                         "and group (patient/series/cluster) columns -> the SNP dynamics panel. Auto-detected.")
+    ap.add_argument("--vcfs", nargs="*", default=[],
+                    help="Optional per-sample annotated VCFs -> per-SNP allele frequencies for the dynamics panel.")
     ap.add_argument("--gate", action="store_true")
     args = ap.parse_args()
     thr = {k: getattr(args, k) for k in DEF}
@@ -2173,6 +2418,7 @@ def main():
                "mask_iv": (mask_iv[:5000] if mask_iv else None),
                "lineages": lineages, "lin_present": len(lineages) > 0,
                "n_ancient": n_ancient, "anc_thresholds": anc_thr, "provenance": provenance,
+               "dynamics": build_dynamics(parse_metadata(args.metadata), parse_vcfs(args.vcfs)),
                "metrics": [{"key": k, "label": l, "kind": kind, "dir": d} for k, l, kind, d in METRICS],
                "extra": extra_metrics,
                "samples": jsamples}
