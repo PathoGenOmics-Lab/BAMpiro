@@ -414,6 +414,61 @@ def parse_gff(path):
                   key=lambda g: g["start"])
 
 
+# Curated H37Rv locus tags (Mycobrowser) for the common MTB resistance genes, used as a fallback when
+# the run's reference GFF carries no H37Rv-style locus_tag for them (e.g. a non-H37Rv reference). These
+# are the WHO-catalogue first/second-line resistance genes.
+GENE_RV = {
+    "rpoB": "Rv0667", "rpoC": "Rv0668", "katG": "Rv1908c", "inhA": "Rv1484", "fabG1": "Rv1483",
+    "ahpC": "Rv2428", "gyrA": "Rv0006", "gyrB": "Rv0005", "embA": "Rv3794", "embB": "Rv3795",
+    "embC": "Rv3793", "pncA": "Rv2043c", "rpsL": "Rv0682", "eis": "Rv2416c", "ethA": "Rv3854c",
+    "ethR": "Rv3855", "gid": "Rv3919c", "gidB": "Rv3919c", "tlyA": "Rv1694", "Rv0678": "Rv0678",
+    "atpE": "Rv1305", "pepQ": "Rv2535c", "folC": "Rv2447c", "thyA": "Rv2764c", "alr": "Rv3423c",
+    "ddn": "Rv3547", "fgd1": "Rv0407", "fbiA": "Rv3261", "fbiB": "Rv3262", "fbiC": "Rv1173",
+    "rrs": "MTB000019", "rrl": "MTB000020", "mmpL5": "Rv0676c", "mmpS5": "Rv0677c", "whiB7": "Rv3197A",
+    "clpC1": "Rv3596c", "panD": "Rv3601c", "ddlA": "Rv2981c",
+}
+_RV_LOCUS_RE = re.compile(r'^(Rv\d|MTB\d)', re.I)   # H37Rv (Mycobrowser) locus-tag schemes
+
+
+def parse_gene_locus(path):
+    """{gene_display_name: locus_tag} from a GFF3 (e.g. rpoB -> Rv0667). Empty on any problem."""
+    out = {}
+    if not path or not os.path.exists(path):
+        return out
+    try:
+        op = gzip.open if str(path).endswith(".gz") else open
+        with op(path, "rt", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if line.startswith("#") or "\t" not in line:
+                    continue
+                c = line.rstrip("\n").split("\t")
+                if len(c) < 9 or c[2] not in ("gene", "CDS"):
+                    continue
+                attrs = c[8]
+
+                def attr(key):
+                    i = attrs.find(key)
+                    return attrs[i + len(key):].split(";")[0].strip() if i >= 0 else ""
+                locus = attr("locus_tag=")
+                name = attr("gene=") or attr("Name=")
+                if name and locus and name not in out:
+                    out[name] = locus
+    except (OSError, ValueError):
+        return out
+    return out
+
+
+def build_gene_map(gff_path):
+    """{gene: Mycobrowser (H37Rv) locus tag}. Curated resistance-gene map, overlaid with any H37Rv-style
+    locus tags from the run's GFF (so an H37Rv reference contributes every gene; a non-H37Rv reference's
+    strain-specific tags are ignored in favour of the curated H37Rv equivalents)."""
+    m = dict(GENE_RV)
+    for gene, locus in parse_gene_locus(gff_path).items():
+        if _RV_LOCUS_RE.match(locus):
+            m[gene] = locus
+    return m
+
+
 def robust(vals):
     v = sorted(x for x in vals if x is not None)
     if not v:
@@ -834,6 +889,8 @@ th .infoi,.dyn-legend .infoi{background:#dde5f0}
 .dyn-toggle{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--mut);cursor:pointer}
 .dyn-toggle input{accent-color:#5b8fc9;cursor:pointer}
 .dyn-aa{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums}
+.rvtag{font-size:10.5px;color:#8a97a8;text-decoration:none;font-weight:600;white-space:nowrap}
+.rvtag:hover{color:var(--accent);text-decoration:underline}
 .dyn-card-f{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
 .dyn-fchip{color:#fff;border-radius:7px;padding:2px 9px;font-size:12px;font-weight:500}
 .dyn-traj{font-size:12.5px;color:#5a6a7c;font-variant-numeric:tabular-nums;margin-left:auto}
@@ -924,6 +981,9 @@ var LINCOL={};(function(){(R.lineages||[]).forEach(function(lab,i){
   else if(i<LINPAL_BASE.length){LINCOL[lab]=LINPAL_BASE[i];}                  // else colour-blind-safe fallback
   else{var h=(i*137.508)%360;LINCOL[lab]='hsl('+h.toFixed(0)+',58%,52%)';}});})();
 function linColor(lab){return (lab!=null&&LINCOL[lab])?LINCOL[lab]:'#b8c2cf';}
+R.gene_map=R.gene_map||{};
+function geneRv(g){ return (g&&R.gene_map[g])||''; }   // Mycobrowser (H37Rv) locus tag for a gene, or ''
+function geneRvTag(g){ var rv=geneRv(g); return rv?(' <a class="rvtag" href="https://mycobrowser.epfl.ch/genes/'+esc(rv)+'" target="_blank" rel="noopener" title="Mycobrowser locus tag of '+esc(g)+' (opens mycobrowser.epfl.ch)">'+esc(rv)+'</a>'):''; }
 var thr=Object.assign({},R.thresholds);
 var athr=Object.assign({},R.anc_thresholds||{});      // ancient (aDNA) threshold view
 function actv(s){return (s.anc&&R.n_ancient)?athr:thr;}   // active threshold set for a sample
@@ -1660,7 +1720,7 @@ function renderHotspots(){
     var _hcap=st.hotq?300:((el('hotspotsPanel')&&el('hotspotsPanel').classList.contains('expanded'))?150:15);
     head='<tr><th class="s" style="text-align:left">Gene</th><th style="text-align:left">Position</th><th>Length</th><th>Cohort SNPs</th><th>SNPs/kb</th><th>robust z</th></tr>';
     body=items.slice(0,_hcap).map(function(x){return '<tr data-b0="'+x.b0+'" data-b1="'+x.b1+'" data-name="'+esc(x.name)+'">'+
-      '<td class="s" style="text-align:left">'+esc(x.name)+'</td><td style="text-align:left">'+fmtpos(x.start)+' - '+fmtpos(x.end)+'</td>'+
+      '<td class="s" style="text-align:left">'+esc(x.name)+geneRvTag(x.name)+'</td><td style="text-align:left">'+fmtpos(x.start)+' - '+fmtpos(x.end)+'</td>'+
       '<td>'+Math.round(x.len).toLocaleString('en-US')+'</td><td>'+Math.round(x.snp).toLocaleString('en-US')+'</td><td>'+x.dens.toFixed(1)+'</td>'+
       '<td'+(x.z>=3?' style="color:var(--fail);font-weight:600"':'')+'>'+(x.z>0?'+':'')+x.z.toFixed(1)+'</td></tr>';}).join('');
     note.textContent=(st.hotq?('Showing '+Math.min(items.length,_hcap)+' of '+items.length+' matching genes. '):'')+'Genes ranked by cohort SNP density (SNPs per kb, summed over all samples); z = robust outlier vs the gene distribution. Resolution is limited to the '+(binbp/1000).toFixed(0)+' kb profile bins.';
@@ -1762,7 +1822,7 @@ function renderGeneBurden(){
   tbl.innerHTML='<thead><tr><th class="s" style="text-align:left">Gene</th><th>HIGH</th><th>MODERATE</th><th style="text-align:left">Dominant effect</th><th>Samples</th><th>Burden</th></tr></thead><tbody>'+
     rows.map(function(g){var mark=(g.start!=null&&g.end!=null);var burd=(g.total_impactful!=null?g.total_impactful:(g.high||0)+(g.moderate||0));
       return '<tr'+(mark?' data-start="'+g.start+'" data-end="'+g.end+'" data-name="'+esc(g.gene)+'" style="cursor:pointer"':'')+'>'+
-        '<td class="s" style="text-align:left">'+esc(g.gene)+'</td>'+
+        '<td class="s" style="text-align:left">'+esc(g.gene)+geneRvTag(g.gene)+'</td>'+
         '<td'+((g.high||0)>0?' style="color:var(--fail);font-weight:600"':'')+'>'+(g.high||0)+'</td>'+
         '<td>'+(g.moderate||0)+'</td>'+
         '<td style="text-align:left">'+esc(g.dominant_effect||'NA')+'</td>'+
@@ -1788,7 +1848,7 @@ function renderPnps(){
   var rows=flt.slice(0,q?300:(exp?150:40));
   tbl.innerHTML='<thead><tr><th class="s" style="text-align:left">Gene</th><th>dN</th><th>dS</th><th>dN/dS</th><th>pairs</th><th style="text-align:left">Effect</th></tr></thead><tbody>'+
     rows.map(function(g){var pos=(g.pnps!=null&&g.pnps>1);
-      return '<tr><td class="s" style="text-align:left">'+esc(g.gene)+'</td>'+
+      return '<tr><td class="s" style="text-align:left">'+esc(g.gene)+geneRvTag(g.gene)+'</td>'+
         '<td>'+(g.pn==null?'NA':g.pn.toFixed(3))+'</td>'+
         '<td>'+(g.ps==null?'NA':g.ps.toFixed(3))+'</td>'+
         '<td'+(pos?' style="color:var(--warn);font-weight:600"':'')+'>'+(g.pnps==null?'NA':g.pnps.toFixed(2))+'</td>'+
@@ -1930,7 +1990,7 @@ function renderDynamics(){
         var chips=(v.flags||[]).map(function(f){return '<span class="dyn-fchip" style="background:'+(DYNCOL[f]||'#8895a6')+'" title="'+(DYNHELP[f]||f)+'">'+f+'</span>';}).join('');
         var posNum=String(v.pos).split(':').pop();
         cards.push('<div class="dyn-card'+(flagged?' flagged':'')+'">'+
-          '<div class="dyn-card-h"><span class="dyn-cardgene" title="Gene (click its chip above to toggle)">'+esc(v.gene||'(intergenic)')+'</span>'+(singleGroup?'':'<span class="dyn-grp" title="Connected series this variant belongs to (the metadata group column, e.g. patient / passage line)">'+esc(v.group)+'</span>')+'<span class="dyn-pos" title="Genomic position (contig:position) of this SNP: '+esc(v.pos)+'">'+esc(posNum)+'</span></div>'+
+          '<div class="dyn-card-h"><span class="dyn-cardgene" title="Gene (click its chip above to toggle)">'+esc(v.gene||'(intergenic)')+'</span>'+geneRvTag(v.gene)+(singleGroup?'':'<span class="dyn-grp" title="Connected series this variant belongs to (the metadata group column, e.g. patient / passage line)">'+esc(v.group)+'</span>')+'<span class="dyn-pos" title="Genomic position (contig:position) of this SNP: '+esc(v.pos)+'">'+esc(posNum)+'</span></div>'+
           '<div class="dyn-eff" title="Predicted effect (snpEff) and protein change HGVS.p: ref amino acid, codon position, alt amino acid">'+esc(v.eff||'variant')+(v.aa?(' &#183; <b class="dyn-aa">'+esc(v.aa)+'</b>'):(v.alt?(' &#183; &#8594;'+esc(v.alt)):''))+'</div>'+
           dynMiniChart(v,th,dynShowDP)+
           '<div class="dyn-card-f">'+(chips||'<span class="c" title="no emergence / fixation / loss / non-synonymous event for this variant">no event</span>')+'<span class="dyn-traj" title="Allele frequency at each timepoint, in chronological order">'+v.traj.map(function(a){return a.toFixed(2);}).join(' &#8594; ')+'</span></div>'+
@@ -2023,7 +2083,7 @@ function renderEpistasis(){
       var rec=(p.n>1)?('<span class="epi-recur" title="seen in '+p.n+' independent series'+(p.consistent?' with the same sign - recurrent':'')+'">&#8635; '+p.n+' series</span>'):('<span title="from a single series">series '+esc(p.group)+'</span>');
       return '<div class="epi-card '+p.direction+'">'+
         '<div class="epi-card-h"><span class="epi-badge '+p.direction+'">r = '+(p.r>0?'+':'')+p.r.toFixed(2)+'</span><span class="epi-tier epi-'+p.tier+'" title="permutation p = '+p.p+', FDR q = '+p.q+'">'+p.tier+'</span></div>'+
-        '<div class="epi-pair"><span style="color:'+EPICOL.A+'"><b>'+esc(p.geneA||'(intergenic)')+'</b> '+posn(p.posA)+(p.aaA?(' '+esc(p.aaA)):'')+'</span><span class="epi-vs">'+arrow+'</span><span style="color:'+EPICOL.B+'"><b>'+esc(p.geneB||'(intergenic)')+'</b> '+posn(p.posB)+(p.aaB?(' '+esc(p.aaB)):'')+'</span></div>'+
+        '<div class="epi-pair"><span style="color:'+EPICOL.A+'"><b>'+esc(p.geneA||'(intergenic)')+'</b>'+geneRvTag(p.geneA)+' '+posn(p.posA)+(p.aaA?(' '+esc(p.aaA)):'')+'</span><span class="epi-vs">'+arrow+'</span><span style="color:'+EPICOL.B+'"><b>'+esc(p.geneB||'(intergenic)')+'</b>'+geneRvTag(p.geneB)+' '+posn(p.posB)+(p.aaB?(' '+esc(p.aaB)):'')+'</span></div>'+
         epiMiniChart(p)+
         '<div class="epi-card-f"><span title="permutation p-value / Benjamini-Hochberg FDR q-value">p '+p.p.toFixed(3)+' &#183; q '+p.q.toFixed(3)+'</span>'+rec+'</div>'+
       '</div>';
@@ -2062,8 +2122,8 @@ function renderEpistasis(){
     h+='<div class="epitbl-wrap"><table class="epitbl"><thead><tr>'+COLS.map(function(c){return '<th data-k="'+c[0]+'">'+c[1]+(k===c[0]?(asc?' &#9650;':' &#9660;'):'')+'</th>';}).join('')+'</tr></thead><tbody>';
     if(!rows.length){ h+='<tr><td colspan="'+COLS.length+'" class="c" style="padding:20px;text-align:center">no variant pair matches the current filter.</td></tr>'; }
     rows.forEach(function(p){
-      var a='<b style="color:'+EPICOL.A+'">'+esc(p.geneA||'(intergenic)')+'</b> '+String(p.posA).split(':').pop()+(p.aaA?(' '+esc(p.aaA)):'');
-      var b='<b style="color:'+EPICOL.B+'">'+esc(p.geneB||'(intergenic)')+'</b> '+String(p.posB).split(':').pop()+(p.aaB?(' '+esc(p.aaB)):'');
+      var a='<b style="color:'+EPICOL.A+'">'+esc(p.geneA||'(intergenic)')+'</b>'+geneRvTag(p.geneA)+' '+String(p.posA).split(':').pop()+(p.aaA?(' '+esc(p.aaA)):'');
+      var b='<b style="color:'+EPICOL.B+'">'+esc(p.geneB||'(intergenic)')+'</b>'+geneRvTag(p.geneB)+' '+String(p.posB).split(':').pop()+(p.aaB?(' '+esc(p.aaB)):'');
       h+='<tr><td>'+a+' <span class="epi-vs">'+(p.direction==='concordant'?'&#8596;':'&#8646;')+'</span> '+b+'</td>'+
         '<td>'+p.direction+'</td>'+
         '<td class="epitbl-r" style="color:'+(p.r>=0?'#2f8f5b':'#a24a8f')+'">'+(p.r>0?'+':'')+p.r.toFixed(2)+'</td>'+
@@ -2159,7 +2219,7 @@ function renderSnpMatrix(){
     var nameRow='<tr><th class="snpmx-info snpmx-corner" style="top:'+stop+'px">SNP '+esc(M.reference?('('+M.reference+')'):'')+'</th>'+
       vi.map(function(i){var s=samples[i];return '<th class="snpmx-hcell" style="top:'+stop+'px" title="'+esc(s)+'"><span class="snpmx-h">'+esc(s)+'</span></th>';}).join('')+'</tr>';
     var body='<tbody>'+shown.map(function(r){
-      var lbl='<b>'+esc(r.gene||r.contig)+'</b> '+r.pos+' '+esc(r.ref)+'&#8594;'+esc(r.alt)+(r.aa?(' <span class="snpmx-aa">'+esc(r.aa)+'</span>'):'');
+      var lbl='<b>'+esc(r.gene||r.contig)+'</b>'+geneRvTag(r.gene)+' '+r.pos+' '+esc(r.ref)+'&#8594;'+esc(r.alt)+(r.aa?(' <span class="snpmx-aa">'+esc(r.aa)+'</span>'):'');
       var cells=vi.map(function(i){var c=r.cells[i], s=samples[i];
         if(!c) return '<td class="snpmx-cell snpmx-empty" title="'+esc(s)+' - not called"></td>';
         var afTxt=c[0].toFixed(2).replace(/^0/,'').replace(/^1\.00$/,'1');
@@ -3183,6 +3243,7 @@ def main():
     payload = {"generated": now, "counts": counts, "thresholds": thr, "dist": DIST,
                "genome_len": genome_len, "snp_density_ok": snp_density_ok, "defs": DEFS, "nbins": NBINS,
                "genes": parse_gff(args.gff), "lin_colors": parse_lineage_colors(args.lineage_colors),
+               "gene_map": build_gene_map(args.gff),
                "gene_burden": parse_gene_burden(args.gene_burden) or None,
                "pnps": parse_pnps(args.pnps) or None,
                "mask_bins": mask_bins, "mask_pct": mask_pct,
