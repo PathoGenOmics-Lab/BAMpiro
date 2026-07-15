@@ -9,7 +9,7 @@ nextflow.enable.dsl=2
 
 // --- MODULE IMPORTS ---
 include { PREPARE_REFERENCE; SNPEFF_BUILD_DB; BUILD_MAPPABILITY } from './modules/reference'
-include { VALIDATE_RAW_READS_PE; VALIDATE_RAW_READS_SE; KRAKEN_FILTER_PE; KRAKEN_FILTER_SE; FASTP_PE; FASTP_SE; MULTIQC } from './modules/qc'
+include { VALIDATE_RAW_READS_PE; VALIDATE_RAW_READS_SE; KRAKEN_FILTER_PE; KRAKEN_FILTER_SE; FASTP_PE; FASTP_SE; MULTIQC; DUMP_VERSIONS } from './modules/qc'
 include { RUN_PATHOTYPR_PE; RUN_PATHOTYPR_SE } from './modules/pathotypr'
 include { MAPPING_PE; MAPPING_SE; MERGE_AND_MARKDUP; FILTER_READS } from './modules/mapping'
 include { CALL_FREEBAYES; CALL_BACKBONE; MERGE_VCFS; CALL_FREEBAYES_RAW } from './modules/variants'
@@ -422,12 +422,15 @@ workflow {
     // filename before collecting, otherwise MultiQC hits a fatal input-name collision.
     def fastp_json_mqc = fastp_pe.json.mix(fastp_se.json).unique { it.name }
     def kraken_mqc     = ch_kraken_reports.unique { it.name }
+    // Provenance: dump the container's tool versions once and surface them in the report.
+    def versions_mqc   = DUMP_VERSIONS().mqc
     def qc_collection = Channel.empty()
         .mix(fastp_json_mqc)                          // FastP
         .mix(final_bams.stats.map { s, r, st -> st }) // Samtools (drop the (sId,rId) key -> bare path)
         .mix(kraken_mqc)                              // Kraken
         .mix(ch_snpeff_stats)                         // SnpEff
         .mix(filter_stats)                            // Length-aware read filter (drop rate)
+        .mix(versions_mqc)                            // Software versions
         .collect()
 
     MULTIQC(qc_collection, multiqc_report_filename)

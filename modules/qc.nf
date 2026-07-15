@@ -244,3 +244,62 @@ process MULTIQC {
     multiqc . -c multiqc_config.yaml -n ${report_name}
     """
 }
+
+process DUMP_VERSIONS {
+    tag "versions"
+    cpus 1
+    memory '1 GB'
+    publishDir "${params.outdir}/pipeline_info", mode: 'copy'
+
+    output:
+    path "software_versions_mqc.yml", emit: mqc
+    path "software_versions.txt",     emit: txt
+
+    shell:
+    '''
+    # Provenance: record the exact tool versions from the (pinned) container plus the
+    # pipeline/Nextflow versions, so every run documents its own software environment.
+    ver() {
+        # $1 = label, $2 = prefix to strip, rest = version command
+        local raw line
+        raw=$("${@:3}" 2>&1) || raw=""
+        line=$(head -n1 <<< "$raw")
+        if [ -n "$2" ]; then line=${line#"$2"}; fi
+        line=${line#"${line%%[![:space:]]*}"}   # trim leading whitespace
+        echo "$1: ${line:-NA}"
+    }
+
+    {
+      echo "BAMpiro: !{workflow.manifest.version}"
+      echo "Nextflow: !{workflow.nextflow.version}"
+      echo "container: !{params.container}"
+      ver samtools  'samtools '          samtools  --version
+      ver bcftools  'bcftools '          bcftools  --version
+      ver freebayes 'version: '          freebayes --version
+      ver bwa-mem2  ''                   bwa-mem2  version
+      ver fastp     'fastp '             fastp     --version
+      ver kraken2   'Kraken version '    kraken2   --version
+      ver genmap    ''                   genmap    --version
+      ver snpEff    ''                   snpEff    -version
+      ver python    'Python '            python3   --version
+      ver multiqc   'multiqc, version '  multiqc   --version
+    } > software_versions.txt
+
+    # MultiQC custom-content section (files ending in _mqc.yml are auto-detected)
+    {
+      echo 'id: "software_versions"'
+      echo 'section_name: "Software Versions"'
+      echo 'section_href: "https://github.com/PathoGenOmics-Lab/BAMpiro"'
+      echo 'plot_type: "html"'
+      echo 'description: "Captured at runtime from the pipeline container."'
+      echo 'data: |'
+      echo '    <dl class="dl-horizontal">'
+      while IFS= read -r kv; do
+          k=${kv%%:*}
+          v=${kv#*: }
+          echo "        <dt>${k}</dt><dd><samp>${v}</samp></dd>"
+      done < software_versions.txt
+      echo '    </dl>'
+    } > software_versions_mqc.yml
+    '''
+}
