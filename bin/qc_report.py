@@ -695,6 +695,7 @@ th.s{z-index:6;background:#f7f9fc} tr.hl td.s{background:#fff3ce!important}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
 .footer{color:var(--mut);font-size:11.5px;margin-top:30px;border-top:1px solid var(--line);padding-top:14px;line-height:1.8}
 #tt{position:fixed;pointer-events:none;background:#0f2431;color:#fff;font-size:12px;line-height:1.5;padding:7px 11px;border-radius:9px;opacity:0;transition:opacity .08s;z-index:80;white-space:nowrap;box-shadow:0 8px 24px rgba(15,36,49,.32)}
+#infopop{position:fixed;display:none;max-width:320px;background:#0f2431;color:#fff;font-size:13px;line-height:1.55;padding:11px 14px;border-radius:11px;z-index:200;box-shadow:0 12px 34px rgba(15,36,49,.42)}
 /* curation basket */
 .cbx{vertical-align:middle;margin-right:7px;accent-color:var(--accent);cursor:pointer;width:14px;height:14px}
 .sname{cursor:pointer;border-bottom:1px dashed transparent;transition:.12s} .sname:hover{color:var(--accent);border-bottom-color:var(--accent)}
@@ -1799,6 +1800,26 @@ function renderAll(){renderOverview();renderTable();renderLineages();renderPlots
 
 // ---- static wiring ----
 el('meta').textContent=R.samples.length+' samples · '+R.generated;
+// click an (i) info icon -> show a persistent popover with its definition (capture phase so it
+// beats the column-sort handler); click anywhere / Esc / scroll to dismiss.
+(function(){
+  var pop=el('infopop');
+  document.addEventListener('click',function(e){
+    var ic=(e.target&&e.target.closest)?e.target.closest('.infoi'):null;
+    if(ic){
+      e.stopPropagation(); e.preventDefault();
+      if(pop._for===ic&&pop.style.display==='block'){ pop.style.display='none'; pop._for=null; return; }
+      pop.textContent=ic.getAttribute('data-info')||ic.getAttribute('title')||'';
+      var pw=Math.min(320,window.innerWidth-24); pop.style.maxWidth=pw+'px'; pop.style.display='block';
+      var r=ic.getBoundingClientRect();
+      var left=Math.min(Math.max(8,r.left-4),window.innerWidth-pw-8), top=r.bottom+8;
+      if(top+pop.offsetHeight+8>window.innerHeight){ var up=r.top-8-pop.offsetHeight; if(up>4)top=up; }
+      pop.style.left=left+'px'; pop.style.top=top+'px'; pop._for=ic;
+    } else if(pop.style.display==='block'){ pop.style.display='none'; pop._for=null; }
+  },true);
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&pop.style.display==='block'){pop.style.display='none';pop._for=null;} });
+  window.addEventListener('scroll',function(){ if(pop.style.display==='block'){pop.style.display='none';pop._for=null;} },true);
+})();
 el('foot').innerHTML='Generated '+R.generated+' · thresholds are adjustable live above; the pipeline gate uses the defaults ('+
   Object.keys(R.thresholds).map(function(k){return k+'='+R.thresholds[k];}).join(', ')+'). Values scale within each column; NA = not reported.';
 el('colmenu').innerHTML=R.metrics.map(function(m){return '<label><input type="checkbox" data-k="'+m.key+'"'+(st.hidden[m.key]?'':' checked')+'> '+esc(m.label)+'</label>';}).join('');
@@ -2138,6 +2159,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <button id="expClose" class="exp-close" aria-label="exit fullscreen">✕ close (Esc)</button>
 <div id="modal" class="modal"><div class="modalcard"><button class="modalx" id="modalx" aria-label="close">×</button><div id="modalbody"></div></div></div>
 <div id="tt"></div>
+<div id="infopop"></div>
 <script>const REPORT=__JSON__;</script>
 <script>__JS__</script>
 </body></html>"""
