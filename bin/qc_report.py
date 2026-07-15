@@ -653,7 +653,7 @@ body.toc-collapsed header{padding-left:56px}
 .toc-link{color:#5b6b7e;text-decoration:none;font-size:13.5px;padding:6px 12px;border-radius:8px;font-weight:500;border-left:2px solid transparent}
 .toc-link:hover{color:var(--accent);background:var(--accent-soft)}
 .toc-link.active{color:var(--accent);background:var(--accent-soft);border-left-color:var(--accent);font-weight:600}
-section[id]{scroll-margin-top:18px}
+section[id]{scroll-margin-top:64px}
 @media (max-width:860px){ body{padding-left:0} #toc{box-shadow:0 10px 40px rgba(16,24,40,.18)} }
 .wrap{max-width:1180px;margin:0 auto;padding:24px 22px 90px}
 section{margin-top:34px} section:first-of-type{margin-top:24px}
