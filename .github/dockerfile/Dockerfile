@@ -61,6 +61,9 @@ RUN micromamba create -n bambard-env -c conda-forge -c bioconda -y \
     'biopython' \
     && micromamba clean --all --yes
 
+# Put the env binaries on PATH up front so the RUN steps below (snpEff, pathotypr) can find them.
+ENV PATH=/opt/conda/envs/bambard-env/bin:/opt/conda/bin:$PATH
+
 # 3b. Bundle the pathotypr marker panels + pre-trained model from Zenodo (v1.0.0, pinned) so runs are
 # reproducible and offline. Positions are in MTBC-ancestor coordinates; pathotypr is k-mer based so it is
 # reference-agnostic. Override the paths with --pathotypr_* if you supply your own.
@@ -77,11 +80,7 @@ RUN mkdir -p ${PATHOTYPR_DATA} && \
 RUN snpEff download -v Mycobacterium_tuberculosis_h37rv || \
     echo "WARN: could not pre-fetch the H37Rv snpEff DB; build it manually or set the correct genome name"
 
-# 4. Set PATH to include the new environment binaries globally
-# This ensures that calling 'bwa' or 'nextflow' works directly
-ENV PATH=/opt/conda/envs/bambard-env/bin:/opt/conda/bin:$PATH
-
-# 5. Pipeline Setup
+# 4. Pipeline Setup
 # Create directory structure
 WORKDIR /pipeline
 

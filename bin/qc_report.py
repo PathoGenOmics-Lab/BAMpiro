@@ -1033,6 +1033,8 @@ table.snpmx tbody tr:hover td.snpmx-info{background:#fafcfe}
 JS = r"""
 (function(){
 var R=REPORT;
+function assign(t,s){for(var _k in s){if(Object.prototype.hasOwnProperty.call(s,_k))t[_k]=s[_k];}return t;}  // ES5 shallow copy
+function zeros(n){var _a=new Array(n);for(var _i=0;_i<n;_i++)_a[_i]=0;return _a;}                              // ES5 zero-filled array
 var DIST=R.dist;
 var VCOL={PASS:'#94a3b8',WARN:'#d97706',FAIL:'#dc2626'}, VFILL={PASS:'#16a34a',WARN:'#d97706',FAIL:'#dc2626'};
 var BAR={hi_good:'#22a06b',hi_bad:'#e0544f',neu:'#4f83c2'};
@@ -1050,8 +1052,8 @@ function geneRvTag(g){ var rv=geneRv(g); return rv?(' <a class="rvtag" href="htt
 // amino-acid change in the used-reference numbering, plus the H37Rv/Mycobrowser one in brackets when it differs
 var AA2LBL=R.aa2_label||'H37Rv';   // label for the canonical-reference amino-acid numbering
 function aaDual(aa,aaH){ if(!aa) return ''; return esc(aa)+((aaH&&aaH!==aa)?(' <span class="aah37" title="same variant in the '+esc(AA2LBL)+' reference numbering">['+esc(AA2LBL)+' '+esc(aaH)+']</span>'):''); }
-var thr=Object.assign({},R.thresholds);
-var athr=Object.assign({},R.anc_thresholds||{});      // ancient (aDNA) threshold view
+var thr=assign({},R.thresholds);
+var athr=assign({},R.anc_thresholds||{});      // ancient (aDNA) threshold view
 function actv(s){return (s.anc&&R.n_ancient)?athr:thr;}   // active threshold set for a sample
 R.defs=R.defs||{}; R.extra=R.extra||[]; R.provenance=R.provenance||{};
 // ---- derived metrics registered as first-class metrics ----
@@ -1462,7 +1464,7 @@ function renderPlots(){
       inner=sr.map(function(s,i){var h=(s.m[pk]-Math.min(lo,0))/(hi-Math.min(lo,0))*(H-6),x=padL+i*bw,dim=(st.q||st.onlyFlagged||st.flagFilter||st.ancOnly||st.linFilter)&&!vis[s.s],big=(st.hi==s.s);
         return '<rect class="hit" x="'+x.toFixed(1)+'" y="'+(H-3-h).toFixed(1)+'" width="'+Math.max(bw-0.5,0.6).toFixed(1)+'" height="'+Math.max(h,0.5).toFixed(1)+'" fill="'+(big?'#0f1c29':dotColor(s))+'" opacity="'+(dim?0.12:(s.v!='PASS'?0.95:0.62))+'" data-s="'+esc(s.s)+'" data-lin="'+esc(s.lineage||'')+'" data-pk="'+esc(pk)+'" data-val="'+s.m[pk]+'" data-lab="'+esc(mt.label)+'" data-kind="'+mt.kind+'"/>';}).join('');
     }else{ // histogram
-      var nb=Math.min(30,Math.max(8,Math.round(Math.sqrt(rows.length)))),cnt=new Array(nb).fill(0);
+      var nb=Math.min(30,Math.max(8,Math.round(Math.sqrt(rows.length)))),cnt=zeros(nb);
       rows.forEach(function(s){var b=Math.floor((s.m[pk]-lo)/(hi-lo)*nb);if(b>=nb)b=nb-1;if(b<0)b=0;cnt[b]++;});
       var cm=Math.max.apply(null,cnt)||1,bw=pw/nb;
       inner=bandSVG+cnt.map(function(c,i){var h=c/cm*(H-6),x=padL+i*bw;return '<rect x="'+x.toFixed(1)+'" y="'+(H-3-h).toFixed(1)+'" width="'+Math.max(bw-1,0.6).toFixed(1)+'" height="'+Math.max(h,0.4).toFixed(1)+'" fill="'+BAR[mt.dir]+'" opacity="0.8"/>';}).join('');
@@ -1756,7 +1758,7 @@ function renderGenome(){
 }
 
 // ---- SNP-dense gene / region detection (cohort SNP density along the reference) ----
-function cohortSnp(){var nb=R.nbins||200,agg=new Array(nb).fill(0),has=false,mb=(st.maskOn&&R.mask_bins)?R.mask_bins:null;
+function cohortSnp(){var nb=R.nbins||200,agg=zeros(nb),has=false,mb=(st.maskOn&&R.mask_bins)?R.mask_bins:null;
   R.samples.forEach(function(s){var p=s.trk&&s.trk.snp;if(p){has=true;for(var i=0;i<nb&&i<p.length;i++){if(mb&&mb[i]>=0.5)continue;agg[i]+=p[i]||0;}}});
   return has?agg:null;}
 function robustMS(a){var v=a.slice().sort(function(x,y){return x-y;}),n=v.length;if(!n)return[0,1];
@@ -2408,7 +2410,7 @@ Array.prototype.forEach.call(document.querySelectorAll('#ptype button'),function
 // live thresholds + presets
 var TH=[['depth_min','Depth min'],['breadth_min','Breadth min %'],['missing_max','Missing max %'],['mapping_min','Mapped min %'],['dup_max','Dup max %'],['iupac_max','IUPAC max %'],['titv_min','Ti/Tv min'],['snp_z','SNP z'],['het_max_frac','Het % max'],['mixed_min_frac','Mixed lin % min']];
 var PRESETS=[
-  {id:'gate',label:'gate defaults',th:Object.assign({},R.thresholds),note:'The cut-offs the Snakemake qc_gate uses (config report_* keys).'},
+  {id:'gate',label:'gate defaults',th:assign({},R.thresholds),note:'The cut-offs the Snakemake qc_gate uses (config report_* keys).'},
   {id:'strict',label:'strict (modern WGS)',th:{depth_min:20,breadth_min:95,missing_max:5,mapping_min:90,dup_max:30,iupac_max:2,titv_min:1.5,snp_z:3,het_max_frac:1.5,mixed_min_frac:2},note:'Confident modern Illumina isolate: 20x, 95% breadth, <5% missing, Ti/Tv >=1.5.'},
   {id:'lenient',label:'lenient (aDNA / low-cov)',th:{depth_min:3,breadth_min:60,missing_max:40,mapping_min:50,dup_max:80,iupac_max:5,titv_min:0,snp_z:4,het_max_frac:8,mixed_min_frac:5},note:'Degraded / low-coverage library at the 3x calling floor: rescues calibration tips.'}
 ];
@@ -2424,7 +2426,7 @@ el('thbox').innerHTML='<label style="display:inline-flex;flex-direction:column;f
 var thpre=el('thpreset'),thnote=el('thnote');
 if(thpre)thpre.onchange=function(){var p=null;PRESETS.forEach(function(x){if(x.id==thpre.value)p=x;});if(!p){thnote.textContent='';return;}thnote.textContent=p.note;applyThr(p.th);};
 Array.prototype.forEach.call(document.querySelectorAll('#thbox input'),function(inp){inp.oninput=function(){var v=parseFloat(inp.value);if(!isNaN(v)){thr[inp.getAttribute('data-t')]=v;if(thpre)thpre.value='';if(thnote)thnote.textContent='';recompute();renderAll();saveState();}};});
-el('threset').onclick=function(){if(thpre)thpre.value='';if(thnote)thnote.textContent='';applyThr(Object.assign({},R.thresholds));};
+el('threset').onclick=function(){if(thpre)thpre.value='';if(thnote)thnote.textContent='';applyThr(assign({},R.thresholds));};
 // ancient (aDNA) live thresholds
 if(R.n_ancient){var ATH=[['depth_min','aDNA depth min'],['breadth_min','aDNA breadth %'],['missing_max','aDNA missing %'],['mapping_min','aDNA mapped %'],['dup_max','aDNA dup %'],['iupac_max','aDNA IUPAC %'],['damage_min_ct',"5′ C>T min (0-1)"]];
   el('athbox').innerHTML='<div style="flex-basis:100%;font-size:10px;color:#8a5a12;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Ancient (aDNA) thresholds &middot; a 5x mummy is judged here, not against the modern gate</div>'+
