@@ -96,6 +96,7 @@ process QC_REPORT {
         --gene-burden ${gene_burden} \\
         --gff ${gff} \\
         \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$DR_ARG \\
+        --aa2-label "${params.canonical_label}" \\
         --provenance ${provenance} \\
         --out-html ${basename}_qc_report.html \\
         --out-flags ${basename}_qc_flags.tsv \\

@@ -17,7 +17,7 @@ include { CONSENSUS_FASTA } from './modules/consensus'
 // Aliases for the parallel virgin (unmasked) consensus path (a DSL2 process runs once per name)
 include { CALL_BACKBONE as CALL_BACKBONE_RAW; MERGE_VCFS as MERGE_VCFS_RAW } from './modules/variants'
 include { CONSENSUS_FASTA as CONSENSUS_FASTA_RAW } from './modules/consensus'
-include { ANNOTATE_LEGACY_VCF; ANNOTATE_MAIN_VCF; GENERATE_LEGACY_STATS } from './modules/annotation'
+include { ANNOTATE_LEGACY_VCF; ANNOTATE_MAIN_VCF; ANNOTATE_CANONICAL; GENERATE_LEGACY_STATS } from './modules/annotation'
 include { COLLECT_SUMMARY; COLLECT_DR; QC_REPORT; SNP_MATRIX } from './modules/report'
 
 /* ----------------------------- Configuration Logic ----------------------------- */
@@ -476,8 +476,14 @@ workflow {
         def dr_report = params.run_pathotypr
             ? COLLECT_DR(patho_dr_results.map { sId, f -> f }.collect(), tsv_name).dr
             : file("NO_FILE")
-        // H37Rv-annotated VCFs for the dual amino-acid numbering (H37Rv annotation pass; NO_FILE for now).
-        def report_vcfs_h37rv = file("NO_FILE")
+        // Canonical-reference-annotated VCFs for the dual amino-acid numbering (off unless annotate_canonical).
+        def canon_src = params.annotate_legacy_vcfs
+            ? freebayes_ann.map { sId, rId, vcf, tbi -> tuple(sId, rId, vcf) }
+            : vcf_for_stats
+        def report_vcfs_h37rv = params.annotate_canonical
+            ? ANNOTATE_CANONICAL(canon_src, params.canonical_snpeff_db).out
+                             .map { sId, vcf -> vcf }.collect().ifEmpty([])
+            : file("NO_FILE")
         QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
                   report_meta, report_vcfs, report_vcfs_h37rv, dr_report, provenance, tsv_name)
     }

@@ -1048,7 +1048,8 @@ R.gene_map=R.gene_map||{};
 function geneRv(g){ return (g&&R.gene_map[g])||''; }   // Mycobrowser (H37Rv) locus tag for a gene, or ''
 function geneRvTag(g){ var rv=geneRv(g); return rv?(' <a class="rvtag" href="https://mycobrowser.epfl.ch/genes/'+esc(rv)+'" target="_blank" rel="noopener" title="Mycobrowser locus tag of '+esc(g)+' (opens mycobrowser.epfl.ch)">'+esc(rv)+'</a>'):''; }
 // amino-acid change in the used-reference numbering, plus the H37Rv/Mycobrowser one in brackets when it differs
-function aaDual(aa,aaH){ if(!aa) return ''; return esc(aa)+((aaH&&aaH!==aa)?(' <span class="aah37" title="same variant in H37Rv / Mycobrowser numbering">[H37Rv '+esc(aaH)+']</span>'):''); }
+var AA2LBL=R.aa2_label||'H37Rv';   // label for the canonical-reference amino-acid numbering
+function aaDual(aa,aaH){ if(!aa) return ''; return esc(aa)+((aaH&&aaH!==aa)?(' <span class="aah37" title="same variant in the '+esc(AA2LBL)+' reference numbering">['+esc(AA2LBL)+' '+esc(aaH)+']</span>'):''); }
 var thr=Object.assign({},R.thresholds);
 var athr=Object.assign({},R.anc_thresholds||{});      // ancient (aDNA) threshold view
 function actv(s){return (s.anc&&R.n_ancient)?athr:thr;}   // active threshold set for a sample
@@ -3250,8 +3251,10 @@ def main():
     ap.add_argument("--vcfs", nargs="*", default=[],
                     help="Optional per-sample annotated VCFs -> per-SNP allele frequencies for the dynamics panel.")
     ap.add_argument("--vcfs-h37rv", nargs="*", default=[],
-                    help="Optional per-sample VCFs annotated against H37Rv -> the H37Rv/Mycobrowser amino-acid "
-                         "position shown alongside the used-reference one (matched by sample + contig:pos).")
+                    help="Optional per-sample VCFs annotated against a canonical reference -> the canonical "
+                         "amino-acid position shown alongside the used-reference one (matched by sample + contig:pos).")
+    ap.add_argument("--aa2-label", default="H37Rv",
+                    help="Label for the canonical-reference amino-acid numbering shown by --vcfs-h37rv (default H37Rv).")
     ap.add_argument("--gate", action="store_true")
     args = ap.parse_args()
     thr = {k: getattr(args, k) for k in DEF}
@@ -3380,7 +3383,7 @@ def main():
     payload = {"generated": now, "counts": counts, "thresholds": thr, "dist": DIST,
                "genome_len": genome_len, "snp_density_ok": snp_density_ok, "defs": DEFS, "nbins": NBINS,
                "genes": parse_gff(args.gff), "lin_colors": parse_lineage_colors(args.lineage_colors),
-               "gene_map": build_gene_map(args.gff),
+               "gene_map": build_gene_map(args.gff), "aa2_label": args.aa2_label,
                "gene_burden": parse_gene_burden(args.gene_burden) or None,
                "dr": parse_dr(args.dr_report),
                "pnps": parse_pnps(args.pnps) or None,

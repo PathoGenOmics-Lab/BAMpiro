@@ -8,6 +8,36 @@ include { getSavePath; getSampleDir } from './utils'
     Contains: SnpEff annotation processes and Final Legacy Stats generation
 ==================================================================== */
 
+process ANNOTATE_CANONICAL {
+    // Re-annotate a sample's variants against a CANONICAL reference snpEff DB (H37Rv by default; set
+    // params.canonical_snpeff_db for another organism) so the report can show the amino-acid change in
+    // both the used-reference and the canonical numbering. Existing ANN is stripped first so only the
+    // canonical annotation remains (qc_report.py reads the first ANN). Positions must line up with the
+    // canonical reference (true when the mapping reference shares its coordinates).
+    tag "AnnCanonical: ${sampleId}"
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    cpus 2
+    memory { 6.GB * task.attempt }
+
+    input:
+    tuple val(sampleId), val(refId), path(vcf_in)
+    val canonical_db
+
+    output:
+    tuple val(sampleId), path("${sampleId}.canonical.ann.vcf.gz"), emit: out
+
+    script:
+    """
+    set -euo pipefail
+    # Drop any existing ANN, then annotate against the canonical genome DB.
+    ( bcftools annotate -x INFO/ANN "${vcf_in}" -Ov 2>/dev/null || zcat -f "${vcf_in}" ) > stripped.vcf
+    snpEff ann -v ${canonical_db} stripped.vcf 2> ${sampleId}.canonical.snpeff.log \\
+      | awk 'BEGIN{FS="\\t"; OFS="\\t"} /^#/{print;next} /^\\[/{next} NF>=8{print}' \\
+      | bgzip -c > ${sampleId}.canonical.ann.vcf.gz
+    tabix -f -p vcf ${sampleId}.canonical.ann.vcf.gz 2>/dev/null || : > ${sampleId}.canonical.ann.vcf.gz.tbi
+    """
+}
+
 process ANNOTATE_LEGACY_VCF {
     tag "AnnLegacy: ${sampleId}"
     // Use getSampleDir for nested output support
