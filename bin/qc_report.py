@@ -798,16 +798,17 @@ th .infoi,.dyn-legend .infoi{background:#dde5f0}
 .dyn-chip b{font-weight:700;color:#98a6b8}
 .dyn-chip.sel{background:var(--accent);border-color:var(--accent);color:#fff} .dyn-chip.sel:hover{color:#fff} .dyn-chip.sel b{color:#d7e6ff}
 .dyn-dot{width:8px;height:8px;border-radius:50%;background:#d1495b;display:inline-block}
-.dyn-grid{display:flex;flex-direction:column;gap:22px}
-.dyn-genecard{border:1px solid var(--line);border-radius:16px;padding:16px 18px;background:#fff;box-shadow:var(--sh)}
-.dyn-gene-h{font-size:17px;font-weight:700;margin-bottom:14px;color:var(--ink);display:flex;align-items:baseline;gap:8px}
-.dyn-gene-h .c{font-size:13px;font-weight:400;color:var(--mut)}
-.dyn-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
-.dyn-card{border:1px solid var(--line);border-radius:13px;padding:12px 14px;background:var(--soft)}
+.dyn-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--dyncw,250px),1fr));gap:14px;align-items:start}
+.dyn-card{border:1px solid var(--line);border-radius:13px;padding:11px 13px;background:var(--soft);display:flex;flex-direction:column}
+.dyn-card.flagged{border-color:#cdd9ea;box-shadow:0 1px 0 rgba(31,120,180,.04)}
+.dyn-cardgene-dot{width:7px;height:7px;border-radius:50%;background:#d1495b;display:inline-block;margin-left:5px;vertical-align:1px}
 .dyn-card-h{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.dyn-pos{font-weight:700;font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums}
-.dyn-grp{font-size:12.5px;color:#516074;background:#fff;border:1px solid var(--line);border-radius:7px;padding:2px 9px}
-.dyn-eff{font-size:13px;color:#5a6a7c;margin:4px 0 8px}
+.dyn-cardgene{font-weight:800;font-size:13.5px;color:var(--ink)}
+.dyn-pos{font-weight:600;font-size:11.5px;color:var(--mut);font-variant-numeric:tabular-nums}
+.dyn-grp{font-size:11.5px;color:#516074;background:#fff;border:1px solid var(--line);border-radius:7px;padding:1px 8px}
+.dyn-eff{font-size:12px;color:#5a6a7c;margin:3px 0 7px;line-height:1.35}
+.dyn-zoom{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--mut)}
+.dyn-zoom input[type=range]{cursor:pointer;accent-color:var(--accent);width:118px}
 .dyn-aa{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums}
 .dyn-card-f{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
 .dyn-fchip{color:#fff;border-radius:7px;padding:2px 9px;font-size:12px;font-weight:500}
@@ -823,7 +824,7 @@ th .infoi,.dyn-legend .infoi{background:#dde5f0}
 .snpmx-fsel{font-size:12.5px;color:#33465c;display:flex;align-items:center;gap:5px}
 .snpmx-fsel select{font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:4px 9px;background:#fff;color:#33465c;cursor:pointer}
 .snpmx-wrap{overflow:auto;max-height:74vh;border:1px solid var(--line);border-radius:12px}
-table.snpmx{border-collapse:separate;border-spacing:0;font-size:12px;width:auto}
+table.snpmx{border-collapse:separate;border-spacing:0;font-size:12px;width:auto;margin:0 auto}
 table.snpmx th,table.snpmx td{border-bottom:1px solid #eef2f6}
 table.snpmx thead th{position:sticky;background:#f7f9fc;z-index:5}   /* top offset set inline per header row */
 table.snpmx .snpmx-metacell{font-size:10px;text-align:center;color:#1c2b3a;padding:2px 4px;height:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70px;border-bottom:1px solid #fff}
@@ -1220,7 +1221,7 @@ function renderTable(){
       if(v==null){tds+='<td class="na" data-v="">NA</td>';return;}
       var r=RANGES[m.key],nn=r[1]>r[0]?(v-r[0])/(r[1]-r[0]):0;nn=Math.max(0,Math.min(1,nn));var p=(nn*100).toFixed(1);
       tds+='<td data-v="'+v+'" style="background:linear-gradient(90deg,'+BAR[m.dir]+'2b 0 '+p+'%,#0000 '+p+'%)">'+fmt(v,m.kind)+'</td>';});
-    tds+='<td data-v="'+esc(s.lineage||'')+'" style="text-align:left">'+esc(s.lineage||'NA')+'</td>';
+    tds+='<td data-v="'+esc(s.lineage||'')+'" style="text-align:left">'+(s.lineage?'<span class="ldot" style="background:'+linColor(s.lineage)+'"></span>':'')+esc(s.lineage||'NA')+'</td>';
     return pre+'<tr class="'+(st.hi==s.s?'hl':'')+'" data-s="'+esc(s.s)+'">'+tds+'</tr>';}).join('');
   var t=el('gstable'); t.innerHTML='<thead>'+head+'</thead><tbody>'+body+'</tbody>';
   el('nshown').textContent=rows.length+' / '+R.samples.length+' shown';
@@ -1753,6 +1754,7 @@ var DYNCOL={fixation:'#2f6fed',emergence:'#1f9d6b',loss:'#e6893a',nonsyn:'#d1495
 var DYNHELP={emergence:'Emergence: the variant is (near-)absent at the first timepoint, then rises above the emergence threshold - a new allele appearing in this series.',fixation:'Fixation: the allele frequency reaches near 1.0 by the last timepoint - the variant has (almost) taken over.',loss:'Loss: the variant is present early then falls back toward 0 - an allele being lost from the series.',nonsyn:'Non-synonymous: the variant changes the protein (missense / stop / frameshift / splice / inframe indel), per snpEff - potentially functional.',high_impact:'High impact: snpEff predicts a HIGH-impact effect (frameshift, stop gained/lost...) - likely to disrupt the gene.'};
 var dynState={sel:null,q:''};
 var dynFilter={};
+var dynZoom=250;   // trajectory-card width in px (zoom slider); smaller -> more charts per row
 function dynHasFlag(v){return v.flags&&v.flags.length;}
 function dynColor(flags){ if(!flags)return '#9fb0c3'; if(flags.indexOf('fixation')>=0)return DYNCOL.fixation; if(flags.indexOf('emergence')>=0)return DYNCOL.emergence; if(flags.indexOf('loss')>=0)return DYNCOL.loss; if(flags.indexOf('high_impact')>=0)return DYNCOL.high_impact; return '#5b6b7e'; }
 function dynMiniChart(v,th){
@@ -1819,6 +1821,7 @@ function renderDynamics(){
       '<button class="dyn-btn" id="dynFlag" title="Show only genes that have at least one flagged variant">flagged genes</button>'+
       '<button class="dyn-btn" id="dynAll" title="Select every gene that has a moving variant">all</button>'+
       '<button class="dyn-btn" id="dynNone" title="Deselect all genes">clear</button>'+
+      '<label class="dyn-zoom" title="Resize the trajectory cards - drag left to fit more charts per row"><span>&#128269;&#8211;/+</span><input type="range" id="dynzoom" min="165" max="360" step="5" value="'+dynZoom+'"></label>'+
       '<span class="dyn-count" id="dynCount"></span></div>'+
     filterUI+
     '<div class="dyn-legend"><span title="'+DYNHELP.emergence+'"><i style="background:'+DYNCOL.emergence+'"></i>emergence <span class="infoi">i</span></span><span title="'+DYNHELP.fixation+'"><i style="background:'+DYNCOL.fixation+'"></i>fixation <span class="infoi">i</span></span><span title="'+DYNHELP.loss+'"><i style="background:'+DYNCOL.loss+'"></i>loss <span class="infoi">i</span></span><span title="'+DYNHELP.nonsyn+'"><i style="border:2px solid '+DYNCOL.nonsyn+';background:#fff"></i>non-synonymous <span class="infoi">i</span></span></div>'+
@@ -1836,26 +1839,32 @@ function renderDynamics(){
   function paintGrid(){
     var q=dynState.q.toLowerCase();
     var sel=geneList.filter(function(g){return dynState.sel[g] && (!q||g.toLowerCase().indexOf(q)>=0);});
-    el('dynCount').innerHTML=sel.length+' of '+geneList.length+' genes shown'+(singleGroup&&visGroupName?(' &#183; series <b>'+esc(visGroupName)+'</b>'):'')+(filterActive()?' (filtered)':'');
-    if(!sel.length){ el('dyngrid').innerHTML='<div class="dyn-empty">&#128204; '+(geneList.length?(dynState.q?('no selected gene matches &quot;'+esc(dynState.q)+'&quot;'):'Search and select one or more genes above to see the allele-frequency trajectories of their variants.'):'no variant trajectory matches the current series filter.')+'</div>'; return; }
-    el('dyngrid').innerHTML=sel.map(function(g){
-      var vs=genes[g].slice().sort(function(a,b){ return ((dynHasFlag(b)?1:0)-(dynHasFlag(a)?1:0)) || (String(a.pos)>String(b.pos)?1:-1); });
-      var cards=vs.map(function(v){
+    var nvar=0; sel.forEach(function(g){nvar+=genes[g].length;});
+    el('dynCount').innerHTML=sel.length+' of '+geneList.length+' genes'+(sel.length?(' &#183; '+nvar+' trajectories'):'')+(singleGroup&&visGroupName?(' &#183; series <b>'+esc(visGroupName)+'</b>'):'')+(filterActive()?' (filtered)':'');
+    var grid=el('dyngrid');
+    grid.style.setProperty('--dyncw', dynZoom+'px');
+    if(!sel.length){ grid.innerHTML='<div class="dyn-empty" style="grid-column:1/-1">&#128204; '+(geneList.length?(dynState.q?('no selected gene matches &quot;'+esc(dynState.q)+'&quot;'):'Search and select one or more genes above to see the allele-frequency trajectories of their variants.'):'no variant trajectory matches the current series filter.')+'</div>'; return; }
+    var cards=[];
+    sel.forEach(function(g){
+      genes[g].slice().sort(function(a,b){ return ((dynHasFlag(b)?1:0)-(dynHasFlag(a)?1:0)) || (String(a.pos)>String(b.pos)?1:-1); }).forEach(function(v){
+        var flagged=dynHasFlag(v);
         var chips=(v.flags||[]).map(function(f){return '<span class="dyn-fchip" style="background:'+(DYNCOL[f]||'#8895a6')+'" title="'+(DYNHELP[f]||f)+'">'+f+'</span>';}).join('');
-        return '<div class="dyn-card">'+
-          '<div class="dyn-card-h"><span class="dyn-pos" title="Genomic position (contig:position) of this SNP">'+esc(v.pos)+'</span>'+(singleGroup?'':'<span class="dyn-grp" title="Connected series this variant belongs to (the metadata group column, e.g. patient / passage line)">'+esc(v.group)+'</span>')+'</div>'+
+        var posNum=String(v.pos).split(':').pop();
+        cards.push('<div class="dyn-card'+(flagged?' flagged':'')+'">'+
+          '<div class="dyn-card-h"><span class="dyn-cardgene" title="Gene (click its chip above to toggle)">'+esc(v.gene||'(intergenic)')+'</span>'+(singleGroup?'':'<span class="dyn-grp" title="Connected series this variant belongs to (the metadata group column, e.g. patient / passage line)">'+esc(v.group)+'</span>')+'<span class="dyn-pos" title="Genomic position (contig:position) of this SNP: '+esc(v.pos)+'">'+esc(posNum)+'</span></div>'+
           '<div class="dyn-eff" title="Predicted effect (snpEff) and protein change HGVS.p: ref amino acid, codon position, alt amino acid">'+esc(v.eff||'variant')+(v.aa?(' &#183; <b class="dyn-aa">'+esc(v.aa)+'</b>'):(v.alt?(' &#183; &#8594;'+esc(v.alt)):''))+'</div>'+
           dynMiniChart(v,th)+
           '<div class="dyn-card-f">'+(chips||'<span class="c" title="no emergence / fixation / loss / non-synonymous event for this variant">no event</span>')+'<span class="dyn-traj" title="Allele frequency at each timepoint, in chronological order">'+v.traj.map(function(a){return a.toFixed(2);}).join(' &#8594; ')+'</span></div>'+
-        '</div>';
-      }).join('');
-      return '<div class="dyn-genecard"><div class="dyn-gene-h">'+esc(g)+'<span class="c">'+vs.length+' variant(s), '+vs.filter(dynHasFlag).length+' flagged</span></div><div class="dyn-cards">'+cards+'</div></div>';
-    }).join('');
+        '</div>');
+      });
+    });
+    grid.innerHTML=cards.join('');
   }
   el('dynsearch').oninput=function(){ dynState.q=this.value; paintChips(); paintGrid(); };
   el('dynFlag').onclick=function(){ dynState.sel={}; geneList.filter(function(g){return genes[g].some(dynHasFlag);}).forEach(function(g){dynState.sel[g]=1;}); paintChips(); paintGrid(); };
   el('dynAll').onclick=function(){ dynState.sel={}; geneList.forEach(function(g){dynState.sel[g]=1;}); paintChips(); paintGrid(); };
   el('dynNone').onclick=function(){ dynState.sel={}; paintChips(); paintGrid(); };
+  el('dynzoom').oninput=function(){ dynZoom=+this.value; el('dyngrid').style.setProperty('--dyncw', dynZoom+'px'); };
   if(dynFields.length){
     Array.prototype.forEach.call(host.querySelectorAll('.dyn-filters select'),function(sel){ sel.onchange=function(){ var f=sel.getAttribute('data-df'); if(sel.value)dynFilter[f]=sel.value; else delete dynFilter[f]; recompute(); paintChips(); paintGrid(); }; });
     el('dynfclear').onclick=function(){ dynFilter={}; Array.prototype.forEach.call(host.querySelectorAll('.dyn-filters select'),function(s){s.value='';}); recompute(); paintChips(); paintGrid(); };
@@ -1875,7 +1884,20 @@ function renderSnpMatrix(){
   var meta=(R.sample_meta&&R.sample_meta.fields&&R.sample_meta.fields.length)?R.sample_meta:null;
   var metaMaps={}, metaVals={};
   if(meta){ meta.fields.forEach(function(f){ var m={},vals=[],k=0; samples.forEach(function(s){var v=(meta.rows[s]||{})[f]; if(v&&!(v in m)){m[v]=SNPMX_PAL[k%SNPMX_PAL.length];k++;vals.push(v);}}); metaMaps[f]=m; metaVals[f]=vals.sort(); }); }
-  function metaColor(f,v){ return (v&&metaMaps[f]&&metaMaps[f][v])?metaMaps[f][v]:'#eef2f7'; }
+  // a field is "the lineage field" only if every (non-NA) value is a known lineage -> reuse the canonical
+  // report palette (mycolorsTB / linColor) for it; all other fields get the neutral pastels. Keying on the
+  // field (not just the value) stops an unrelated column whose value happens to equal a lineage label from
+  // being mis-coloured.
+  var linField={};
+  if(meta){ meta.fields.forEach(function(f){ var vs=(metaVals[f]||[]).filter(function(v){return v&&v!=='NA'&&v!=='.'&&v!=='-';}); if(vs.length&&vs.every(function(v){return LINCOL[v];})) linField[f]=1; }); }
+  function metaColor(f,v){ if(v&&linField[f]&&LINCOL[v]) return LINCOL[v]; return (v&&metaMaps[f]&&metaMaps[f][v])?metaMaps[f][v]:'#eef2f7'; }
+  function metaText(bg){
+    if(bg&&bg.charAt(0)==='#'){ var h=bg.length===4?('#'+bg.charAt(1)+bg.charAt(1)+bg.charAt(2)+bg.charAt(2)+bg.charAt(3)+bg.charAt(3)):bg;
+      var L=(0.299*parseInt(h.substr(1,2),16)+0.587*parseInt(h.substr(3,2),16)+0.114*parseInt(h.substr(5,2),16))/255; return L<0.62?'#fff':'#1c2b3a'; }
+    var m=/hsl\(\s*[\d.]+\s*,\s*[\d.]+%\s*,\s*([\d.]+)%/i.exec(bg||'');   // algorithmic lineage fallback is hsl(h,58%,52%)
+    if(m) return (+m[1])<62?'#fff':'#1c2b3a';
+    return '#1c2b3a';
+  }
   function visIdx(){ var idx=[]; samples.forEach(function(s,i){ var ok=true; if(meta){ for(var f in snpmxFilter){ if(snpmxFilter[f] && (meta.rows[s]||{})[f]!==snpmxFilter[f]){ ok=false; break; } } } if(ok) idx.push(i); }); return idx; }
   var filterUI=meta?('<div class="snpmx-filters"><span class="snpmx-flabel">filter columns:</span>'+
     meta.fields.map(function(f){ return '<label class="snpmx-fsel">'+esc(f)+' <select data-f="'+esc(f)+'"><option value="">all</option>'+
@@ -1902,7 +1924,7 @@ function renderSnpMatrix(){
     var shown=rows.slice(0,MAXR), mh=22, nf=meta?meta.fields.length:0;
     var metaRows=meta?meta.fields.map(function(f,k){
       return '<tr>'+'<th class="snpmx-info snpmx-metalabel" style="top:'+(k*mh)+'px">'+esc(f)+'</th>'+
-        vi.map(function(i){var s=samples[i],v=(meta.rows[s]||{})[f]||''; return '<th class="snpmx-metacell" style="top:'+(k*mh)+'px;background:'+metaColor(f,v)+'" title="'+esc(f)+': '+esc(v||'-')+'">'+esc(v)+'</th>';}).join('')+'</tr>';
+        vi.map(function(i){var s=samples[i],v=(meta.rows[s]||{})[f]||'',bg=metaColor(f,v); return '<th class="snpmx-metacell" style="top:'+(k*mh)+'px;background:'+bg+';color:'+metaText(bg)+'" title="'+esc(f)+': '+esc(v||'-')+'">'+esc(v)+'</th>';}).join('')+'</tr>';
     }).join(''):'';
     var stop=nf*mh;
     var nameRow='<tr><th class="snpmx-info snpmx-corner" style="top:'+stop+'px">SNP '+esc(M.reference?('('+M.reference+')'):'')+'</th>'+
