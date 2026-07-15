@@ -380,6 +380,54 @@ def parse_pnps(path):
     return rows[:300]
 
 
+_DR_DRUG_ORDER = ["RIF", "INH", "EMB", "PZA", "STR", "STM", "FQ", "LFX", "MFX", "OFX", "KAN", "AMK",
+                  "CAP", "ETH", "PTO", "LZD", "BDQ", "CFZ", "BDQ_CFZ", "DLM", "PAS", "CS"]
+
+
+def parse_dr(path):
+    """Per-sample drug-resistance calls -> {'samples','drugs','calls':[{s,drug,gene,mutation,grade,gn,marker,
+    af,dp}]} or None. Tab-separated with a header; recognised columns (case-insensitive): sample, drug, gene,
+    mutation, grade, marker_name/marker, af, dp. `grade` may be a WHO string like '1) Assoc w R' -> gn=1."""
+    if not path or not os.path.exists(path):
+        return None
+    calls, samples = [], []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            header = None
+            for line in fh:
+                if not line.strip() or line.startswith("#"):
+                    continue
+                parts = line.rstrip("\n").split("\t")
+                if header is None:
+                    header = [h.strip().lower() for h in parts]
+                    continue
+                d = dict(zip(header, parts))
+                s = (d.get("sample") or (parts[0] if parts else "")).strip()
+                if not s:
+                    continue
+                grade = (d.get("grade") or "").strip()
+                mg = re.match(r"\s*(\d)", grade)
+                dp = d.get("dp")
+                try:
+                    dp = int(dp) if dp not in (None, "", "NA", ".") else None
+                except ValueError:
+                    dp = None
+                calls.append({"s": s, "drug": (d.get("drug") or "").strip(), "gene": (d.get("gene") or "").strip(),
+                              "mutation": (d.get("mutation") or "").strip(), "grade": grade,
+                              "gn": (int(mg.group(1)) if mg else None),
+                              "marker": (d.get("marker_name") or d.get("marker") or "").strip(),
+                              "af": to_float(d.get("af")), "dp": dp})
+                if s not in samples:
+                    samples.append(s)
+    except OSError:
+        return None
+    if not calls:
+        return None
+    drugs = sorted({c["drug"] for c in calls if c["drug"]},
+                   key=lambda x: (_DR_DRUG_ORDER.index(x) if x in _DR_DRUG_ORDER else 99, x))
+    return {"samples": samples, "drugs": drugs, "calls": calls}
+
+
 def parse_gff(path):
     """Best-effort GFF3 parse of gene/CDS features -> [{name, start, end}] (1-based). Empty on any problem."""
     if not path or not os.path.exists(path):
@@ -940,6 +988,20 @@ table.epitbl th{text-align:left;padding:8px 11px;background:#f7f9fc;border-botto
 table.epitbl td{padding:6px 11px;border-bottom:1px solid #eef2f6;white-space:nowrap}
 table.epitbl tbody tr:hover td{background:var(--soft)}
 .epitbl-r{font-weight:700;font-variant-numeric:tabular-nums}
+/* Drug resistance panel */
+.dr-legend{display:flex;gap:18px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--mut);margin-bottom:12px}
+.dr-legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.dr-mxwrap{overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:12px;margin-bottom:14px}
+table.drmx{border-collapse:separate;border-spacing:0;font-size:12px}
+table.drmx th{position:sticky;background:#f7f9fc;z-index:2}
+.dr-corner{left:0;top:0;z-index:4;text-align:right;padding:2px 9px;color:var(--mut)}
+.dr-hcell{top:0;height:74px;vertical-align:bottom;padding:3px 0;z-index:3}
+.dr-h{writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;font-size:11px;font-weight:700;color:#33465c}
+.dr-row{left:0;text-align:right;padding:3px 10px;font-size:11.5px;font-weight:600;color:#33465c;white-space:nowrap}
+.drmx-cell{min-width:26px;height:24px;text-align:center;border-bottom:1px solid #fff;border-right:1px solid #fff}
+.drmx-cell b{color:#fff;font-size:11px}
+.dr-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.dr-badge{color:#fff;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;white-space:nowrap}
 /* SNP matrix (explorable heatmap) */
 .snpmx-controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 .snpmx-toggle{font-size:12.5px;color:var(--mut);display:flex;align-items:center;gap:5px;cursor:pointer}
@@ -2252,7 +2314,60 @@ function renderSnpMatrix(){
   draw();
 }
 
-function renderAll(){renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderEpistasis();renderSnpMatrix();renderFlags();renderCuration();}
+function drGColor(gn){ return (gn===1||gn===2)?'#dc2626':(gn===3?'#d97706':((gn===4||gn===5)?'#94a3b8':'#b8c2cf')); }
+function drStatus(gns){ var r=false,u=false,n=false; for(var i=0;i<gns.length;i++){var g=gns[i]; if(g===1||g===2)r=true; else if(g===3)u=true; else if(g===4||g===5)n=true;} return r?{t:'R',c:'#dc2626'}:(u?{t:'?',c:'#d97706'}:(n?{t:'&#183;',c:'#94a3b8'}:{t:'',c:'#eef2f7'})); }
+var drState={q:''};
+function renderDrug(){
+  var host=el('drug_body'), sec=el('drug'); if(!host)return;
+  var D=R.dr;
+  if(!(D&&D.calls&&D.calls.length)){ if(sec)sec.style.display='none'; var nv=el('nav-drug'); if(nv)nv.style.display='none'; return; }
+  if(sec)sec.style.display='';
+  var samples=D.samples, drugs=D.drugs, calls=D.calls;
+  var cell={}, cmut={};
+  calls.forEach(function(c){ var k=c.s+''+c.drug; (cell[k]=cell[k]||[]).push(c.gn); (cmut[k]=cmut[k]||[]).push(c); });
+  var mx='<div class="dr-mxwrap"><table class="drmx"><thead><tr><th class="dr-corner">sample \\ drug</th>'+
+    drugs.map(function(dr){return '<th class="dr-hcell" title="'+esc(dr)+'"><span class="dr-h">'+esc(dr)+'</span></th>';}).join('')+'</tr></thead><tbody>'+
+    samples.map(function(s){ return '<tr><th class="dr-row" title="'+esc(s)+'">'+esc(s)+'</th>'+drugs.map(function(dr){
+      var k=s+''+dr, gns=cell[k];
+      if(!gns) return '<td class="drmx-cell" title="'+esc(s)+' &#183; '+esc(dr)+': no mutation detected"></td>';
+      var st=drStatus(gns);
+      var muts=cmut[k].map(function(c){return c.gene+' '+c.mutation+(c.gn?(' (WHO '+c.gn+')'):'');}).join('; ');
+      return '<td class="drmx-cell" style="background:'+st.c+'" title="'+esc(s)+' &#183; '+esc(dr)+' &#8212; '+esc(muts)+'"><b>'+st.t+'</b></td>';
+    }).join('')+'</tr>'; }).join('')+'</tbody></table></div>';
+  host.innerHTML=
+    '<div class="dr-legend">'+
+      '<span title="WHO groups 1-2: associated with resistance"><i style="background:#dc2626"></i>1&#8211;2 associated with R</span>'+
+      '<span title="WHO group 3: uncertain significance"><i style="background:#d97706"></i>3 uncertain</span>'+
+      '<span title="WHO groups 4-5: not associated with resistance"><i style="background:#94a3b8"></i>4&#8211;5 not associated</span>'+
+      '<span class="c">Cell = worst grade per drug (R / ? / &#183;). A genomic screen (pathotypr, WHO catalogue, H37Rv numbering), not a clinical DST result.</span></div>'+
+    mx+
+    '<div class="dr-controls"><input id="drq" class="dyn-search" type="search" placeholder="&#128269; filter by sample / drug / gene / mutation..." value="'+esc(drState.q)+'"><button class="dyn-btn" id="drdl" title="Download every resistance call as a TSV">&#8595; download calls (TSV)</button><span class="dyn-count" id="drcount"></span></div>'+
+    '<div class="epitbl-wrap"><table class="epitbl" id="drtable"></table></div>';
+  function draw(){
+    var q=drState.q.toLowerCase();
+    var rows=calls.filter(function(c){ return !q||(c.s.toLowerCase().indexOf(q)>=0)||(c.drug.toLowerCase().indexOf(q)>=0)||(c.gene.toLowerCase().indexOf(q)>=0)||(c.mutation.toLowerCase().indexOf(q)>=0); });
+    rows=rows.slice().sort(function(a,b){ if(a.s!==b.s) return a.s<b.s?-1:1; return (a.gn||9)-(b.gn||9); });
+    el('drcount').textContent=rows.length+' call(s)';
+    var h='<thead><tr><th>Sample</th><th>Drug</th><th>Gene</th><th>Mutation (H37Rv)</th><th>WHO grade</th><th>AF</th><th>DP</th></tr></thead><tbody>';
+    if(!rows.length) h+='<tr><td colspan="7" class="c" style="padding:18px;text-align:center">no call matches the filter.</td></tr>';
+    h+=rows.slice(0,600).map(function(c){
+      return '<tr><td>'+esc(c.s)+'</td><td><b>'+esc(c.drug)+'</b></td><td>'+esc(c.gene)+geneRvTag(c.gene)+'</td><td class="epitbl-r">'+esc(c.mutation)+'</td>'+
+        '<td><span class="dr-badge" style="background:'+drGColor(c.gn)+'" title="'+esc(c.marker||'')+'">'+esc(c.grade||'?')+'</span></td>'+
+        '<td>'+(c.af==null?'':c.af.toFixed(2))+'</td><td>'+(c.dp==null?'':c.dp)+'</td></tr>';
+    }).join('')+'</tbody>';
+    el('drtable').innerHTML=h;
+  }
+  el('drq').oninput=function(){ drState.q=this.value; draw(); };
+  el('drdl').onclick=function(){
+    var hdr=['sample','drug','gene','mutation_h37rv','who_grade','marker','af','dp'];
+    var lines=[hdr.join('\t')];
+    calls.forEach(function(c){ lines.push([c.s,c.drug,c.gene,c.mutation,c.grade,c.marker,(c.af==null?'':c.af),(c.dp==null?'':c.dp)].join('\t')); });
+    dl(lines.join('\n')+'\n','drug_resistance.tsv','text/tab-separated-values');
+  };
+  draw();
+}
+
+function renderAll(){renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderEpistasis();renderSnpMatrix();renderDrug();renderFlags();renderCuration();}
 
 // ---- static wiring ----
 el('meta').textContent=R.samples.length+' samples · '+R.generated;
@@ -2438,6 +2553,7 @@ if(!R.n_ancient){var adx=el('adna');if(adx)adx.style.display='none';var nadx=el(
 // SNP dynamics: only when the metadata gave connected time-series (else no section at all)
 if(!(R.dynamics&&R.dynamics.groups&&R.dynamics.groups.length)){var dyx=el('dynamics');if(dyx)dyx.style.display='none';var ndyx=el('nav-dyn');if(ndyx)ndyx.style.display='none';}
 if(!(R.epistasis&&R.epistasis.pairs&&R.epistasis.pairs.length)){var epx=el('epistasis');if(epx)epx.style.display='none';var nepx=el('nav-epi');if(nepx)nepx.style.display='none';}
+if(!(R.dr&&R.dr.calls&&R.dr.calls.length)){var drx=el('drug');if(drx)drx.style.display='none';var ndrx=el('nav-drug');if(ndrx)ndrx.style.display='none';}
 // genome track selector (Missing / SNPs / Het / Indels) - only offer tracks that have data
 (function(){var host=el('gtrack'); if(!host)return;var avail=GTRACKS.filter(function(g){return gtrackHas(g.k);});
   if(avail.length<=1){host.style.display='none';return;}
@@ -2552,7 +2668,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="toc-group"><div class="toc-gh">Correlation &amp; structure<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#corr">Correlations</a><a class="toc-link" href="#corrmatrix">Corr matrix</a><a class="toc-link" href="#qcpca" id="nav-pca">QC space</a><a class="toc-link" href="#divcomp" id="nav-divcomp">Divergence</a></div></div>
 <div class="toc-group"><div class="toc-gh">Genome &amp; genes<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#cons">Consensus</a><a class="toc-link" href="#genome" id="nav-genome">Genome</a><a class="toc-link" href="#function" id="nav-function">Function</a><a class="toc-link" href="#geneburden" id="nav-geneburden">Gene burden</a><a class="toc-link" href="#hotspots" id="nav-hot">Variable genes</a></div></div>
 <div class="toc-group"><div class="toc-gh">Evolution<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#temporal" id="nav-temporal">Temporal</a><a class="toc-link" href="#pnps" id="nav-pnps">pN/pS</a><a class="toc-link" href="#adna" id="nav-adna">aDNA</a></div></div>
-<div class="toc-group"><div class="toc-gh">Variants over time<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#dynamics" id="nav-dyn">SNP dynamics</a><a class="toc-link" href="#epistasis" id="nav-epi">Epistasis</a><a class="toc-link" href="#snpmatrix" id="nav-snpmx">SNP matrix</a></div></div>
+<div class="toc-group"><div class="toc-gh">Variants over time<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#dynamics" id="nav-dyn">SNP dynamics</a><a class="toc-link" href="#epistasis" id="nav-epi">Epistasis</a><a class="toc-link" href="#snpmatrix" id="nav-snpmx">SNP matrix</a><a class="toc-link" href="#drug" id="nav-drug">Drug resistance</a></div></div>
 <div class="toc-group"><div class="toc-gh">Quality<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#flagged">Flagged</a></div></div>
 </nav>
 <header><span class="logo"><b>BAMpiro</b> QC</span><span class="meta" id="meta"></span></header>
@@ -2635,6 +2751,8 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="panel pad" id="epi_body"></div></section>
 <section id="snpmatrix"><h2>SNP matrix <span class="c">- every SNP site (rows) &#215; sample (columns); each cell is the allele frequency (hover for AF &amp; depth), a striped cell = not called. Filter by gene / position, then download the full matrix as a TSV.</span></h2>
 <div class="panel pad" id="snpmx_body"></div></section>
+<section id="drug"><h2>Drug resistance <span class="c">- resistance-associated mutations detected by pathotypr (WHO catalogue, H37Rv numbering). A genomic screen, NOT a clinical result; grade 1&#8211;2 = associated with resistance, 3 = uncertain, 4&#8211;5 = not associated.</span></h2>
+<div class="panel pad" id="drug_body"></div></section>
 <section id="adna"><h2>aDNA damage authentication <span class="c">- terminal deamination per ancient sample; a screen, not a proof of authenticity</span></h2>
 <div class="panel"><div id="adna_body" class="pad"></div></div></section>
 <section id="temporal"><h2>Temporal sampling overview <span class="c">- per-lineage year span parsed from dates + an informative-site proxy; a readiness check for downstream time-resolved analysis, NOT a clock estimate</span></h2>
@@ -3120,6 +3238,8 @@ def main():
                     help="BED of regions to mask (e.g. mtbc_mask.bed: PE/PPE, IS, DR, repeats) -> a 'mask regions' toggle.")
     ap.add_argument("--gene-burden", default=None,
                     help="Cohort gene-burden TSV (collect_summary --gene-burden-out) -> the Functional gene burden panel (optional).")
+    ap.add_argument("--dr-report", default=None,
+                    help="Per-sample drug-resistance calls TSV (from pathotypr DR markers) -> the Drug resistance panel (optional).")
     ap.add_argument("--pnps", default=None,
                     help="Cohort per-gene dN/dS TSV (eskaks) -> the Selection pN/pS panel (optional; a cohort analysis, not per-sample QC).")
     ap.add_argument("--provenance", nargs="*", default=[],
@@ -3259,6 +3379,7 @@ def main():
                "genes": parse_gff(args.gff), "lin_colors": parse_lineage_colors(args.lineage_colors),
                "gene_map": build_gene_map(args.gff),
                "gene_burden": parse_gene_burden(args.gene_burden) or None,
+               "dr": parse_dr(args.dr_report),
                "pnps": parse_pnps(args.pnps) or None,
                "mask_bins": mask_bins, "mask_pct": mask_pct,
                "mask_iv": (mask_iv[:5000] if mask_iv else None),
