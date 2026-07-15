@@ -41,6 +41,7 @@ ENV MAMBA_ROOT_PREFIX=/opt/conda
 # - snpeff: Annotation
 # - kraken2: Decontamination
 # - multiqc: Reporting
+# - pathotypr: alignment-free MTBC lineage + WHO drug-resistance genotyping (k-mer, reference-agnostic)
 # - python=3.12: Latest stable python requested
 RUN micromamba create -n bambard-env -c conda-forge -c bioconda -y \
     'python' \
@@ -55,9 +56,25 @@ RUN micromamba create -n bambard-env -c conda-forge -c bioconda -y \
     'snpeff' \
     'kraken2' \
     'multiqc' \
+    'pathotypr' \
     'pandas' \
     'biopython' \
     && micromamba clean --all --yes
+
+# 3b. Bundle the pathotypr marker panels + pre-trained model from Zenodo (v1.0.0, pinned) so runs are
+# reproducible and offline. Positions are in MTBC-ancestor coordinates; pathotypr is k-mer based so it is
+# reference-agnostic. Override the paths with --pathotypr_* if you supply your own.
+ENV PATHOTYPR_DATA=/opt/pathotypr
+RUN mkdir -p ${PATHOTYPR_DATA} && \
+    wget -q -O ${PATHOTYPR_DATA}/lineage_markers.tsv "https://zenodo.org/records/19210044/files/pathotypr_lineage_markers_v1.0.0.tsv?download=1" && \
+    wget -q -O ${PATHOTYPR_DATA}/dr_markers.tsv       "https://zenodo.org/records/19210044/files/pathotypr_dr_markers_v1.0.0.tsv?download=1" && \
+    wget -q -O ${PATHOTYPR_DATA}/rf_model.pathotypr   "https://zenodo.org/records/19210044/files/pathotypr_rf_model_v1.0.0.pathotypr?download=1"
+
+# 3c. Pre-download the H37Rv snpEff database so variants can also be annotated in H37Rv / Mycobrowser
+# numbering for the report's dual amino-acid display (see qc_report.py --vcfs-h37rv). Adjust the genome
+# name if snpEff renames it. This needs network at build time only.
+RUN snpEff download -v Mycobacterium_tuberculosis_h37rv || \
+    echo "WARN: could not pre-fetch the H37Rv snpEff DB; build it manually or set the correct genome name"
 
 # 4. Set PATH to include the new environment binaries globally
 # This ensures that calling 'bwa' or 'nextflow' works directly
