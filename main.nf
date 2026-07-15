@@ -18,6 +18,7 @@ include { CONSENSUS_FASTA } from './modules/consensus'
 include { CALL_BACKBONE as CALL_BACKBONE_RAW; MERGE_VCFS as MERGE_VCFS_RAW } from './modules/variants'
 include { CONSENSUS_FASTA as CONSENSUS_FASTA_RAW } from './modules/consensus'
 include { ANNOTATE_LEGACY_VCF; ANNOTATE_MAIN_VCF; GENERATE_LEGACY_STATS } from './modules/annotation'
+include { COLLECT_SUMMARY; QC_REPORT } from './modules/report'
 
 /* ----------------------------- Configuration Logic ----------------------------- */
 
@@ -300,6 +301,7 @@ workflow {
     def vcf_ch = MERGE_VCFS(merge_in)
 
     // 7. Consensus Generation (Optional)
+    def masked_consensus = Channel.empty()   // captured for the cohort QC report (section 11)
     if (params.make_consensus) {
         // Prepare inputs: VCF + Reference + Mask sites
         // Note: Script is called from bin/ directly in the module
@@ -308,7 +310,7 @@ workflow {
         def allpos_mask = vcf_ch.allpos.join(fb_out.mask_sites, by: [0,1])
         def cons_in = allpos_mask.join(refmeta, by: [0,1]).map { sId, rId, vcf_gz, tbi, mask, ref_fa, exclude_txt -> tuple(sId, rId, vcf_gz, tbi, mask, ref_fa, exclude_txt, "") }
 
-        CONSENSUS_FASTA(cons_in)
+        masked_consensus = CONSENSUS_FASTA(cons_in).fasta
 
         // 7b. Virgin (unmasked) consensus from the ORIGINAL dedup BAM, in parallel with the masked one.
         if (params.keep_virgin_consensus && params.dynamic_read_filter) {
@@ -413,7 +415,7 @@ workflow {
         .filter { it != null }
 
     
-    GENERATE_LEGACY_STATS(final_stats_input)
+    def legacy_stats = GENERATE_LEGACY_STATS(final_stats_input)
 
     // 10. MultiQC Report
     // Collect all relevant metrics from previous processes.
@@ -434,4 +436,13 @@ workflow {
         .collect()
 
     MULTIQC(qc_collection, multiqc_report_filename)
+
+    // 11. Consolidated QC report (cohort-level): aggregate every per-sample legacy log into one
+    // summary TSV, then render the self-contained interactive HTML + PASS/WARN/FAIL flags.
+    if (params.make_qc_report) {
+        def all_logs = legacy_stats.legacy_log.collect()
+        def summ = COLLECT_SUMMARY(all_logs, tsv_name)
+        def cons_files = masked_consensus.map { sId, rId, fa -> fa }.collect().ifEmpty([])
+        QC_REPORT(summ.summary, summ.gene_burden, cons_files, tsv_name)
+    }
 }
