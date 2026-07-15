@@ -1809,7 +1809,7 @@ el('meta').textContent=R.samples.length+' samples · '+R.generated;
     if(ic){
       e.stopPropagation(); e.preventDefault();
       if(pop._for===ic&&pop.style.display==='block'){ pop.style.display='none'; pop._for=null; return; }
-      pop.textContent=ic.getAttribute('data-info')||ic.getAttribute('title')||'';
+      var _h=ic.closest('[title]'); pop.textContent=ic.getAttribute('data-info')||(_h?_h.getAttribute('title'):'')||'';
       var pw=Math.min(320,window.innerWidth-24); pop.style.maxWidth=pw+'px'; pop.style.display='block';
       var r=ic.getBoundingClientRect();
       var left=Math.min(Math.max(8,r.left-4),window.innerWidth-pw-8), top=r.bottom+8;
