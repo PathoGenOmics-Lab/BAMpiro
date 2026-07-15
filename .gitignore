@@ -1,0 +1,20 @@
+# Nextflow runtime artifacts
+.nextflow/
+.nextflow.log*
+.nextflow.pid
+work/
+
+# Execution reports
+report*.html
+timeline*.html
+trace*.txt
+dag*.html
+dag*.dot
+
+# Pipeline outputs / caches
+results_bampiro/
+mappability_cache/
+
+# Python
+__pycache__/
+*.pyc
