@@ -264,37 +264,44 @@ class CsvMasker:
     Parses a CSV with columns: rv_position,pal,homopolymer,GCrich,repetitive,blindspot
     Masks the position if 'repetitive' or 'blindspot' == 1.
     """
-    def __init__(self, csv_path: Optional[str]):
+    def __init__(self, csv_path: Optional[str], contigs: Optional[List[str]] = None):
         self.points: Set[int] = set()
+        self.contig: Optional[str] = None                 # rv_position is single-contig; bind the mask to it
         if csv_path:
+            if contigs and len(contigs) == 1:
+                self.contig = contigs[0]
+            elif contigs and len(contigs) > 1:
+                raise RuntimeError("--special-mask-csv uses single-contig (rv_position) coordinates but the "
+                                   "reference has multiple contigs; add a chromosome column or use a single-contig reference")
             self._load(csv_path)
+
+    @staticmethod
+    def _flag(v) -> int:
+        v = ("" if v is None else str(v)).strip()
+        try:
+            return int(float(v)) if v else 0             # empty cell -> 0 (do not drop the whole row)
+        except ValueError:
+            return 0
 
     def _load(self, path: str) -> None:
         try:
             with open(path, "r", encoding="utf-8") as fh:
                 reader = csv.DictReader(fh)
-                # Check for required 'rv_position' header
                 if not reader.fieldnames or 'rv_position' not in reader.fieldnames:
-                     sys.stderr.write(f"[WARN] CSV missing 'rv_position' header: {path}\n")
-                     return
-                
+                    sys.stderr.write(f"[WARN] CSV missing 'rv_position' header: {path}\n")
+                    return
                 for row in reader:
                     try:
-                        pos = int(row['rv_position'])
-                        # Parse flags (handle strings '1' or integers)
-                        rep = int(row.get('repetitive', 0))
-                        blind = int(row.get('blindspot', 0))
-                        
-                        if rep == 1 or blind == 1:
-                            self.points.add(pos)
-                            
-                    except (ValueError, KeyError):
-                        continue
+                        pos = int(str(row['rv_position']).strip())
+                    except (ValueError, KeyError, TypeError):
+                        continue                          # bad position -> skip only this row
+                    if self._flag(row.get('repetitive')) == 1 or self._flag(row.get('blindspot')) == 1:
+                        self.points.add(pos)
         except FileNotFoundError:
             sys.stderr.write(f"[WARN] Special Mask CSV file not found: {path}\n")
 
-    def masked(self, pos: int) -> bool:
-        return pos in self.points
+    def masked(self, chrom: str, pos: int) -> bool:
+        return (self.contig is None or chrom == self.contig) and pos in self.points
 
 
 class FastaReader:
@@ -375,7 +382,11 @@ def parse_vcf_record(line: str) -> Optional[VcfRecord]:
     )
 
 
-def allele_bases_from_record(rec: VcfRecord, ref_base: str) -> Optional[Set[str]]:
+def allele_bases_from_record(rec: VcfRecord, ref_base: str, ignore_ref: bool = False) -> Optional[Set[str]]:
+    # ignore_ref: when >1 record sits at one position, the site was a multiallelic genotype (e.g. 1/2)
+    # that `bcftools norm -m -` split into biallelic records, recoding each sibling ALT's slot to the
+    # reference index 0. That 0 is a split ARTIFACT, not a real reference call, so we must not add the
+    # reference base (doing so leaks the ancestral allele into the IUPAC code -> reference bias).
     gt = get_gt(rec.fmt, rec.sample)
     if gt is None:
         return None
@@ -386,7 +397,7 @@ def allele_bases_from_record(rec: VcfRecord, ref_base: str) -> Optional[Set[str]
     if rec.alt == "." or rec.alt == "":
         out = set()
         for aidx in alleles:
-            if aidx == 0 and ref_base in DNA_BASES:
+            if aidx == 0 and not ignore_ref and ref_base in DNA_BASES:
                 out.add(ref_base)
         return out if out else None
 
@@ -394,7 +405,7 @@ def allele_bases_from_record(rec: VcfRecord, ref_base: str) -> Optional[Set[str]
     out: Set[str] = set()
     for aidx in alleles:
         if aidx == 0:
-            if ref_base in DNA_BASES:
+            if not ignore_ref and ref_base in DNA_BASES:
                 out.add(ref_base)
         elif 1 <= aidx <= len(alt_alleles):
             a = alt_alleles[aidx - 1]
@@ -423,6 +434,7 @@ def consensus_for_position(
     ref_min_dp: int,
     max_ref_altfrac: float,
     max_ref_min_alt: int,
+    max_ref_del_frac: float,
 ) -> str:
     chrom = recs[0].chrom
     pos = recs[0].pos
@@ -431,7 +443,7 @@ def consensus_for_position(
     # 1. Interval Mask (Exclusions)
     # 2. Point Mask (Mask Sites)
     # 3. CSV Mask (Repetitive/Blindspot)
-    if interval_mask.masked(chrom, pos) or point_mask.masked(chrom, pos) or csv_mask.masked(pos):
+    if interval_mask.masked(chrom, pos) or point_mask.masked(chrom, pos) or csv_mask.masked(chrom, pos):
         return mask_char
 
     for r in recs:
@@ -466,15 +478,23 @@ def consensus_for_position(
         base_depth = (ro + ao) if (ro is not None and ao is not None) else dp_pos
         if base_depth < ref_min_dp:
             return "N"
+        # Deletion gate: dp_pos (mpileup depth, counts deletion '*' / ref-skip reads) minus base_depth
+        # (RO+AO base evidence only) = reads carrying a deletion/skip here. If they are the majority the
+        # site is (partially) deleted -> do NOT emit the ancestral base. Only bites when AD is present
+        # (base_depth < dp_pos); the earlier base_depth<ref_min_dp only caught near-complete deletions.
+        if dp_pos > 0 and (dp_pos - base_depth) / dp_pos >= max_ref_del_frac:
+            return "N"
         # Enough alt reads to doubt the ref call: require BOTH a high alt fraction AND >= max_ref_min_alt alt reads.
         if (ro is not None and ao is not None and base_depth > 0
                 and ao >= max_ref_min_alt and ao / base_depth >= max_ref_altfrac):
             return "N"
         return ref_base
 
+    # >1 record here == a norm-split multiallelic (1/2 ...): the per-record "0" is an artifact, drop it.
+    multi = len(recs) > 1
     bases_union: Set[str] = set()
     for r in recs:
-        bset = allele_bases_from_record(r, ref_base)
+        bset = allele_bases_from_record(r, ref_base, ignore_ref=multi)
         if bset is None:
             return mask_char
         if "N" in bset:
@@ -498,6 +518,7 @@ def build_consensus(
     ref_min_dp: int,
     max_ref_altfrac: float,
     max_ref_min_alt: int,
+    max_ref_del_frac: float,
     strict: bool,
 ) -> None:
     ref_reader = FastaReader(reference_path)
@@ -505,7 +526,7 @@ def build_consensus(
 
     interval_mask = IntervalMasker(exclude_path)
     point_mask = PointMasker(mask_sites_path)
-    csv_mask = CsvMasker(special_csv_path)
+    csv_mask = CsvMasker(special_csv_path, list(ref_seqs.keys()))
 
     op = gzip.open if vcf_path.endswith(".gz") else open
     writer = FastaWriter(out_path, wrap=wrap)
@@ -524,7 +545,7 @@ def build_consensus(
         nonlocal expected_pos
         for p in range(start, end_excl):
             # Also check CSV mask for gaps
-            if interval_mask.masked(chrom, p) or point_mask.masked(chrom, p) or csv_mask.masked(p):
+            if interval_mask.masked(chrom, p) or point_mask.masked(chrom, p) or csv_mask.masked(chrom, p):
                 writer.write_base(mask_char)
             else:
                 writer.write_base(nocall_char)
@@ -537,14 +558,19 @@ def build_consensus(
         chrom = pending[0].chrom
         pos = pending[0].pos
 
-        if current_chrom != chrom:
-            start_contig(chrom)
-
+        # Validate the contig BEFORE start_contig (which writes a header + resets counts): a VCF contig
+        # absent from the reference must be skipped without emitting a stray record, and a contig that
+        # reappears (unsorted VCF) must fail loud rather than re-start and defeat the truncation guard.
         if chrom not in ref_seqs:
             if strict:
                 raise RuntimeError(f"Contig '{chrom}' not found in reference")
             pending = []
             return
+
+        if current_chrom != chrom:
+            if chrom in writer.counts:
+                raise RuntimeError(f"Contig '{chrom}' reappears out of order (unsorted VCF?)")
+            start_contig(chrom)
 
         if pos > expected_pos:
             fill_gap(chrom, expected_pos, pos)
@@ -554,7 +580,7 @@ def build_consensus(
             pending = []
             return
 
-        base = consensus_for_position(pending, ref_seqs, interval_mask, point_mask, csv_mask, mask_char, nocall_char, min_dp, ref_min_dp, max_ref_altfrac, max_ref_min_alt)
+        base = consensus_for_position(pending, ref_seqs, interval_mask, point_mask, csv_mask, mask_char, nocall_char, min_dp, ref_min_dp, max_ref_altfrac, max_ref_min_alt, max_ref_del_frac)
         writer.write_base(base)
         expected_pos = pos + 1
         pending = []
@@ -615,6 +641,8 @@ def main() -> None:
                     help="If a monomorphic-reference call has alt-read fraction >= this (and >= --max-ref-min-alt alt reads), write N. 1.0 = disable.")
     ap.add_argument("--max-ref-min-alt", type=int, default=2,
                     help="Only apply --max-ref-altfrac if there are >= this many alt reads (stops a single low-cov read N-ing a ref call).")
+    ap.add_argument("--max-ref-del-frac", type=float, default=0.5,
+                    help="At a monomorphic-reference site, write N if the deletion/ref-skip fraction (DP - RO+AO)/DP >= this. Catches partial/majority deletions. 1.0 = disable.")
     ap.add_argument("--strict", action="store_true", help="Fail on unsorted VCF")
     args = ap.parse_args()
 
@@ -632,6 +660,7 @@ def main() -> None:
         ref_min_dp=int(args.ref_min_dp),
         max_ref_altfrac=float(args.max_ref_altfrac),
         max_ref_min_alt=int(args.max_ref_min_alt),
+        max_ref_del_frac=float(args.max_ref_del_frac),
         strict=args.strict,
     )
 

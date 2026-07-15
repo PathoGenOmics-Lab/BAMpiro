@@ -35,9 +35,11 @@ process CONSENSUS_FASTA {
     # base-supporting depth (RO+AO) and low alt fraction, else N. Disable via consensus_ref_bias_gate=false.
     REF_MIN_DP=${params.consensus_ref_min_dp}
     MAX_REF_ALTFRAC=${params.consensus_max_ref_altfrac}
+    MAX_REF_DEL_FRAC=${params.consensus_max_ref_del_frac}
     if [[ "${params.consensus_ref_bias_gate}" != "true" ]]; then
         REF_MIN_DP=0
         MAX_REF_ALTFRAC=1.0
+        MAX_REF_DEL_FRAC=1.0
     fi
 
     # Virgin (unmasked) pass: drop the region-exclude and mask-sites so nothing is masked (X).
@@ -57,6 +59,7 @@ process CONSENSUS_FASTA {
       --ref-min-dp \$REF_MIN_DP \\
       --max-ref-altfrac \$MAX_REF_ALTFRAC \\
       --max-ref-min-alt ${params.consensus_max_ref_min_alt} \\
+      --max-ref-del-frac \$MAX_REF_DEL_FRAC \\
       --output ${sampleId}.${refId}${outLabel}.consensus.fasta \\
       --wrap ${params.consensus_wrap} \\
       --mask-char ${params.consensus_mask_char} \\
