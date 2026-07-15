@@ -2657,6 +2657,19 @@ renderAll();
   window.addEventListener('resize',spy);
   spy();
 })();
+(function(){  // drop a clickable (i) into every section heading; the explanation text comes from R.section_info
+  var info=R.section_info||{};
+  Array.prototype.forEach.call(document.querySelectorAll('section[id]'),function(sec){
+    var txt=info[sec.id]; if(!txt) return;
+    var h2=sec.querySelector('h2'); if(!h2||h2.querySelector('.sec-infoi')) return;
+    var ic=document.createElement('span');
+    ic.className='infoi sec-infoi'; ic.textContent='i';
+    ic.setAttribute('data-info',txt);
+    ic.setAttribute('role','button'); ic.setAttribute('aria-label','About this analysis');
+    var cap=h2.querySelector('.c');
+    if(cap) h2.insertBefore(ic,cap); else h2.appendChild(ic);
+  });
+})();
 })();
 """
 
@@ -3219,6 +3232,70 @@ def build_snp_matrix(variants, reference='', max_sites=8000):
             'total_sites': len(sites), 'truncated': truncated}
 
 
+# Per-panel explanation shown by the (i) icon in each section heading: what the analysis is, how to read
+# it, and its caveats. Keyed by the section id in the HTML shell.
+SECTION_INFO = {
+    "gstats": "Per-sample sequencing and mapping QC: reads, duplication, mapped %, mean/median depth, "
+              "breadth, variant counts and Ti/Tv. Each numeric cell is shaded by where the sample sits in "
+              "that column's range; the QC column flags PASS/WARN/FAIL against the live thresholds. Tick a "
+              "box to basket a sample for exclusion; click a name for its full profile.",
+    "linsum": "Median QC metrics grouped by the assigned MTBC lineage, with the number of samples, %PASS and "
+              "how many are 'mixed' (more than one lineage above the mixture cut-off). Lineage comes from "
+              "pathotypr; a mixed call can indicate co-infection or contamination.",
+    "dist": "Per-metric value distributions across the cohort (a strip/bee plot, or a ranked bar). The shaded "
+            "band is the acceptable range for the current thresholds; points outside it are outliers. Useful "
+            "to see cohort spread and choose sensible cut-offs.",
+    "corr": "A scatter of any two QC metrics, one point per sample, coloured by QC status or lineage. Drag a "
+            "box to basket the enclosed samples. Reveals metric relationships (e.g. depth vs breadth) and "
+            "samples that are joint outliers.",
+    "corrmatrix": "Pairwise Pearson correlation between the QC metrics across the cohort, as a heatmap. Shows "
+                  "which metrics are redundant (strongly correlated) and which capture independent axes of quality.",
+    "qcpca": "PCA of the standardised QC metrics: each point is a sample placed by its overall quality "
+             "profile. Samples that cluster share a profile; a lone point is a multivariate outlier that no "
+             "single metric flags.",
+    "divcomp": "Each sample's genomic divergence (SNPs vs the reference) against its consensus completeness. "
+               "Separates genuinely divergent samples from those that only look divergent because they are "
+               "incomplete or contaminated.",
+    "cons": "How much of the reference each sample's consensus recovers: callable %, missing % (N/gap), IUPAC "
+            "(ambiguous) % and the longest gap. A phylogeny-oriented view of completeness, not just average depth.",
+    "genome": "Per-position callability / variant density along the reference, binned into a heatmap per "
+              "sample. Brush a region to list the genes under it. Reveals systematically low-callability "
+              "regions (repeats, deletions) shared across samples.",
+    "function": "The snpEff functional class of each sample's variants (HIGH/MODERATE/LOW/MODIFIER impact and "
+                "effect types such as missense / synonymous). A per-sample mutational-impact profile.",
+    "geneburden": "Genes carrying the most impactful (HIGH/MODERATE) variants across the cohort, with the "
+                  "dominant effect and how many samples are hit. A cohort-level view of which genes accumulate "
+                  "functional change.",
+    "hotspots": "Genes with the highest SNP density across the cohort (variants per gene length). Flags the "
+                "most variable loci - often repeats, antigens, or genes under diversifying selection.",
+    "temporal": "The distribution of sampling dates, when the samplesheet provides them. Context for temporal "
+                "analyses (e.g. SNP dynamics); not a QC metric itself.",
+    "pnps": "Cohort-level pairwise dN/dS per gene (eskaks, Nei/Li). dN/dS > 1 suggests positive / diversifying "
+            "selection at cohort scale. This is population genetics, NOT per-sample QC: noisy per gene, "
+            "sensitive to alignment, and saturating at low divergence (NA when dS is near zero).",
+    "adna": "For samples marked ancient: the characteristic post-mortem damage signal (elevated terminal 5' "
+            "C to T). A sample below the damage floor may be a modern contaminant rather than authentic "
+            "ancient DNA.",
+    "dynamics": "For connected time-series (patient / passage line), each variant's allele-frequency "
+                "trajectory over time, with per-timepoint read depth. Events flag emergence, fixation, loss "
+                "and non-synonymous changes. Needs a time column and a group column in the samplesheet.",
+    "epistasis": "Pairs of variants whose allele-frequency trajectories co-vary within a series: concordant "
+                 "(rise/fall together) or discordant (one rises as the other falls). Scored by the Pearson "
+                 "correlation, a permutation p-value and a Benjamini-Hochberg FDR q; a pattern recurring across "
+                 "independent series is what makes a pair 'strong'. Candidate linked / co-selected / competing "
+                 "SNPs, NOT proof of a functional interaction.",
+    "snpmatrix": "Every SNP site (rows) by sample (columns); each cell is the allele frequency with its depth, "
+                 "plus a reference column and samplesheet metadata as column-header levels. Filter by gene / "
+                 "position or by metadata, and download the full matrix as a TSV.",
+    "drug": "Resistance-associated mutations detected by pathotypr against the WHO catalogue (H37Rv numbering), "
+            "as a sample x drug matrix (worst grade per drug) and a per-mutation table with the WHO confidence "
+            "grade. Alignment-free (k-mer), so it works regardless of the mapping reference. A genomic screen, "
+            "NOT a clinical drug-susceptibility result.",
+    "flagged": "The samples the current thresholds flag as WARN / FAIL and the specific reason for each. This "
+               "is the actionable QC summary; adjust the thresholds above to re-flag the whole report.",
+}
+
+
 def main():
     ap = argparse.ArgumentParser(description="BAMpiro interactive QC report + flags.")
     ap.add_argument("--summary", required=True)
@@ -3385,6 +3462,7 @@ def main():
                "genome_len": genome_len, "snp_density_ok": snp_density_ok, "defs": DEFS, "nbins": NBINS,
                "genes": parse_gff(args.gff), "lin_colors": parse_lineage_colors(args.lineage_colors),
                "gene_map": build_gene_map(args.gff), "aa2_label": args.aa2_label,
+               "section_info": SECTION_INFO,
                "gene_burden": parse_gene_burden(args.gene_burden) or None,
                "dr": parse_dr(args.dr_report),
                "pnps": parse_pnps(args.pnps) or None,
