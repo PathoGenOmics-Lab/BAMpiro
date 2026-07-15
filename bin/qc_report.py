@@ -817,6 +817,10 @@ th .infoi,.dyn-legend .infoi{background:#dde5f0}
 .snpmx-controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 .snpmx-toggle{font-size:12.5px;color:var(--mut);display:flex;align-items:center;gap:5px;cursor:pointer}
 .snpmx-metanote{font-size:12px;color:var(--mut);margin-bottom:10px}
+.snpmx-filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:9px 13px;background:var(--soft);border:1px solid var(--line);border-radius:10px}
+.snpmx-flabel{font-size:12.5px;color:var(--mut);font-weight:600}
+.snpmx-fsel{font-size:12.5px;color:#33465c;display:flex;align-items:center;gap:5px}
+.snpmx-fsel select{font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:4px 9px;background:#fff;color:#33465c;cursor:pointer}
 .snpmx-wrap{overflow:auto;max-height:74vh;border:1px solid var(--line);border-radius:12px}
 table.snpmx{border-collapse:separate;border-spacing:0;font-size:12px;width:auto}
 table.snpmx th,table.snpmx td{border-bottom:1px solid #eef2f6}
@@ -1829,6 +1833,7 @@ function renderDynamics(){
 
 function snpAfColor(af){return 'rgba(31,120,180,'+(0.16+af*0.8).toFixed(2)+')';}
 var SNPMX_PAL=['#bcd0ea','#f3d1b0','#c3e0c9','#f0c4cf','#d6c9ec','#b8e0dd','#eadfb0','#dfe4ea','#f2c4c4','#cdd1a8','#e6c3e0','#b9d6ee'];
+var snpmxFilter={};
 function renderSnpMatrix(){
   var host=el('snpmx_body'), sec=el('snpmatrix'); if(!host)return;
   var M=R.snp_matrix;
@@ -1836,32 +1841,43 @@ function renderSnpMatrix(){
   if(sec)sec.style.display='';
   var samples=M.samples, MAXR=400;
   var meta=(R.sample_meta&&R.sample_meta.fields&&R.sample_meta.fields.length)?R.sample_meta:null;
-  var metaMaps={};
-  if(meta){ meta.fields.forEach(function(f){ var m={},k=0; samples.forEach(function(s){var v=(meta.rows[s]||{})[f]; if(v&&!(v in m)){m[v]=SNPMX_PAL[k%SNPMX_PAL.length];k++;}}); metaMaps[f]=m; }); }
+  var metaMaps={}, metaVals={};
+  if(meta){ meta.fields.forEach(function(f){ var m={},vals=[],k=0; samples.forEach(function(s){var v=(meta.rows[s]||{})[f]; if(v&&!(v in m)){m[v]=SNPMX_PAL[k%SNPMX_PAL.length];k++;vals.push(v);}}); metaMaps[f]=m; metaVals[f]=vals.sort(); }); }
   function metaColor(f,v){ return (v&&metaMaps[f]&&metaMaps[f][v])?metaMaps[f][v]:'#eef2f7'; }
+  function visIdx(){ var idx=[]; samples.forEach(function(s,i){ var ok=true; if(meta){ for(var f in snpmxFilter){ if(snpmxFilter[f] && (meta.rows[s]||{})[f]!==snpmxFilter[f]){ ok=false; break; } } } if(ok) idx.push(i); }); return idx; }
+  var filterUI=meta?('<div class="snpmx-filters"><span class="snpmx-flabel">filter columns:</span>'+
+    meta.fields.map(function(f){ return '<label class="snpmx-fsel">'+esc(f)+' <select data-f="'+esc(f)+'"><option value="">all</option>'+
+      metaVals[f].map(function(v){return '<option value="'+esc(v)+'"'+(snpmxFilter[f]===v?' selected':'')+'>'+esc(v)+'</option>';}).join('')+'</select></label>'; }).join('')+
+    '<button class="dyn-btn" id="snpmxfclear">clear</button></div>'):'';
   host.innerHTML=
     '<div class="snpmx-controls">'+
       '<input id="snpmxq" class="dyn-search" type="search" placeholder="&#128269; filter by gene / position / amino acid...">'+
       '<label class="snpmx-toggle"><input type="checkbox" id="snpmxdp" checked> show depth</label>'+
-      '<button class="dyn-btn" id="snpmxdl" title="Download the full matrix as a wide TSV (all sites, per-sample AF and depth)">&#8595; download matrix (TSV)</button>'+
+      '<button class="dyn-btn" id="snpmxdl" title="Download the full matrix (all samples) as a wide TSV">&#8595; download matrix (TSV)</button>'+
       '<span class="dyn-count" id="snpmxcount"></span></div>'+
+    filterUI+
     (meta?('<div class="snpmx-metanote">column levels from the samplesheet: '+meta.fields.map(function(f){return '<b>'+esc(f)+'</b>';}).join(' &#183; ')+' &#183; hover a header cell for its value</div>'):'')+
     '<div class="snpmx-wrap"><table class="snpmx" id="snpmxtable"></table></div>';
   function draw(){
     var q=(el('snpmxq').value||'').toLowerCase(), showDP=el('snpmxdp').checked;
-    var rows=M.rows.filter(function(r){return !q||(r.gene&&r.gene.toLowerCase().indexOf(q)>=0)||String(r.pos).indexOf(q)>=0||(r.aa&&r.aa.toLowerCase().indexOf(q)>=0);});
-    el('snpmxcount').textContent=rows.length+' of '+M.total_sites+' SNP sites'+(rows.length>MAXR?(' (showing '+MAXR+')'):'')+(M.truncated?' - full matrix in the TSV':'');
+    var vi=visIdx();
+    var rows=M.rows.filter(function(r){
+      if(q && !((r.gene&&r.gene.toLowerCase().indexOf(q)>=0)||String(r.pos).indexOf(q)>=0||(r.aa&&r.aa.toLowerCase().indexOf(q)>=0))) return false;
+      return vi.some(function(i){return r.cells[i];});   // only SNPs seen in the visible columns
+    });
+    var nfilt=0; for(var kf in snpmxFilter){ if(snpmxFilter[kf]) nfilt++; }
+    el('snpmxcount').innerHTML=rows.length+' SNP site(s) &#215; '+vi.length+' sample(s)'+(nfilt?' (filtered)':'')+(rows.length>MAXR?(' - showing '+MAXR):'')+(M.truncated?' &#183; full matrix in the TSV':'');
     var shown=rows.slice(0,MAXR), mh=22, nf=meta?meta.fields.length:0;
     var metaRows=meta?meta.fields.map(function(f,k){
       return '<tr>'+'<th class="snpmx-info snpmx-metalabel" style="top:'+(k*mh)+'px">'+esc(f)+'</th>'+
-        samples.map(function(s){var v=(meta.rows[s]||{})[f]||''; return '<th class="snpmx-metacell" style="top:'+(k*mh)+'px;background:'+metaColor(f,v)+'" title="'+esc(f)+': '+esc(v||'-')+'">'+esc(v)+'</th>';}).join('')+'</tr>';
+        vi.map(function(i){var s=samples[i],v=(meta.rows[s]||{})[f]||''; return '<th class="snpmx-metacell" style="top:'+(k*mh)+'px;background:'+metaColor(f,v)+'" title="'+esc(f)+': '+esc(v||'-')+'">'+esc(v)+'</th>';}).join('')+'</tr>';
     }).join(''):'';
     var stop=nf*mh;
     var nameRow='<tr><th class="snpmx-info snpmx-corner" style="top:'+stop+'px">SNP '+esc(M.reference?('('+M.reference+')'):'')+'</th>'+
-      samples.map(function(s){return '<th class="snpmx-hcell" style="top:'+stop+'px" title="'+esc(s)+'"><span class="snpmx-h">'+esc(s)+'</span></th>';}).join('')+'</tr>';
+      vi.map(function(i){var s=samples[i];return '<th class="snpmx-hcell" style="top:'+stop+'px" title="'+esc(s)+'"><span class="snpmx-h">'+esc(s)+'</span></th>';}).join('')+'</tr>';
     var body='<tbody>'+shown.map(function(r){
       var lbl='<b>'+esc(r.gene||r.contig)+'</b> '+r.pos+' '+esc(r.ref)+'&#8594;'+esc(r.alt)+(r.aa?(' <span class="snpmx-aa">'+esc(r.aa)+'</span>'):'');
-      var cells=samples.map(function(s,i){var c=r.cells[i];
+      var cells=vi.map(function(i){var c=r.cells[i], s=samples[i];
         if(!c) return '<td class="snpmx-cell snpmx-empty" title="'+esc(s)+' - not called"></td>';
         var afTxt=c[0].toFixed(2).replace(/^0/,'').replace(/^1\.00$/,'1');
         var dpTxt=(showDP&&c[1]!=null)?('<span class="snpmx-dp">'+c[1]+'</span>'):'';
@@ -1873,16 +1889,15 @@ function renderSnpMatrix(){
   }
   el('snpmxq').oninput=draw;
   el('snpmxdp').onchange=draw;
+  if(meta){
+    Array.prototype.forEach.call(host.querySelectorAll('.snpmx-filters select'),function(sel){ sel.onchange=function(){ var f=sel.getAttribute('data-f'); if(sel.value) snpmxFilter[f]=sel.value; else delete snpmxFilter[f]; draw(); }; });
+    el('snpmxfclear').onclick=function(){ snpmxFilter={}; Array.prototype.forEach.call(host.querySelectorAll('.snpmx-filters select'),function(s){s.value='';}); draw(); };
+  }
   el('snpmxdl').onclick=function(){
     var hdr=['reference','contig','pos','ref_allele','alt_allele','gene','effect','aa_change'];
-    if(meta) meta.fields.forEach(function(){});
     samples.forEach(function(s){hdr.push(s+'|AF');hdr.push(s+'|DP');});
     var lines=[hdr.join('\t')];
-    if(meta){ meta.fields.forEach(function(f){
-      var row=['# '+f,'','','','','','',''];
-      samples.forEach(function(s){var v=(meta.rows[s]||{})[f]||''; row.push(v); row.push('');});
-      lines.push(row.join('\t'));
-    }); }
+    if(meta){ meta.fields.forEach(function(f){ var row=['# '+f,'','','','','','','']; samples.forEach(function(s){row.push((meta.rows[s]||{})[f]||'');row.push('');}); lines.push(row.join('\t')); }); }
     M.rows.forEach(function(r){var row=[M.reference||r.contig,r.contig,r.pos,r.ref,r.alt,r.gene,r.eff,r.aa];
       samples.forEach(function(s,i){var c=r.cells[i]; if(c){row.push(c[0].toFixed(4));row.push(c[1]==null?'':c[1]);}else{row.push('');row.push('');}});
       lines.push(row.join('\t'));});
