@@ -781,7 +781,7 @@ tr.lingrp td{background:#f0f5f9;color:#33465c;font-weight:600;font-size:11px;let
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 /* visible info icon signalling a hover tooltip */
-.infoi{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:#d5deea;color:#54637a;font-size:10px;font-weight:700;font-style:italic;font-family:Georgia,'Times New Roman',serif;margin-left:5px;cursor:help;vertical-align:middle;line-height:1;transition:.12s;user-select:none}
+.infoi{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:#d5deea;color:#54637a;font-size:10px;font-weight:700;font-style:italic;font-family:Georgia,'Times New Roman',serif;text-transform:none;margin-left:5px;cursor:help;vertical-align:middle;line-height:1;transition:.12s;user-select:none}
 .infoi:hover{background:var(--accent);color:#fff}
 th .infoi,.dyn-legend .infoi{background:#dde5f0}
 /* SNP dynamics panel (gene-centric, searchable) */
