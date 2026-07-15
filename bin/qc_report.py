@@ -808,6 +808,7 @@ th .infoi,.dyn-legend .infoi{background:#dde5f0}
 .dyn-pos{font-weight:700;font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums}
 .dyn-grp{font-size:12.5px;color:#516074;background:#fff;border:1px solid var(--line);border-radius:7px;padding:2px 9px}
 .dyn-eff{font-size:13px;color:#5a6a7c;margin:4px 0 8px}
+.dyn-aa{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums}
 .dyn-card-f{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
 .dyn-fchip{color:#fff;border-radius:7px;padding:2px 9px;font-size:12px;font-weight:500}
 .dyn-traj{font-size:12.5px;color:#5a6a7c;font-variant-numeric:tabular-nums;margin-left:auto}
@@ -1740,7 +1741,7 @@ function renderDynamics(){
   if(sec)sec.style.display='';
   var th=D.thresholds||{emerge:0.25,fix:0.9,loss:0.1};
   var vars=[];
-  D.groups.forEach(function(g){ g.series.forEach(function(s){ vars.push({gene:s.gene||'(intergenic)',pos:s.pos,group:g.group,times:g.times,traj:s.traj,flags:s.flags,eff:s.eff,imp:s.imp,alt:s.alt}); }); });
+  D.groups.forEach(function(g){ g.series.forEach(function(s){ vars.push({gene:s.gene||'(intergenic)',pos:s.pos,group:g.group,times:g.times,traj:s.traj,flags:s.flags,eff:s.eff,imp:s.imp,alt:s.alt,aa:s.aa}); }); });
   var genes={}; vars.forEach(function(v){ (genes[v.gene]=genes[v.gene]||[]).push(v); });
   var geneList=Object.keys(genes).sort(function(a,b){
     var fa=genes[a].filter(dynHasFlag).length, fb=genes[b].filter(dynHasFlag).length;
@@ -1781,7 +1782,7 @@ function renderDynamics(){
         var chips=(v.flags||[]).map(function(f){return '<span class="dyn-fchip" style="background:'+(DYNCOL[f]||'#8895a6')+'" title="'+(DYNHELP[f]||f)+'">'+f+'</span>';}).join('');
         return '<div class="dyn-card">'+
           '<div class="dyn-card-h"><span class="dyn-pos" title="Genomic position (contig:position) of this SNP">'+esc(v.pos)+'</span><span class="dyn-grp" title="Connected series this variant belongs to (the metadata group column, e.g. patient / passage line)">'+esc(v.group)+'</span></div>'+
-          '<div class="dyn-eff" title="Predicted variant effect (snpEff) and the alternate allele">'+esc(v.eff||'variant')+(v.alt?(' &#183; &#8594;'+esc(v.alt)):'')+'</div>'+
+          '<div class="dyn-eff" title="Predicted effect (snpEff) and protein change HGVS.p: ref amino acid, codon position, alt amino acid">'+esc(v.eff||'variant')+(v.aa?(' &#183; <b class="dyn-aa">'+esc(v.aa)+'</b>'):(v.alt?(' &#183; &#8594;'+esc(v.alt)):''))+'</div>'+
           dynMiniChart(v,th)+
           '<div class="dyn-card-f">'+(chips||'<span class="c" title="no emergence / fixation / loss / non-synonymous event for this variant">no event</span>')+'<span class="dyn-traj" title="Allele frequency at each timepoint, in chronological order">'+v.traj.map(function(a){return a.toFixed(2);}).join(' &#8594; ')+'</span></div>'+
         '</div>';
@@ -2258,11 +2259,13 @@ def _dyn_af(fmt, val):
 
 
 def _dyn_ann(info):
+    # snpEff ANN fields: 3=gene, 1=effect, 2=impact, 10=HGVS.p (protein change, e.g. p.Ser315Thr)
     for field in info.split(';'):
         if field.startswith('ANN='):
             a = field[4:].split(',')[0].split('|')
-            return (a[3] if len(a) > 3 else ''), (a[1] if len(a) > 1 else ''), (a[2] if len(a) > 2 else '')
-    return '', '', ''
+            return ((a[3] if len(a) > 3 else ''), (a[1] if len(a) > 1 else ''),
+                    (a[2] if len(a) > 2 else ''), (a[10] if len(a) > 10 else ''))
+    return '', '', '', ''
 
 
 def parse_vcfs(paths):
@@ -2294,9 +2297,9 @@ def parse_vcfs(paths):
                     af = _dyn_af(c[8], c[9]) if len(c) >= 10 else 1.0
                     if af is None:
                         continue
-                    gene, eff, imp = _dyn_ann(c[7])
+                    gene, eff, imp, aa = _dyn_ann(c[7])
                     out[sample][f'{chrom}:{pos}'] = {'ref': ref, 'alt': alt.split(',')[0], 'gene': gene,
-                                                     'eff': eff, 'imp': imp, 'af': round(af, 4)}
+                                                     'eff': eff, 'imp': imp, 'aa': aa, 'af': round(af, 4)}
         except OSError:
             continue
     return out
@@ -2345,6 +2348,7 @@ def build_dynamics(metadata, variants, emerge=0.25, fix=0.90, loss=0.10, min_poi
                 flags.append('high_impact')
             series.append({'pos': pos, 'gene': (meta or {}).get('gene', ''), 'eff': (meta or {}).get('eff', ''),
                            'imp': (meta or {}).get('imp', ''), 'alt': (meta or {}).get('alt', ''),
+                           'aa': (meta or {}).get('aa', ''),
                            'traj': [round(x, 4) for x in traj], 'flags': flags})
         if not series:
             continue
