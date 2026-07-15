@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Consolidated interactive QC report for sBAMpiro (organism-agnostic).
+"""Consolidated interactive QC report for BAMpiro (organism-agnostic).
 
 Reads the per-sample summary TSV (collect_summary output) + the consensus FASTAs, computes consensus completeness
 (missing / N / IUPAC / callable), embeds everything as JSON, and writes a SELF-CONTAINED, data-driven qc_report.html
@@ -621,7 +621,7 @@ CSS = r"""
  --bandfill:rgba(15,157,107,.09);--bandedge:rgba(15,157,107,.42);
  --sh:0 1px 2px rgba(16,24,40,.04),0 3px 8px rgba(16,24,40,.05);--r:15px}
 *{box-sizing:border-box} html{scroll-behavior:smooth}
-body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,sans-serif;color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;
+body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,sans-serif;color:var(--ink);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;
  background-color:#eef1f6;
  background-image:radial-gradient(1200px 520px at 50% -260px,#ffffff,transparent 70%),linear-gradient(180deg,#f4f6fa 0%,#e9edf3 100%);
  background-attachment:fixed,fixed;background-repeat:no-repeat,no-repeat}
@@ -632,11 +632,11 @@ header .logo b{color:var(--accent);font-weight:700}
 header .logo .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(14,139,168,.16)}
 header .meta{color:var(--mut);font-size:12px}
 nav{margin-left:auto;display:flex;gap:2px;overflow:auto} nav::-webkit-scrollbar{display:none}
-nav a{color:#5b6b7e;text-decoration:none;font-size:12.5px;padding:5px 10px;border-radius:8px;white-space:nowrap;font-weight:500} nav a:hover{color:var(--accent);background:var(--accent-soft)}
+nav a{color:#5b6b7e;text-decoration:none;font-size:13.5px;padding:6px 11px;border-radius:8px;white-space:nowrap;font-weight:500} nav a:hover{color:var(--accent);background:var(--accent-soft)}
 .wrap{max-width:1180px;margin:0 auto;padding:24px 22px 90px}
 section{margin-top:34px} section:first-of-type{margin-top:24px}
-h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--mut);font-weight:600;margin:0 0 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-h2 .c{text-transform:none;letter-spacing:0;font-weight:400;font-size:12.5px;color:#95a3b4}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);font-weight:600;margin:0 0 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+h2 .c{text-transform:none;letter-spacing:0;font-weight:400;font-size:13.5px;color:#8a99ab}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden}
 .pad{padding:16px 18px}
 /* hero */
@@ -647,7 +647,7 @@ h2 .c{text-transform:none;letter-spacing:0;font-weight:400;font-size:12.5px;colo
 .counts .all .n{color:var(--ink)} .counts .pass .n{color:var(--pass)} .counts .warn .n{color:var(--warn)} .counts .fail .n{color:var(--fail)}
 .chips{display:flex;gap:8px;flex-wrap:wrap;align-content:center;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh);padding:14px 16px;flex:1;min-width:220px}
 .chips .t{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;align-self:center;margin-right:2px}
-.chip{font-size:12px;padding:3px 12px;border-radius:20px;border:1px solid var(--line);background:var(--soft);color:#516074;cursor:pointer;user-select:none;transition:.12s;font-weight:500}
+.chip{font-size:12.5px;padding:4px 13px;border-radius:20px;border:1px solid var(--line);background:var(--soft);color:#516074;cursor:pointer;user-select:none;transition:.12s;font-weight:500}
 .chip:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)} .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 .chip .k{opacity:.65;margin-left:5px;font-variant-numeric:tabular-nums}
 /* controls */
@@ -672,17 +672,17 @@ select.msel{font-size:12.5px;border:1px solid var(--line);border-radius:9px;padd
 /* table */
 .gtable{overflow:auto;max-height:76vh;border-radius:var(--r)}
 .gtable::-webkit-scrollbar{height:10px;width:10px} .gtable::-webkit-scrollbar-thumb{background:#cfd8e3;border-radius:6px;border:2px solid #fff}
-table{border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:13.5px}
 th,td{padding:8px 12px;white-space:nowrap;border-bottom:1px solid #eef2f6;text-align:right}
-th{background:#f7f9fc;color:#556579;cursor:pointer;user-select:none;position:sticky;top:0;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.03em;z-index:4;box-shadow:0 1px 0 var(--line)}
+th{background:#f7f9fc;color:#556579;cursor:pointer;user-select:none;position:sticky;top:0;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em;z-index:4;box-shadow:0 1px 0 var(--line)}
 th:hover{background:#eef3f8} td.na{color:#c4ccd7}
 tbody tr{cursor:pointer;transition:background .1s} tbody tr:hover td{background:#fafcfe}
 tr.hl td{background:#fff8e1!important}
 th.s,td.s{text-align:left;position:sticky;left:0;background:var(--panel);border-right:1px solid var(--line);z-index:3;font-weight:600}
 th.s{z-index:6;background:#f7f9fc} tr.hl td.s{background:#fff3ce!important}
-.v{font-weight:600;padding:2px 10px;border-radius:20px;font-size:11px;display:inline-block;letter-spacing:.02em}
+.v{font-weight:600;padding:3px 11px;border-radius:20px;font-size:12px;display:inline-block;letter-spacing:.02em}
 .v.PASS{color:#0b7350;background:#dff5ec} .v.WARN{color:#95560d;background:#fdefd6} .v.FAIL{color:#a01f2d;background:#fde3e6}
-.flags{color:var(--mut);font-size:11.5px;text-align:left;white-space:normal}
+.flags{color:var(--mut);font-size:12.5px;text-align:left;white-space:normal}
 /* plots */
 .bee{display:flex;align-items:center;border-bottom:1px solid #f2f5f9;height:40px} .bee:last-child{border:0}
 .bl{flex:0 0 150px;padding:0 14px;font-size:12px;color:#516074;text-align:right;font-weight:500} .nd{color:#c4ccd7;font-size:12px;padding-left:14px}
@@ -779,16 +779,34 @@ tr.lingrp td{background:#f0f5f9;color:#33465c;font-weight:600;font-size:11px;let
   details.dd .menu{min-width:0;max-width:calc(100vw - 28px);box-sizing:border-box} #thbox{min-width:0!important}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
-/* SNP dynamics panel */
-.dyngrp{margin:12px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--soft)}
-.dynhd{margin-bottom:6px}
-.dynleg{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--mut);margin-bottom:8px}
-.dynleg i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
-.dyntbl{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px}
-.dyntbl th,.dyntbl td{text-align:left;padding:3px 8px;border-bottom:1px solid var(--line)}
-.dyntbl th{color:var(--mut);font-weight:600}
-.dtraj{font-variant-numeric:tabular-nums;color:var(--ink)}
-.dchip{display:inline-block;color:#fff;border-radius:5px;padding:1px 6px;font-size:10px;margin-right:3px}
+/* SNP dynamics panel (gene-centric, searchable) */
+.dyn-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.dyn-search{padding:9px 14px;border:1px solid var(--line);border-radius:10px;font-size:14px;min-width:240px;background:#fff;box-shadow:var(--sh)}
+.dyn-btn{font-size:13px;color:#33465c;border:1px solid var(--line);border-radius:9px;padding:8px 14px;background:#fff;cursor:pointer;font-weight:500}
+.dyn-btn:hover{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+.dyn-count{font-size:13px;color:var(--mut);margin-left:auto}
+.dyn-legend{display:flex;gap:18px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--mut);margin-bottom:14px}
+.dyn-legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.dyn-genechips{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:20px;max-height:140px;overflow:auto;padding:2px}
+.dyn-chip{font-size:13.5px;padding:6px 13px;border-radius:22px;border:1px solid var(--line);background:var(--soft);color:#3f4e60;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:.12s}
+.dyn-chip:hover{border-color:var(--accent);color:var(--accent)}
+.dyn-chip b{font-weight:700;color:#98a6b8}
+.dyn-chip.sel{background:var(--accent);border-color:var(--accent);color:#fff} .dyn-chip.sel:hover{color:#fff} .dyn-chip.sel b{color:#d7e6ff}
+.dyn-dot{width:8px;height:8px;border-radius:50%;background:#d1495b;display:inline-block}
+.dyn-grid{display:flex;flex-direction:column;gap:22px}
+.dyn-genecard{border:1px solid var(--line);border-radius:16px;padding:16px 18px;background:#fff;box-shadow:var(--sh)}
+.dyn-gene-h{font-size:17px;font-weight:700;margin-bottom:14px;color:var(--ink);display:flex;align-items:baseline;gap:8px}
+.dyn-gene-h .c{font-size:13px;font-weight:400;color:var(--mut)}
+.dyn-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.dyn-card{border:1px solid var(--line);border-radius:13px;padding:12px 14px;background:var(--soft)}
+.dyn-card-h{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.dyn-pos{font-weight:700;font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums}
+.dyn-grp{font-size:12.5px;color:#516074;background:#fff;border:1px solid var(--line);border-radius:7px;padding:2px 9px}
+.dyn-eff{font-size:13px;color:#5a6a7c;margin:4px 0 8px}
+.dyn-card-f{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+.dyn-fchip{color:#fff;border-radius:7px;padding:2px 9px;font-size:12px;font-weight:500}
+.dyn-traj{font-size:12.5px;color:#5a6a7c;font-variant-numeric:tabular-nums;margin-left:auto}
+.dyn-empty{padding:36px;text-align:center;color:var(--mut);font-size:14.5px;border:1px dashed var(--line);border-radius:14px}
 """
 
 JS = r"""
@@ -1690,46 +1708,86 @@ function renderADNA(){
   Array.prototype.forEach.call(host.querySelectorAll('.sname'),function(sp){sp.onclick=function(){openDetail(sp.getAttribute('data-s'));};});
 }
 
+var DYNCOL={fixation:'#2f6fed',emergence:'#1f9d6b',loss:'#e6893a',nonsyn:'#d1495b',high_impact:'#7c3aed'};
+var dynState={sel:null,q:''};
+function dynHasFlag(v){return v.flags&&v.flags.length;}
+function dynColor(flags){ if(!flags)return '#9fb0c3'; if(flags.indexOf('fixation')>=0)return DYNCOL.fixation; if(flags.indexOf('emergence')>=0)return DYNCOL.emergence; if(flags.indexOf('loss')>=0)return DYNCOL.loss; if(flags.indexOf('high_impact')>=0)return DYNCOL.high_impact; return '#5b6b7e'; }
+function dynMiniChart(v,th){
+  var n=v.times.length,W=250,H=150,ml=30,mr=10,mt=10,mb=26,pw=W-ml-mr,ph=H-mt-mb;
+  function X(i){ return ml+(n<=1?pw/2:(i/(n-1))*pw); }
+  function Y(a){ return mt+(1-a)*ph; }
+  var col=dynColor(v.flags), nonsyn=v.flags&&v.flags.indexOf('nonsyn')>=0;
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block">';
+  [0,0.5,1].forEach(function(a){ svg+='<line x1="'+ml+'" y1="'+Y(a).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(a).toFixed(1)+'" stroke="#eef2f7"/><text x="'+(ml-5)+'" y="'+(Y(a)+3.5).toFixed(1)+'" text-anchor="end" font-size="10.5" fill="#8a97a8">'+a.toFixed(1)+'</text>'; });
+  if(th){ [[th.emerge,DYNCOL.emergence],[th.fix,DYNCOL.fixation]].forEach(function(t){ svg+='<line x1="'+ml+'" y1="'+Y(t[0]).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(t[0]).toFixed(1)+'" stroke="'+t[1]+'" stroke-dasharray="3 3" opacity="0.3"/>'; }); }
+  var pts=v.traj.map(function(a,i){return X(i).toFixed(1)+','+Y(a).toFixed(1);}).join(' ');
+  svg+='<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="2.6" stroke-linejoin="round"/>';
+  v.traj.forEach(function(a,i){ svg+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(a).toFixed(1)+'" r="3.6" fill="'+col+'" stroke="'+(nonsyn?DYNCOL.nonsyn:'#fff')+'" stroke-width="'+(nonsyn?1.8:1)+'"><title>t='+esc(v.times[i]==null?i:v.times[i])+'  AF='+a.toFixed(3)+'</title></circle>'; });
+  v.times.forEach(function(t,i){ svg+='<text x="'+X(i).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10.5" fill="#5a6a7c">'+esc(t==null?i:t)+'</text>'; });
+  svg+='</svg>';
+  return svg;
+}
 function renderDynamics(){
   var host=el('dyn_body'), sec=el('dynamics'); if(!host)return;
   var D=R.dynamics;
-  if(!(D&&D.groups&&D.groups.length)){ if(sec)sec.style.display='none'; var nv=el('nav-dyn'); if(nv)nv.style.display='none'; return; }
+  if(!(D&&D.groups&&D.groups.length)){ if(sec)sec.style.display='none'; return; }
   if(sec)sec.style.display='';
   var th=D.thresholds||{emerge:0.25,fix:0.9,loss:0.1};
-  var FCOL={fixation:'#2f6fed',emergence:'#22a06b',loss:'#e6893a',nonsyn:'#d1495b',high_impact:'#7c3aed'};
-  function serColor(f){ if(f.indexOf('fixation')>=0)return FCOL.fixation; if(f.indexOf('emergence')>=0)return FCOL.emergence; if(f.indexOf('loss')>=0)return FCOL.loss; return '#c3ccda'; }
-  var MAXSER=60;
-  var body=D.groups.map(function(g){
-    var n=g.times.length, W=680,H=250, ml=42,mr=14,mt=12,mb=34, pw=W-ml-mr, ph=H-mt-mb;
-    function X(i){ return ml + (n<=1? pw/2 : (i/(n-1))*pw); }
-    function Y(a){ return mt + (1-a)*ph; }
-    var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="max-width:'+W+'px;display:block;font:11px system-ui">';
-    [0,0.25,0.5,0.75,1].forEach(function(a){ svg+='<line x1="'+ml+'" y1="'+Y(a).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(a).toFixed(1)+'" stroke="#eef2f7"/><text x="'+(ml-6)+'" y="'+(Y(a)+3).toFixed(1)+'" text-anchor="end" fill="#8a97a8">'+a.toFixed(2)+'</text>'; });
-    [[th.emerge,FCOL.emergence],[th.fix,FCOL.fixation],[th.loss,FCOL.loss]].forEach(function(t){ svg+='<line x1="'+ml+'" y1="'+Y(t[0]).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(t[0]).toFixed(1)+'" stroke="'+t[1]+'" stroke-dasharray="3 3" opacity="0.35"/>'; });
-    g.times.forEach(function(t,i){ svg+='<text x="'+X(i).toFixed(1)+'" y="'+(H-14)+'" text-anchor="middle" fill="#4a5768">'+esc(t==null?i:t)+'</text>'; });
-    svg+='<text x="'+ml+'" y="'+(H-1)+'" fill="#8a97a8" font-size="10">time / passage &#8594;</text>';
-    g.series.slice(0,MAXSER).forEach(function(s){
-      var col=serColor(s.flags), flagged=s.flags.length>0, nonsyn=s.flags.indexOf('nonsyn')>=0;
-      var pts=s.traj.map(function(a,i){return X(i).toFixed(1)+','+Y(a).toFixed(1);}).join(' ');
-      var tip=esc(s.pos+(s.gene?(' '+s.gene):'')+(s.eff?(' '+s.eff):'')+(s.flags.length?(' ['+s.flags.join(',')+']'):''));
-      svg+='<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="'+(flagged?2:1)+'" opacity="'+(flagged?0.95:0.4)+'"><title>'+tip+'</title></polyline>';
-      s.traj.forEach(function(a,i){ svg+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(a).toFixed(1)+'" r="'+(flagged?3:2)+'" fill="'+col+'" stroke="'+(nonsyn?FCOL.nonsyn:'#fff')+'" stroke-width="'+(nonsyn?1.6:0.6)+'"><title>'+tip+' | AF='+a.toFixed(2)+'</title></circle>'; });
-    });
-    svg+='</svg>';
-    var flagged=g.series.filter(function(s){return s.flags.length;});
-    var tbl='';
-    if(flagged.length){
-      tbl='<table class="dyntbl"><thead><tr><th>position</th><th>gene</th><th>effect</th><th>events</th><th>trajectory</th></tr></thead><tbody>'+
-        flagged.slice(0,40).map(function(s){
-          var chips=s.flags.map(function(f){return '<span class="dchip" style="background:'+(FCOL[f]||'#8895a6')+'">'+f+'</span>';}).join(' ');
-          return '<tr><td>'+esc(s.pos)+'</td><td>'+esc(s.gene||'-')+'</td><td>'+esc(s.eff||'-')+'</td><td>'+chips+'</td><td class="dtraj">'+s.traj.map(function(a){return a.toFixed(2);}).join(' &#8594; ')+'</td></tr>';
-        }).join('')+'</tbody></table>';
-    }
-    var extra=g.series.length>MAXSER?('<span class="c"> (showing '+MAXSER+' most dynamic of '+g.series.length+')</span>'):'';
-    return '<div class="dyngrp"><div class="dynhd"><b>'+esc(g.group)+'</b> <span class="c">- '+g.samples.length+' samples, '+g.n_flagged+' flagged SNP(s)'+extra+'</span></div>'+svg+tbl+'</div>';
-  }).join('');
-  var legend='<div class="dynleg"><span><i style="background:'+FCOL.emergence+'"></i>emergence</span><span><i style="background:'+FCOL.fixation+'"></i>fixation</span><span><i style="background:'+FCOL.loss+'"></i>loss</span><span><i style="border:2px solid '+FCOL.nonsyn+';background:#fff"></i>non-synonymous</span><span class="c" style="margin-left:auto">dashed guides = thresholds; each line = one SNP</span></div>';
-  host.innerHTML=legend+body;
+  var vars=[];
+  D.groups.forEach(function(g){ g.series.forEach(function(s){ vars.push({gene:s.gene||'(intergenic)',pos:s.pos,group:g.group,times:g.times,traj:s.traj,flags:s.flags,eff:s.eff,imp:s.imp,alt:s.alt}); }); });
+  var genes={}; vars.forEach(function(v){ (genes[v.gene]=genes[v.gene]||[]).push(v); });
+  var geneList=Object.keys(genes).sort(function(a,b){
+    var fa=genes[a].filter(dynHasFlag).length, fb=genes[b].filter(dynHasFlag).length;
+    return fb-fa || genes[b].length-genes[a].length || a.localeCompare(b);
+  });
+  if(dynState.sel===null){
+    dynState.sel={};
+    var fg=geneList.filter(function(g){return genes[g].some(dynHasFlag);});
+    (fg.length?fg:geneList.slice(0,6)).forEach(function(g){dynState.sel[g]=1;});
+  }
+  host.innerHTML=
+    '<div class="dyn-controls">'+
+      '<input id="dynsearch" class="dyn-search" type="search" placeholder="&#128269; search gene..." value="'+esc(dynState.q)+'">'+
+      '<button class="dyn-btn" id="dynFlag">flagged genes</button>'+
+      '<button class="dyn-btn" id="dynAll">all</button>'+
+      '<button class="dyn-btn" id="dynNone">clear</button>'+
+      '<span class="dyn-count" id="dynCount"></span></div>'+
+    '<div class="dyn-legend"><span><i style="background:'+DYNCOL.emergence+'"></i>emergence</span><span><i style="background:'+DYNCOL.fixation+'"></i>fixation</span><span><i style="background:'+DYNCOL.loss+'"></i>loss</span><span><i style="border:2px solid '+DYNCOL.nonsyn+';background:#fff"></i>non-synonymous</span></div>'+
+    '<div class="dyn-genechips" id="dynchips"></div>'+
+    '<div class="dyn-grid" id="dyngrid"></div>';
+  function paintChips(){
+    var q=dynState.q.toLowerCase();
+    var list=geneList.filter(function(g){return !q||g.toLowerCase().indexOf(q)>=0;});
+    el('dynchips').innerHTML=list.length?list.map(function(g){
+      var nf=genes[g].filter(dynHasFlag).length;
+      return '<button class="dyn-chip'+(dynState.sel[g]?' sel':'')+'" data-g="'+esc(g)+'">'+esc(g)+' <b>'+genes[g].length+'</b>'+(nf?'<i class="dyn-dot" title="'+nf+' flagged"></i>':'')+'</button>';
+    }).join(''):'<span class="c">no gene matches "'+esc(dynState.q)+'"</span>';
+    Array.prototype.forEach.call(el('dynchips').querySelectorAll('.dyn-chip'),function(b){ b.onclick=function(){ var g=b.getAttribute('data-g'); if(dynState.sel[g])delete dynState.sel[g]; else dynState.sel[g]=1; paintChips(); paintGrid(); }; });
+  }
+  function paintGrid(){
+    var q=dynState.q.toLowerCase();
+    var sel=geneList.filter(function(g){return dynState.sel[g] && (!q||g.toLowerCase().indexOf(q)>=0);});
+    el('dynCount').textContent=sel.length+' of '+geneList.length+' genes shown';
+    if(!sel.length){ el('dyngrid').innerHTML='<div class="dyn-empty">&#128204; '+(dynState.q?('no selected gene matches &quot;'+esc(dynState.q)+'&quot;'):'Search and select one or more genes above to see the allele-frequency trajectories of their variants.')+'</div>'; return; }
+    el('dyngrid').innerHTML=sel.map(function(g){
+      var vs=genes[g].slice().sort(function(a,b){ return ((dynHasFlag(b)?1:0)-(dynHasFlag(a)?1:0)) || (String(a.pos)>String(b.pos)?1:-1); });
+      var cards=vs.map(function(v){
+        var chips=(v.flags||[]).map(function(f){return '<span class="dyn-fchip" style="background:'+(DYNCOL[f]||'#8895a6')+'">'+f+'</span>';}).join('');
+        return '<div class="dyn-card">'+
+          '<div class="dyn-card-h"><span class="dyn-pos">'+esc(v.pos)+'</span><span class="dyn-grp" title="connected series">'+esc(v.group)+'</span></div>'+
+          '<div class="dyn-eff">'+esc(v.eff||'variant')+(v.alt?(' &#183; &#8594;'+esc(v.alt)):'')+'</div>'+
+          dynMiniChart(v,th)+
+          '<div class="dyn-card-f">'+(chips||'<span class="c">no event</span>')+'<span class="dyn-traj">'+v.traj.map(function(a){return a.toFixed(2);}).join(' &#8594; ')+'</span></div>'+
+        '</div>';
+      }).join('');
+      return '<div class="dyn-genecard"><div class="dyn-gene-h">'+esc(g)+'<span class="c">'+vs.length+' variant(s), '+vs.filter(dynHasFlag).length+' flagged</span></div><div class="dyn-cards">'+cards+'</div></div>';
+    }).join('');
+  }
+  el('dynsearch').oninput=function(){ dynState.q=this.value; paintChips(); paintGrid(); };
+  el('dynFlag').onclick=function(){ dynState.sel={}; geneList.filter(function(g){return genes[g].some(dynHasFlag);}).forEach(function(g){dynState.sel[g]=1;}); paintChips(); paintGrid(); };
+  el('dynAll').onclick=function(){ dynState.sel={}; geneList.forEach(function(g){dynState.sel[g]=1;}); paintChips(); paintGrid(); };
+  el('dynNone').onclick=function(){ dynState.sel={}; paintChips(); paintGrid(); };
+  paintChips(); paintGrid();
 }
 
 function renderAll(){renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderFlags();renderCuration();}
@@ -1893,6 +1951,10 @@ if(!R.samples.some(function(s){return yearOf(s.date)!=null;})){var tpx=el('tempo
 if(!R.samples.some(function(s){return s.m.ann_high!=null||s.m.ann_moderate!=null||s.m.ann_modifier!=null;})){var fnx=el('function');if(fnx)fnx.style.display='none';var nfx=el('nav-function');if(nfx)nfx.style.display='none';}
 if(!(R.gene_burden&&R.gene_burden.length)){var gbx=el('geneburden');if(gbx)gbx.style.display='none';var ngb=el('nav-geneburden');if(ngb)ngb.style.display='none';}
 if(!(R.pnps&&R.pnps.length)){var ppx=el('pnps');if(ppx)ppx.style.display='none';var npp=el('nav-pnps');if(npp)npp.style.display='none';}
+// aDNA panel: only when there are ancient samples (no placeholder otherwise)
+if(!R.n_ancient){var adx=el('adna');if(adx)adx.style.display='none';var nadx=el('nav-adna');if(nadx)nadx.style.display='none';}
+// SNP dynamics: only when the metadata gave connected time-series (else no section at all)
+if(!(R.dynamics&&R.dynamics.groups&&R.dynamics.groups.length)){var dyx=el('dynamics');if(dyx)dyx.style.display='none';var ndyx=el('nav-dyn');if(ndyx)ndyx.style.display='none';}
 // genome track selector (Missing / SNPs / Het / Indels) - only offer tracks that have data
 (function(){var host=el('gtrack'); if(!host)return;var avail=GTRACKS.filter(function(g){return gtrackHas(g.k);});
   if(avail.length<=1){host.style.display='none';return;}
@@ -1941,7 +2003,7 @@ if(R.n_ancient){el('ancfilter').innerHTML='<span class="seg" id="ancseg"><button
 // print
 var pbtn=el('printBtn'); if(pbtn)pbtn.onclick=function(){window.print();};
 // ---- persistence of the curated view (basket + thresholds), namespaced per sample-set so two reports don't bleed ----
-var SKEY='sbampiro_qc_v2:'+R.samples.length+':'+(R.samples[0]?R.samples[0].s:'')+':'+(R.samples.length?R.samples[R.samples.length-1].s:'');
+var SKEY='bampiro_qc_v2:'+R.samples.length+':'+(R.samples[0]?R.samples[0].s:'')+':'+(R.samples.length?R.samples[R.samples.length-1].s:'');
 function saveState(){try{localStorage.setItem(SKEY,JSON.stringify({excl:st.excl,thr:thr,athr:athr}));}catch(e){}}
 function loadState(){try{var s=JSON.parse(localStorage.getItem(SKEY)||'null');if(!s)return false;
   if(s.thr)Object.keys(s.thr).forEach(function(k){if(k in thr)thr[k]=s.thr[k];});
@@ -1977,7 +2039,7 @@ renderAll();
 SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>__TITLE__</title>
 <style>__CSS__</style></head><body>
-<header><span class="logo">sBAM<b>piro</b> QC</span><span class="meta" id="meta"></span>
+<header><span class="logo"><b>BAMpiro</b> QC</span><span class="meta" id="meta"></span>
 <nav><a href="#gstats">Stats</a><a href="#linsum" id="nav-lin">Lineages</a><a href="#dist">Distributions</a><a href="#corr">Correlations</a><a href="#corrmatrix">Corr matrix</a><a href="#qcpca" id="nav-pca">QC space</a><a href="#divcomp" id="nav-divcomp">Divergence</a><a href="#cons">Consensus</a><a href="#genome" id="nav-genome">Genome</a><a href="#function" id="nav-function">Function</a><a href="#geneburden" id="nav-geneburden">Gene burden</a><a href="#hotspots" id="nav-hot">Variable genes</a><a href="#temporal" id="nav-temporal">Temporal</a><a href="#pnps" id="nav-pnps">pN/pS</a><a href="#adna" id="nav-adna">aDNA</a><a href="#flagged">Flagged</a></nav></header>
 <div class="wrap">
 <section class="hero"><div class="summary" id="summary"></div><div class="chips" id="chips"></div></section>
@@ -2052,7 +2114,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <section id="hotspots"><h2>Variable genes <span class="c">- genes/regions with the most SNPs across the cohort; click a row to mark it on the SNP track</span>
 <input class="gsearch" id="hotq" type="search" placeholder="search gene" style="margin-left:auto"><button class="exp-h" data-panel="hotspotsPanel" data-render="hotspots">⤢ full</button></h2>
 <div class="panel" id="hotspotsPanel"><div id="hot_body"><div class="hot-note" id="hot_note"></div><div class="gtable" style="max-height:44vh"><table id="hottable"></table></div></div></div></section>
-<section id="dynamics"><h2>SNP dynamics <span class="c">- allele-frequency trajectories over time per connected series; points flag emergence / fixation / loss / non-synonymous. Appears only when the metadata carries time + group columns.</span></h2>
+<section id="dynamics"><h2>SNP dynamics <span class="c">- search &amp; select genes to see the allele-frequency trajectories of their variants over time; events flag emergence / fixation / loss / non-synonymous</span></h2>
 <div class="panel pad" id="dyn_body"></div></section>
 <section id="adna"><h2>aDNA damage authentication <span class="c">- terminal deamination per ancient sample; a screen, not a proof of authenticity</span></h2>
 <div class="panel"><div id="adna_body" class="pad"></div></div></section>
@@ -2269,12 +2331,12 @@ def build_dynamics(metadata, variants, emerge=0.25, fix=0.90, loss=0.10, min_poi
 
 
 def main():
-    ap = argparse.ArgumentParser(description="sBAMpiro interactive QC report + flags.")
+    ap = argparse.ArgumentParser(description="BAMpiro interactive QC report + flags.")
     ap.add_argument("--summary", required=True)
     ap.add_argument("--consensus", nargs="*", default=[])
     ap.add_argument("--out-html", required=True)
     ap.add_argument("--out-flags", required=True)
-    ap.add_argument("--title", default="sBAMpiro QC report")
+    ap.add_argument("--title", default="BAMpiro QC report")
     for k, v in DEF.items():
         ap.add_argument("--" + k.replace("_", "-"), type=float, default=v)
     for k, v in ANC_DEF.items():
