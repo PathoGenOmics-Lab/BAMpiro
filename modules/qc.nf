@@ -65,13 +65,23 @@ process KRAKEN_FILTER_PE {
     '''
     set -euo pipefail
     prefix="!{sampleId}__!{runId}"
-    
-    # Download the KrakenTools script dynamically
-    wget -qO extract_kraken_reads.py "!{params.krakentools_url}"
+
+    # KrakenTools helper: reuse the vendored copy in bin/ if present, else fetch it (no repeat
+    # download per task once vendored, and no network dependency).
+    if [ -f "!{projectDir}/bin/extract_kraken_reads.py" ]; then
+      cp "!{projectDir}/bin/extract_kraken_reads.py" extract_kraken_reads.py
+    else
+      wget -qO extract_kraken_reads.py "!{params.krakentools_url}"
+    fi
     chmod +x extract_kraken_reads.py
 
+    # --memory-mapping (optional): share the DB in RAM across parallel tasks instead of each
+    # loading the whole DB -> much lower peak memory.
+    MM=""
+    if [[ "!{params.kraken_memory_mapping}" == "true" ]]; then MM="--memory-mapping"; fi
+
     # Run Kraken2
-    kraken2 --db !{kraken_db} --threads !{task.cpus} --paired !{r1} !{r2} \
+    kraken2 --db !{kraken_db} --threads !{task.cpus} $MM --paired !{r1} !{r2} \
       --output kraken.output --report ${prefix}.kraken.report
 
     # Filter reads based on TaxID
@@ -105,11 +115,19 @@ process KRAKEN_FILTER_SE {
     '''
     set -euo pipefail
     prefix="!{sampleId}__!{runId}"
-    
-    wget -qO extract_kraken_reads.py "!{params.krakentools_url}"
+
+    # KrakenTools helper: reuse the vendored copy in bin/ if present, else fetch it.
+    if [ -f "!{projectDir}/bin/extract_kraken_reads.py" ]; then
+      cp "!{projectDir}/bin/extract_kraken_reads.py" extract_kraken_reads.py
+    else
+      wget -qO extract_kraken_reads.py "!{params.krakentools_url}"
+    fi
     chmod +x extract_kraken_reads.py
 
-    kraken2 --db !{kraken_db} --threads !{task.cpus} !{r1} \
+    MM=""
+    if [[ "!{params.kraken_memory_mapping}" == "true" ]]; then MM="--memory-mapping"; fi
+
+    kraken2 --db !{kraken_db} --threads !{task.cpus} $MM !{r1} \
       --output kraken.output --report ${prefix}.kraken.report
 
     python3 extract_kraken_reads.py -k kraken.output -r ${prefix}.kraken.report \
@@ -123,7 +141,7 @@ process KRAKEN_FILTER_SE {
 process FASTP_PE {
     tag "fastp PE: ${sampleId}"
     cpus 4
-    memory '8 GB'
+    memory { 4.GB * task.attempt }
     
     // Use getSampleDir for nested output support
     publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
@@ -166,7 +184,7 @@ process FASTP_PE {
 process FASTP_SE {
     tag "fastp SE: ${sampleId}"
     cpus 4
-    memory '8 GB'
+    memory { 4.GB * task.attempt }
     
     // Use getSampleDir for nested output support
     publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }

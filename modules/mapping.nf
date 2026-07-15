@@ -15,7 +15,8 @@ process MAPPING_PE {
     // publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
     
     cpus { params.threads as int }
-    memory '32 GB'
+    // A 4.4 Mbp bacterial index is tiny; 6 GB is generous. Escalates on the rare OOM retry.
+    memory { 6.GB * task.attempt }
 
     input:
     tuple val(refId), val(sampleId), val(runId), path(r1), path(r2), val(taxId), path(ref_fa), path(indices), path(exclude_txt)
@@ -43,7 +44,8 @@ process MAPPING_SE {
     // publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
 
     cpus { params.threads as int }
-    memory '32 GB'
+    // A 4.4 Mbp bacterial index is tiny; 6 GB is generous. Escalates on the rare OOM retry.
+    memory { 6.GB * task.attempt }
 
     input:
     tuple val(refId), val(sampleId), val(runId), path(reads_se), val(taxId), path(ref_fa), path(indices), path(exclude_txt)
@@ -73,7 +75,8 @@ process MERGE_AND_MARKDUP {
     // --- OOM (Out of Memory) Protection Strategy ---
     // If the process fails with exit code 137 (OOM), it retries with more memory
     cpus 4
-    memory { 32.GB * task.attempt }
+    // Sort/markdup over a few-hundred-MB bacterial BAM; 8 GB is plenty and doubles on OOM retry.
+    memory { 8.GB * task.attempt }
     time { 6.h * task.attempt }
     
     errorStrategy { task.exitStatus in [137, 140, 143, 134, 139] ? 'retry' : 'finish' }
@@ -93,40 +96,35 @@ process MERGE_AND_MARKDUP {
     
     # Capture the list of input BAM files
     set -- !{bams}
-    
+
     # 1. Merge Logic
-    # If there is only one BAM file, just rename it. If more, merge them.
+    # One BAM -> use it in place (no full-file copy). More -> merge them.
     if [[ $# -eq 1 ]]; then
-      cp "$1" merged.bam
+      MERGED="$1"
     else
       samtools merge -@ !{task.cpus} -f merged.bam "$@"
+      MERGED=merged.bam
     fi
 
-    # 2. Sorting & Deduplication Pipeline
-    # Pipeline: Name Sort -> Fixmate -> Coord Sort -> Markdup
-    
-    # Calculate memory limit for samtools sort to prevent OOM
-    # Uses 80% of allocated memory divided by CPUs
-    mem_per_thread=$(python3 -c "import math; print(int(!{task.memory.toMega()} * 0.8 / !{task.cpus}))")M
+    # 2. Sorting & Deduplication Pipeline (streamed -- no intermediate BAMs on disk)
+    # Name Sort -> Fixmate -> Coord Sort -> Markdup, piped end to end. The sort stages emit
+    # uncompressed BAM (-l 0) so we don't (de)compress throwaway intermediates or round-trip
+    # them through disk. fixmate -m keeps the MC/ms tags the length-aware read filter needs.
 
-    # A. Sort by Name (Required for Fixmate)
-    samtools sort -n -@ !{task.cpus} -m $mem_per_thread -o merged.name.bam merged.bam
-    
-    # B. Fixmate (Fills in mate coordinates/flags)
-    samtools fixmate -m merged.name.bam merged.fixmate.bam
-    
-    # C. Sort by Coordinate (Required for Markdup)
-    samtools sort -@ !{task.cpus} -m $mem_per_thread -o merged.coord.bam merged.fixmate.bam
-    
-    # D. Mark Duplicates (Final step)
-    samtools markdup -r -@ !{task.cpus} merged.coord.bam !{sampleId}.!{refId}.final.bam
-    
+    # samtools sort per-thread memory: 80% of the allocation split across threads
+    mem_per_thread=$(python3 -c "print(int(!{task.memory.toMega()} * 0.8 / !{task.cpus}))")M
+
+    samtools sort -n -@ !{task.cpus} -m $mem_per_thread -l 0 "$MERGED" \
+      | samtools fixmate -m - - \
+      | samtools sort -@ !{task.cpus} -m $mem_per_thread -l 0 - \
+      | samtools markdup -r -@ !{task.cpus} - !{sampleId}.!{refId}.final.bam
+
     # 3. Final Indexing and Stats
     samtools index !{sampleId}.!{refId}.final.bam
     samtools stats !{sampleId}.!{refId}.final.bam > !{sampleId}.!{refId}.dedup.stats
-    
-    # 4. Cleanup intermediate files
-    rm -f merged.bam merged.name.bam merged.fixmate.bam merged.coord.bam
+
+    # 4. Cleanup (only the merge intermediate exists, and only in the multi-BAM case)
+    rm -f merged.bam
     '''
 }
 
