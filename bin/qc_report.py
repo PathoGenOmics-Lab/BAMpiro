@@ -779,6 +779,10 @@ tr.lingrp td{background:#f0f5f9;color:#33465c;font-weight:600;font-size:11px;let
   details.dd .menu{min-width:0;max-width:calc(100vw - 28px);box-sizing:border-box} #thbox{min-width:0!important}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+/* visible info icon signalling a hover tooltip */
+.infoi{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:#d5deea;color:#54637a;font-size:10px;font-weight:700;font-style:italic;font-family:Georgia,'Times New Roman',serif;margin-left:5px;cursor:help;vertical-align:middle;line-height:1;transition:.12s;user-select:none}
+.infoi:hover{background:var(--accent);color:#fff}
+th .infoi,.dyn-legend .infoi{background:#dde5f0}
 /* SNP dynamics panel (gene-centric, searchable) */
 .dyn-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
 .dyn-search{padding:9px 14px;border:1px solid var(--line);border-radius:10px;font-size:14px;min-width:240px;background:#fff;box-shadow:var(--sh)}
@@ -1161,7 +1165,7 @@ function renderOverview(){
 function renderTable(){
   var mets=R.metrics.filter(function(m){return !st.hidden[m.key];});
   var head='<tr><th class="s" data-k="s"><input type="checkbox" id="cbAll" title="exclude all shown samples"><span class="hlab"> Sample</span></th><th data-k="v">QC</th>'+
-    mets.map(function(m){var d=(R.defs[m.key]||[''])[0];return '<th data-k="'+m.key+'" title="'+esc(d)+'">'+esc(m.label)+(st.sortKey==m.key?(st.asc?' ▲':' ▼'):'')+'</th>';}).join('')+
+    mets.map(function(m){var d=(R.defs[m.key]||[''])[0];return '<th data-k="'+m.key+'" title="'+esc(d)+'">'+esc(m.label)+(d?'<span class="infoi" title="'+esc(d)+'">i</span>':'')+(st.sortKey==m.key?(st.asc?' ▲':' ▼'):'')+'</th>';}).join('')+
     '<th data-k="lineage" style="text-align:left">Lineage</th></tr>';
   var linRank={}; (R.lineages||[]).forEach(function(l,i){linRank[l]=i;});
   function lr(s){return (s.lineage&&linRank[s.lineage]!=null)?linRank[s.lineage]:9999;}
@@ -1373,7 +1377,7 @@ function dl(txt,name,type){var blob=new Blob([txt],{type:type}),a=document.creat
 function pctRank(key,val){if(val==null)return null;var vs=R.samples.map(function(s){return s.m[key];}).filter(function(v){return v!=null;});if(!vs.length)return null;var b=0;vs.forEach(function(v){if(v<val)b++;});return Math.round(100*b/vs.length);}
 function openDetail(sid){var s=null;R.samples.forEach(function(x){if(x.s==sid)s=x;});if(!s)return;st.detail=sid;
   var rows=R.metrics.map(function(m){var v=s.m[m.key],r=RANGES[m.key],nn=(v==null||r[1]<=r[0])?0:Math.max(0,Math.min(1,(v-r[0])/(r[1]-r[0]))),pr=pctRank(m.key,v);
-    return '<div class="drow"><div class="dk" title="'+esc((R.defs[m.key]||[''])[0])+'">'+esc(m.label)+'</div>'+
+    var _dd=(R.defs[m.key]||[''])[0];return '<div class="drow"><div class="dk" title="'+esc(_dd)+'">'+esc(m.label)+(_dd?'<span class="infoi" title="'+esc(_dd)+'">i</span>':'')+'</div>'+
       '<div class="dbarwrap"><div class="dbar" style="width:'+(nn*100).toFixed(1)+'%;background:'+BAR[m.dir]+'"></div></div>'+
       '<div class="dv">'+(v==null?'<span class="na">NA</span>':fmt(v,m.kind))+'</div><div class="dp">'+(pr==null?'':('p'+pr))+'</div></div>';}).join('');
   var lin='';if(s.linf){var ks=Object.keys(s.linf).sort(function(a,b){return s.linf[b]-s.linf[a];});
@@ -1753,7 +1757,7 @@ function renderDynamics(){
       '<button class="dyn-btn" id="dynAll" title="Select every gene that has a moving variant">all</button>'+
       '<button class="dyn-btn" id="dynNone" title="Deselect all genes">clear</button>'+
       '<span class="dyn-count" id="dynCount"></span></div>'+
-    '<div class="dyn-legend"><span title="'+DYNHELP.emergence+'"><i style="background:'+DYNCOL.emergence+'"></i>emergence</span><span title="'+DYNHELP.fixation+'"><i style="background:'+DYNCOL.fixation+'"></i>fixation</span><span title="'+DYNHELP.loss+'"><i style="background:'+DYNCOL.loss+'"></i>loss</span><span title="'+DYNHELP.nonsyn+'"><i style="border:2px solid '+DYNCOL.nonsyn+';background:#fff"></i>non-synonymous</span></div>'+
+    '<div class="dyn-legend"><span title="'+DYNHELP.emergence+'"><i style="background:'+DYNCOL.emergence+'"></i>emergence <span class="infoi">i</span></span><span title="'+DYNHELP.fixation+'"><i style="background:'+DYNCOL.fixation+'"></i>fixation <span class="infoi">i</span></span><span title="'+DYNHELP.loss+'"><i style="background:'+DYNCOL.loss+'"></i>loss <span class="infoi">i</span></span><span title="'+DYNHELP.nonsyn+'"><i style="border:2px solid '+DYNCOL.nonsyn+';background:#fff"></i>non-synonymous <span class="infoi">i</span></span></div>'+
     '<div class="dyn-genechips" id="dynchips"></div>'+
     '<div class="dyn-grid" id="dyngrid"></div>';
   function paintChips(){
