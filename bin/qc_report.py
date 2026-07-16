@@ -1235,10 +1235,10 @@ table.drmx th{position:sticky;background:var(--soft);z-index:2}
 .snpmx-fsel select{font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:4px 9px;background:var(--panel);color:var(--label);cursor:pointer}
 .snpmx-wrap{overflow:auto;max-height:74vh;border:1px solid var(--line);border-radius:12px}
 table.snpmx tr.snpmx-spacer td{padding:0!important;border:0!important;background:transparent!important}
-.snpmx-allbtn{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
-.snpmx-allbtn:hover{background:var(--accent);filter:brightness(1.08);color:#fff}
-.snpmx-allbtn.on{background:var(--panel);color:var(--accent)}   /* showing-all state ('show top') is the quieter one */
-.snpmx-allbtn.on:hover{background:var(--accent-soft);filter:none}
+.snpmx-allbtn,.showall-btn{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.snpmx-allbtn:hover,.showall-btn:hover{background:var(--accent);filter:brightness(1.08);color:#fff}
+.snpmx-allbtn.on,.showall-btn.on{background:var(--panel);color:var(--accent)}   /* the quieter 'collapse' state */
+.snpmx-allbtn.on:hover,.showall-btn.on:hover{background:var(--accent-soft);filter:none}
 table.snpmx{border-collapse:separate;border-spacing:0;font-size:12px;width:auto;margin:0 auto}
 table.snpmx th,table.snpmx td{border-bottom:1px solid #eef2f6}
 table.snpmx thead th{position:sticky;background:var(--soft);z-index:5}   /* top offset set inline per header row */
@@ -3077,7 +3077,7 @@ function renderDynamics(){
     '<div class="dyn-controls">'+
       '<input id="dynsearch" class="dyn-search" type="search" title="Type a gene name to filter the gene chips and the grid below" placeholder="search gene..." value="'+esc(dynState.q)+'">'+
       '<button class="dyn-btn" id="dynFlag" title="Show only genes that have at least one flagged variant">flagged genes</button>'+
-      '<button class="dyn-btn" id="dynAll" title="Select every gene that has a moving variant">all</button>'+
+      '<button class="dyn-btn showall-btn" id="dynAll" title="Show every moving SNP&#39;s trajectory (select all genes)">show all</button>'+
       '<button class="dyn-btn" id="dynNone" title="Deselect all genes">clear</button>'+
       '<label class="dyn-toggle" title="Show a per-timepoint read-depth (DP) bar behind each trajectory"><input type="checkbox" id="dynDP"'+(dynShowDP?' checked':'')+'> depth bars</label>'+
       '<label class="dyn-zoom" title="Resize the trajectory cards - drag left to fit more charts per row"><span>'+icon('search','sort')+'&#8211;/+</span><input type="range" id="dynzoom" min="165" max="360" step="5" value="'+dynZoom+'"></label>'+
@@ -3154,6 +3154,7 @@ function renderDynamics(){
   el('dynsearch').oninput=function(){ dynState.q=this.value; paintChips(); paintGrid(); };
   el('dynFlag').onclick=function(){ dynState.sel={}; geneList.filter(function(g){return genes[g].some(dynHasFlag);}).forEach(function(g){dynState.sel[g]=1;}); paintChips(); paintGrid(); };
   el('dynAll').onclick=function(){ dynState.sel={}; geneList.forEach(function(g){dynState.sel[g]=1;}); paintChips(); paintGrid(); };
+  window.__dynShowAll=el('dynAll').onclick;   // let the header 'show all' shortcut expand every trajectory too
   el('dynNone').onclick=function(){ dynState.sel={}; paintChips(); paintGrid(); };
   el('dynzoom').oninput=function(){ dynZoom=+this.value; el('dyngrid').style.setProperty('--dyncw', dynZoom+'px'); };
   el('dynDP').onchange=function(){ dynShowDP=this.checked; paintGrid(); };
@@ -3214,6 +3215,7 @@ function renderEpistasis(){
       '<span class="epi-flabel">confidence</span>'+
       CONF.map(function(c){return '<button class="dyn-btn epi-confbtn'+(epiState.conf===c[0]?' on':'')+'" data-c="'+c[0]+'" title="'+c[1]+'">'+c[0]+'</button>';}).join('')+
       '<label class="dyn-zoom" title="Minimum |Pearson r| for a pair to be shown (cards / table)"><span>|r| &#8805;</span><input type="range" id="epir" min="'+(E.min_r||0.8)+'" max="0.99" step="0.01" value="'+epiState.minr+'"><b id="epirv">'+epiState.minr.toFixed(2)+'</b></label>'+
+      '<button class="dyn-btn showall-btn" id="epiShowAll" title="Show every reported pair (clear the direction / confidence / |r| filters)">show all</button>'+
       '<span class="dyn-count" id="epicount"></span></div>'+
     '<div class="epi-legend">'+
       '<span title="The two variants rise and fall together across the series - candidate linkage or co-selection."><i style="background:#2f8f5b"></i>concordant / same dynamics <span class="infoi">i</span></span>'+
@@ -3320,6 +3322,8 @@ function renderEpistasis(){
   Array.prototype.forEach.call(host.querySelectorAll('.epi-dirbtn'),function(b){ b.onclick=function(){ epiState.dir=b.getAttribute('data-d'); Array.prototype.forEach.call(host.querySelectorAll('.epi-dirbtn'),function(x){x.className='dyn-btn epi-dirbtn'+(x.getAttribute('data-d')===epiState.dir?' on':'');}); draw(); }; });
   Array.prototype.forEach.call(host.querySelectorAll('.epi-confbtn'),function(b){ b.onclick=function(){ epiState.conf=b.getAttribute('data-c'); Array.prototype.forEach.call(host.querySelectorAll('.epi-confbtn'),function(x){x.className='dyn-btn epi-confbtn'+(x.getAttribute('data-c')===epiState.conf?' on':'');}); draw(); }; });
   el('epir').oninput=function(){ epiState.minr=+this.value; el('epirv').textContent=epiState.minr.toFixed(2); draw(); };
+  window.__epiShowAll=function(){ epiState.dir='all'; epiState.conf='all'; epiState.q=''; epiState.minr=E.min_r||0.8; renderEpistasis(); };
+  el('epiShowAll').onclick=window.__epiShowAll;   // clear every filter -> show all reported pairs (also driven by the header shortcut)
   draw();
 }
 
@@ -3848,14 +3852,18 @@ renderAll();
   apply();
   b.onclick=function(){ on=!on; try{localStorage.setItem('bampiro_insights',on?'on':'off');}catch(e){} apply(); };
 })();
-(function(){  // header 'all sites' shortcut -> jump to the SNP matrix and toggle every-site view; shown only when it has > the top-N cap
+(function(){  // header 'show all' shortcut -> expand every SNP view at once (trajectories, epistasis pairs, matrix sites) and jump to the dynamics
   var b=el('allSitesBtn'); if(!b)return;
-  var M=R.snp_matrix;
-  if(!(M&&M.rows&&M.rows.length)){ b.style.display='none'; return; }   // hide only when there is no SNP matrix at all
+  var hasAny=(R.snp_matrix&&R.snp_matrix.rows&&R.snp_matrix.rows.length)||(R.dynamics&&R.dynamics.groups&&R.dynamics.groups.length)||(R.epistasis&&R.epistasis.pairs&&R.epistasis.pairs.length);
+  if(!hasAny){ b.style.display='none'; return; }
   b.style.display='';
-  function sync(){ b.classList.toggle('on',snpmxAll); var l=el('allSitesLbl'); if(l)l.textContent=snpmxAll?'top sites':'all sites'; b.setAttribute('aria-pressed',snpmxAll?'true':'false'); }
-  window.__syncSitesBtn=sync; sync();
-  b.onclick=function(){ snpmxAll=!snpmxAll; var w=el('snpmxwrap'); if(w)w.scrollTop=0; if(window.__snpmxDraw)window.__snpmxDraw(); else renderSnpMatrix(); sync(); var s=el('snpmatrix'); if(s)s.scrollIntoView({behavior:'smooth',block:'start'}); };
+  window.__syncSitesBtn=function(){};   // kept so the matrix panel button can call it harmlessly
+  b.onclick=function(){
+    if(window.__dynShowAll) window.__dynShowAll();                                   // every trajectory
+    if(window.__epiShowAll) window.__epiShowAll();                                   // every epistasis pair
+    if(R.snp_matrix&&R.snp_matrix.rows){ snpmxAll=true; var w=el('snpmxwrap'); if(w)w.scrollTop=0; if(window.__snpmxDraw)window.__snpmxDraw(); }   // every matrix site
+    var s=el('dynamics')||el('snpmatrix'); if(s)s.scrollIntoView({behavior:'smooth',block:'start'});
+  };
 })();
 (function(){  // left contents sidebar: collapse toggle, collapsible groups, scroll-spy highlight
   var toc=el('toc'), tg=el('toc-toggle'); if(!toc||!tg)return;
@@ -3916,7 +3924,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="toc-group"><div class="toc-gh">Evolution<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#temporal" id="nav-temporal">Temporal</a><a class="toc-link" href="#pnps" id="nav-pnps">pN/pS</a><a class="toc-link" href="#adna" id="nav-adna">aDNA</a></div></div>
 <div class="toc-group"><div class="toc-gh">Variants over time<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#dynamics" id="nav-dyn">SNP dynamics</a><a class="toc-link" href="#epistasis" id="nav-epi">Epistasis</a><a class="toc-link" href="#snpmatrix" id="nav-snpmx">SNP matrix</a><a class="toc-link" href="#drug" id="nav-drug">Drug resistance</a></div></div>
 </nav>
-<header><span class="logo"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</span><span class="ver" id="hver"></span><span class="meta" id="meta"></span><a id="ghlink" class="hbtn" href="__REPO__" target="_blank" rel="noopener noreferrer" title="BAMpiro source on GitHub" aria-label="BAMpiro source on GitHub" style="margin-left:auto"><span data-ic="github"></span></a><button id="insightToggle" class="hbtn hbtn-lbl" title="Show / hide the analytical read-out at the top of each panel" aria-label="Toggle analytical read-outs" aria-pressed="true"><span data-ic="spark"></span> insights</button><button id="allSitesBtn" class="hbtn hbtn-lbl" style="display:none" title="Show every SNP site in the matrix, or just the top most-shared sites" aria-pressed="false"><span data-ic="grid"></span> <span id="allSitesLbl">all sites</span></button><button id="themeToggle" class="hbtn" title="Toggle dark / light theme" aria-label="Toggle dark / light theme"></button></header>
+<header><span class="logo"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</span><span class="ver" id="hver"></span><span class="meta" id="meta"></span><a id="ghlink" class="hbtn" href="__REPO__" target="_blank" rel="noopener noreferrer" title="BAMpiro source on GitHub" aria-label="BAMpiro source on GitHub" style="margin-left:auto"><span data-ic="github"></span></a><button id="insightToggle" class="hbtn hbtn-lbl" title="Show / hide the analytical read-out at the top of each panel" aria-label="Toggle analytical read-outs" aria-pressed="true"><span data-ic="spark"></span> insights</button><button id="allSitesBtn" class="hbtn hbtn-lbl" style="display:none" title="Show everything at once - every SNP trajectory, every epistasis pair and every matrix site - and jump to the SNP dynamics"><span data-ic="grid"></span> <span id="allSitesLbl">show all</span></button><button id="themeToggle" class="hbtn" title="Toggle dark / light theme" aria-label="Toggle dark / light theme"></button></header>
 <div class="wrap">
 <p class="lede">Short-read bacterial / MTBC cohort QC. Review <a href="#flagged">flagged samples</a>, tick any to drop, then export <b>keep_list.txt</b> / <b>exclusion.tsv</b>. Thresholds below are live; the pipeline gate itself is unchanged.</p>
 <section class="hero"><div class="summary" id="summary"></div><div class="chips" id="chips"></div></section>
