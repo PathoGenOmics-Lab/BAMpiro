@@ -725,7 +725,7 @@ def flag_sample(m, thr, snp_med, snp_sig, ancient=False, anc_thr=None, dmg=None)
 # ============================================================================= CSS / JS / SHELL
 CSS = r"""
 :root{--bg:#eef2f7;--panel:#fff;--line:#e6ebf2;--ink:#15202e;--mut:#6a7889;--soft:#f6f8fb;
- --accent:#0e8ba8;--accent-soft:#e3f3f7;
+ --accent:#0b7f97;--accent-soft:#e3f3f7;   /* 4.67:1 on white -> WCAG AA for the action buttons / active chips (was #0e8ba8 at 3.98:1) */
  --pass:#0f9d6b;--warn:#dd8a1a;--fail:#e23a4a;--good:#16a37a;--bad:#e5615c;--neu:#4a90b8;
  --bandfill:rgba(15,157,107,.09);--bandedge:rgba(15,157,107,.42);
  --sh:0 1px 2px rgba(16,24,40,.04),0 3px 8px rgba(16,24,40,.05);--r:15px;
@@ -766,7 +766,7 @@ html.dark .curation{background:linear-gradient(180deg,var(--soft),var(--panel))}
 html.dark #nbasket{color:var(--accent)}
 html.dark code,html.dark .kbd{background:#243141;color:#cdd8e4}
 html.dark .abadge{color:#e8c37a;background:#3a2c10;border-color:#5a4a24}
-html.dark .dflags .chip.failc{background:#3b1a22;color:#f5a1ac;border-color:#5a2b33}
+html.dark .chip.failc{background:#3b1a22;color:#f5a1ac;border-color:#5a2b33}
 html.dark tr.lingrp td{background:#1b2836}
 html.dark .acard.low{border-color:#6a3540;background:linear-gradient(180deg,var(--soft),#2c1a20)}
 html.dark .epi-moderate{background:#1c3350;color:#8fb3e0} html.dark .epi-weak{background:#232f3d;color:#93a0b0}
@@ -818,6 +818,10 @@ body.toc-collapsed header{padding-left:56px}
 .ic.sort{width:.85em;height:.85em;margin:0 0 0 .25em;opacity:.85;vertical-align:-.05em}
 .toc-chev .ic{width:13px;height:13px;margin:0}
 #toc-toggle .ic,#themeToggle .ic,.modalx .ic{margin:0}
+/* first-run orientation lede + expandable-dropdown caret */
+.lede{color:var(--mut);font-size:13px;line-height:1.55;margin:0 0 16px;max-width:74ch}
+.lede a{color:var(--accent);text-decoration:none} .lede a:hover{text-decoration:underline}
+.ddcaret{opacity:.55;transition:transform .15s;margin-left:.3em} details[open]>summary .ddcaret{transform:rotate(180deg)}
 .toc-group.closed .toc-items{display:none}
 .toc-items{display:flex;flex-direction:column;gap:1px}
 .toc-link{color:#5b6b7e;text-decoration:none;font-size:13.5px;padding:6px 12px;border-radius:8px;font-weight:500;border-left:2px solid transparent}
@@ -922,7 +926,11 @@ body.has-expanded{overflow:hidden} body.has-expanded::after{content:"";position:
 @keyframes pop{from{transform:translateY(8px);opacity:.4}to{transform:none;opacity:1}}
 .modalx{position:absolute;top:12px;right:14px;border:0;background:var(--track);color:var(--txt2);width:28px;height:28px;border-radius:50%;font-size:18px;line-height:1;cursor:pointer} .modalx:hover{background:#e0e6ee}
 .dhead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px} .dtitle{font-size:18px;font-weight:700;letter-spacing:-.3px} .dmeta{font-size:12px;color:var(--mut);margin-top:2px}
-.dflags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px} .dflags .chip{cursor:default} .dflags .chip.failc{background:#fde3e6;color:#a01f2d;border-color:#f5c2c8}
+.dflags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px} .dflags .chip{cursor:default}
+.chip.failc{background:#fde3e6;color:#a01f2d;border-color:#f5c2c8}   /* FAIL-tier flags read red everywhere (flagged panel + table + modal), not just the modal */
+.fchips{display:flex;gap:6px;flex-wrap:wrap}
+.chip-hint{font-size:10.5px;color:var(--mut);align-self:center;margin-left:2px;white-space:nowrap}
+.flagrsn{display:flex;flex-direction:column;gap:1px;margin-top:5px;font-size:11px;color:var(--txt2);font-variant-numeric:tabular-nums}   /* always-visible flag margins (touch-safe, not hover-only) */
 .dsub{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);font-weight:600;margin:16px 0 8px}
 .lcomp{display:flex;flex-direction:column;gap:5px;margin-bottom:2px}
 .lrow{display:flex;align-items:center;gap:9px;font-size:12px} .lk{flex:0 0 58px;color:var(--label);font-weight:600} .lbarw{flex:1;height:9px;background:var(--track);border-radius:5px;overflow:hidden} .lbar{height:100%;background:var(--accent)} .lv{flex:0 0 46px;text-align:right;color:#8895a6;font-variant-numeric:tabular-nums}
@@ -1351,7 +1359,7 @@ function renderTemporal(){var host=el('temporal_body'),cap=el('temporal_caption'
 // ===============================================================================
 // ---- auto-discovered extra metrics: merge into the registry, hidden by default ----
 var extraSet={}; R.extra.forEach(function(e){extraSet[e.key]=1;R.metrics.push(e);R.defs[e.key]=R.defs[e.key]||['Auto-detected metric from the summary TSV (not a named QC metric).',''];});
-var st={sortKey:'s',asc:true,q:'',onlyFlagged:false,hidden:{},hi:null,flagFilter:null,ptype:'beeswarm',
+var st={sortKey:'v',asc:false,q:'',onlyFlagged:false,hidden:{},hi:null,flagFilter:null,ptype:'beeswarm',   // default view: worst QC first (a returning user's saved sort overrides this)
         sx:'mean_depth',sy:'breadth_pct',excl:{},detail:null,colorBy:'qc',groupLin:false,ancOnly:null,linFilter:null,gtrack:'missing',maskOn:false,gsel:null,gzoom:null,gbq:'',hotq:'',pnpsq:'',colf:{},showColF:false};
 var SGEO=null, GGEO=null;   // scatter + genome brush geometry caches (for inverse-mapping the rubber-band)
 var _thdb,_qdb,_mxdb,_cfdb;  // debounce timers: keep live inputs snappy at cohort scale (defer heavy re-renders)
@@ -1548,7 +1556,7 @@ function renderOverview(){
     ['PASS','WARN','FAIL'].map(function(v){return '<div class="c '+v.toLowerCase()+'"><div class="n">'+c[v]+'</div><div class="l">'+v.toLowerCase()+'</div></div>';}).join('')+'</div>';
   var freq={}; R.samples.forEach(function(s){s.f.forEach(function(f){freq[f]=(freq[f]||0)+1;});});
   var keys=Object.keys(freq).sort(function(a,b){return freq[b]-freq[a];});
-  el('chips').innerHTML='<span class="t">flags</span>'+(keys.length?keys.map(function(f){return '<span class="chip'+(st.flagFilter==f?' on':'')+'" data-f="'+f+'" role="button" tabindex="0" aria-pressed="'+(st.flagFilter==f?'true':'false')+'" aria-label="filter by '+f+'">'+f+'<span class="k">'+freq[f]+'</span></span>';}).join(''):'<span style="color:#94a3b8;font-size:12px">none - every sample clear ✓</span>');
+  el('chips').innerHTML='<span class="t">flags</span>'+(keys.length?keys.map(function(f){return '<span class="chip'+(st.flagFilter==f?' on':'')+'" data-f="'+f+'" role="button" tabindex="0" aria-pressed="'+(st.flagFilter==f?'true':'false')+'" aria-label="filter by '+f+'">'+f+'<span class="k">'+freq[f]+'</span></span>';}).join('')+'<span class="chip-hint">click to filter</span>':'<span style="color:#94a3b8;font-size:12px">none - every sample clear ✓</span>');
   Array.prototype.forEach.call(document.querySelectorAll('#chips .chip'),function(ch){function tog(){var f=ch.getAttribute('data-f');st.flagFilter=(st.flagFilter==f?null:f);st.onlyFlagged=false;renderAll();}
     ch.onclick=tog; ch.onkeydown=function(e){if(e.key=='Enter'||e.key==' '||e.key=='Spacebar'){e.preventDefault();tog();}};});
 }
@@ -1556,8 +1564,9 @@ function renderOverview(){
 function renderTable(){
   var mets=R.metrics.filter(function(m){return !st.hidden[m.key];});
   function hsa(k){return ' tabindex="0" aria-sort="'+(st.sortKey==k?(st.asc?'ascending':'descending'):'none')+'"';}  // sortable-header a11y
-  var head='<tr><th class="s" data-k="s"'+hsa('s')+'><input type="checkbox" id="cbAll" title="exclude all shown samples"><span class="hlab"> Sample</span></th><th data-k="v"'+hsa('v')+'>QC</th>'+
-    mets.map(function(m){var d=(R.defs[m.key]||[''])[0];return '<th data-k="'+m.key+'"'+hsa(m.key)+' title="'+esc(d)+'">'+esc(m.label)+(d?'<span class="infoi" title="'+esc(d)+'">i</span>':'')+(st.sortKey==m.key?(st.asc?icon('chevronUp','sort'):icon('chevronDown','sort')):'')+'</th>';}).join('')+
+  function sarr(k){return st.sortKey==k?(st.asc?icon('chevronUp','sort'):icon('chevronDown','sort')):'';}  // active-sort direction caret
+  var head='<tr><th class="s" data-k="s"'+hsa('s')+'><input type="checkbox" id="cbAll" title="exclude all shown samples"><span class="hlab"> Sample</span>'+sarr('s')+'</th><th data-k="v"'+hsa('v')+'>QC'+sarr('v')+'</th>'+
+    mets.map(function(m){var d=(R.defs[m.key]||[''])[0];return '<th data-k="'+m.key+'"'+hsa(m.key)+' title="'+esc(d)+'">'+esc(m.label)+(d?'<span class="infoi" title="'+esc(d)+'">i</span>':'')+sarr(m.key)+'</th>';}).join('')+
     '<th data-k="lineage"'+hsa('lineage')+' style="text-align:left">Lineage</th></tr>';
   // optional per-column filter row: one input per column (numeric ops on metric columns, substring otherwise)
   function cfIn(k,ph,lab,num){return '<input class="cfx" type="search" data-fk="'+k+'" value="'+esc(st.colf[k]||'')+'" placeholder="'+esc(ph)+'" aria-label="Filter '+esc(lab||k)+'"'+(num?' title="operators: &gt; &gt;= &lt; &lt;= = , a range 5-9 or 5..9; otherwise matches the text"':'')+'>';}
@@ -1568,7 +1577,7 @@ function renderTable(){
   var shown=visible().filter(colMatch);
   var rows=shown.slice().sort(function(a,b){
     if(st.groupLin){var la=lr(a),lb=lr(b);if(la!=lb)return la-lb;}
-    var k=st.sortKey,x=(k=='s')?a.s:(k=='v'?a.v:a.m[k]),y=(k=='s')?b.s:(k=='v'?b.v:b.m[k]),c;
+    var k=st.sortKey,x=(k=='s')?a.s:(k=='v'?qcScore(a):a.m[k]),y=(k=='s')?b.s:(k=='v'?qcScore(b):b.m[k]),c;   // QC column sorts by severity, not the verdict string
     if(typeof x=='number'&&typeof y=='number')c=x-y;else c=String(x==null?'':x).localeCompare(String(y==null?'':y));return st.asc?c:-c;});
   var lastLin=null, ncol=mets.length+3;
   var TBL_CAP=400, total=rows.length, capped=total>TBL_CAP, draw=capped?rows.slice(0,TBL_CAP):rows;
@@ -1744,10 +1753,11 @@ function renderFlags(){
   var fl=R.samples.filter(function(s){return s.v!='PASS';}).sort(function(a,b){return qcScore(b)-qcScore(a)||a.s.localeCompare(b.s);});
   var body=fl.length?fl.map(function(s){return '<tr data-s="'+esc(s.s)+'">'+
     '<td class="s">'+esc(s.s)+(s.anc?'<span class="abadge">aDNA</span>':'')+'</td><td><span class="v '+s.v+'">'+s.v+'</span></td>'+
-    '<td class="flags">'+s.f.map(function(f){return '<span class="chip'+(FAILF[f]?' failc':'')+'" data-f="'+f+'" title="'+esc(flagWhy(s,f))+'" style="cursor:pointer">'+f+'</span>';}).join(' ')+'</td></tr>';}).join('')
+    '<td class="flags"><div class="fchips">'+s.f.map(function(f){return '<span class="chip'+(FAILF[f]?' failc':'')+'" data-f="'+f+'" title="'+esc(flagWhy(s,f))+'" style="cursor:pointer">'+f+'</span>';}).join(' ')+'</div>'+
+      '<div class="flagrsn">'+s.f.map(function(f){return '<span>'+esc(flagWhy(s,f))+'</span>';}).join('')+'</div></td></tr>';}).join('')
     :'<tr><td colspan="3" style="text-align:left;color:#16a34a;padding:10px">All samples pass at the current thresholds.</td></tr>';
   var t=el('flagtable');
-  t.innerHTML='<thead><tr><th class="s">Sample (worst first)</th><th>QC</th><th style="text-align:left">Flags - hover for the margin</th></tr></thead><tbody>'+body+'</tbody>';
+  t.innerHTML='<thead><tr><th class="s">Sample (worst first)</th><th>QC</th><th style="text-align:left">Flags &amp; reason</th></tr></thead><tbody>'+body+'</tbody>';
   Array.prototype.forEach.call(t.querySelectorAll('tbody tr[data-s]'),function(tr){tr.onclick=function(e){
     if(e.target.classList.contains('chip')){var f=e.target.getAttribute('data-f');st.flagFilter=(st.flagFilter==f?null:f);renderAll();el('gstats').scrollIntoView();return;}
     setHi(tr.getAttribute('data-s'));el('gstats').scrollIntoView();};});
@@ -1759,7 +1769,7 @@ function renderFlags(){
 function nExcl(){return R.samples.filter(function(s){return st.excl[s.s];}).length;}
 function renderCuration(){var ex=nExcl(),keep=R.samples.length-ex;
   var nb=el('nbasket'); if(nb)nb.innerHTML=icon('basket')+ex+' basketed';   // always-visible toolbar mirror of the basket
-  el('curation').innerHTML='<div class="cur-intro"><b>Exclusion basket</b> - the set of samples you are dropping from the downstream analysis (phylogeny / clock). Tick a sample&#39;s box in the table (or use the buttons), then export the drop list (<b>exclusion.tsv</b>) or the survivors (<b>keep_list.txt</b>).</div>'+
+  el('curation').innerHTML='<div class="cur-intro"><b>Exclusion basket</b> - the set of samples you are dropping from the downstream analysis (phylogeny / clock). <b>FAIL samples start pre-selected</b> (their boxes are ticked); tick or untick any box in the table (or use the buttons), then export the drop list (<b>exclusion.tsv</b>) or the survivors (<b>keep_list.txt</b>).</div>'+
     '<div class="cur-read"><b>'+ex+'</b> to exclude <span class="arw">→</span> <b>'+keep+'</b> kept for downstream</div>'+
    '<div class="cur-btns"><button class="btn" data-cur="fail">exclude FAILs</button><button class="btn" data-cur="flagged">exclude all flagged</button>'+
    '<button class="btn" data-cur="clear">clear</button><button class="btn" data-cur="invert">invert (shown)</button>'+
@@ -1783,6 +1793,9 @@ function exportKeep(){var lines=R.samples.filter(function(s){return !st.excl[s.s
 function dl(txt,name,type){var blob=new Blob([txt],{type:type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href);toast('Saved '+name);}
 var _toastT;
 function toast(msg){var e0=el('toast'); if(!e0)return; e0.textContent=msg; e0.className='show'; clearTimeout(_toastT); _toastT=setTimeout(function(){e0.className='';},2200);}
+// keep a screen reader / keyboard user inside the open dialog: the page behind is made inert
+function setBgInert(on){['toc','toc-toggle'].forEach(function(id){var e=el(id); if(e){if(on){e.setAttribute('inert','');e.setAttribute('aria-hidden','true');}else{e.removeAttribute('inert');e.removeAttribute('aria-hidden');}}});
+  Array.prototype.forEach.call(document.querySelectorAll('header,.wrap'),function(e){if(on){e.setAttribute('inert','');e.setAttribute('aria-hidden','true');}else{e.removeAttribute('inert');e.removeAttribute('aria-hidden');}});}
 
 // ---- per-sample detail modal ----
 function pctRank(key,val){if(val==null)return null;var vs=R.samples.map(function(s){return s.m[key];}).filter(function(v){return v!=null;});if(!vs.length)return null;var b=0;vs.forEach(function(v){if(v<val)b++;});return Math.round(100*b/vs.length);}
@@ -1828,8 +1841,8 @@ function openDetail(sid){var s=null;R.samples.forEach(function(x){if(x.s==sid)s=
     '<div class="dbtns"><button class="btn" id="dexcl"></button></div>';
   var dx=el('dexcl');function setlbl(){dx.textContent=st.excl[s.s]?'✓ excluded - click to keep':'exclude this sample';dx.classList.toggle('prim',!st.excl[s.s]);}
   setlbl();dx.onclick=function(){if(st.excl[s.s])delete st.excl[s.s];else st.excl[s.s]=1;setlbl();renderTable();renderCuration();};
-  st._opener=document.activeElement; el('modal').classList.add('open'); var mx=el('modalx'); if(mx)mx.focus();}
-function closeDetail(){st.detail=null;el('modal').classList.remove('open');
+  st._opener=document.activeElement; el('modal').classList.add('open'); setBgInert(true); var mx=el('modalx'); if(mx)mx.focus();}
+function closeDetail(){st.detail=null;el('modal').classList.remove('open');setBgInert(false);
   if(st._opener&&st._opener.focus){try{st._opener.focus();}catch(e){}} st._opener=null;}
 
 // ---- genome landscape: samples x reference-position heatmap, multi-track (missing / SNPs / het / indels) ----
@@ -1837,7 +1850,7 @@ var GTRACKS=[{k:'missing',lab:'Missing',base:[214,64,58]},{k:'snp',lab:'SNPs',ba
              {k:'het',lab:'Het',base:[221,138,26]},{k:'indel',lab:'Indels',base:[124,92,191]}];
 function gtrackHas(k){return R.samples.some(function(s){return k=='missing'?!!s.miss:(s.trk&&s.trk[k]);});}
 function gtrackMax(k){var mx=0;R.samples.forEach(function(s){var p=k=='missing'?s.miss:(s.trk&&s.trk[k]);if(p)p.forEach(function(v){if(v!=null&&v>mx)mx=v;});});return mx;}
-function gcol(base,mv){if(mv==null)return '#e9edf2';if(mv>1)mv=1;var a=[238,244,240];
+function gcol(base,mv){if(mv==null)return TH.cellnull;if(mv>1)mv=1;var a=isDark()?[30,42,56]:[238,244,240];
   return 'rgb('+Math.round(a[0]+(base[0]-a[0])*mv)+','+Math.round(a[1]+(base[1]-a[1])*mv)+','+Math.round(a[2]+(base[2]-a[2])*mv)+')';}
 // ---- Functional annotation (snpEff impact + effect classes per sample) ----
 var IMP=[['ann_high','HIGH','#e0544f'],['ann_moderate','MODERATE','#e6b25a'],
@@ -2812,6 +2825,13 @@ if(el('expClose'))el('expClose').onclick=collapseExpanded;
 document.addEventListener('keydown',function(e){if(e.key=='Escape')collapseExpanded();});
 // per-sample detail modal close (button, backdrop, Esc)
 el('modalx').onclick=closeDetail; el('modal').addEventListener('click',function(e){if(e.target==el('modal'))closeDetail();});
+el('modal').addEventListener('keydown',function(e){   // trap Tab focus inside the open dialog
+  if(e.key!=='Tab')return;
+  var f=Array.prototype.filter.call(el('modal').querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])'),function(x){return x.offsetParent!==null;});
+  if(!f.length)return; var first=f[0],last=f[f.length-1];
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+});
 document.addEventListener('keydown',function(e){if(e.key=='Escape'&&st.detail)closeDetail();});
 
 var hadSaved=loadState();
@@ -2844,7 +2864,8 @@ renderAll();
   links.forEach(function(a){ a.onclick=function(){ if(window.innerWidth&&window.innerWidth<860) document.body.classList.add('toc-collapsed'); }; });
   function spy(){
     var se=document.scrollingElement||document.documentElement, y=se.scrollTop+92, cur=null;
-    items.forEach(function(s){ if(s.el.style.display!=='none' && s.el.offsetTop<=y) cur=s; });
+    var best=-1;   // pick the section with the GREATEST offsetTop<=y (TOC order need not match DOM order)
+    items.forEach(function(s){ if(s.el.style.display!=='none' && s.el.offsetTop<=y && s.el.offsetTop>=best){ best=s.el.offsetTop; cur=s; } });
     if(!cur){ for(var i=0;i<items.length;i++){ if(items[i].el.style.display!=='none'){ cur=items[i]; break; } } }  // above the 1st section -> highlight it
     links.forEach(function(a){ a.className='toc-link'; });
     if(cur) cur.a.className='toc-link active';
@@ -2881,18 +2902,18 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div id="tocscrim" aria-hidden="true"></div>
 <nav id="toc" aria-label="Contents">
 <div class="toc-brand"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</div>
-<div class="toc-group"><div class="toc-gh">Overview<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#gstats">Stats</a><a class="toc-link" href="#linsum" id="nav-lin">Lineages</a><a class="toc-link" href="#dist">Distributions</a></div></div>
+<div class="toc-group"><div class="toc-gh">Overview<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#gstats">Stats</a><a class="toc-link" href="#flagged">Flagged</a><a class="toc-link" href="#linsum" id="nav-lin">Lineages</a><a class="toc-link" href="#dist">Distributions</a></div></div>
 <div class="toc-group"><div class="toc-gh">Correlation &amp; structure<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#corr">Correlations</a><a class="toc-link" href="#corrmatrix">Corr matrix</a><a class="toc-link" href="#qcpca" id="nav-pca">QC space</a><a class="toc-link" href="#divcomp" id="nav-divcomp">Divergence</a></div></div>
 <div class="toc-group"><div class="toc-gh">Genome &amp; genes<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#cons">Consensus</a><a class="toc-link" href="#genome" id="nav-genome">Genome</a><a class="toc-link" href="#function" id="nav-function">Function</a><a class="toc-link" href="#geneburden" id="nav-geneburden">Gene burden</a><a class="toc-link" href="#hotspots" id="nav-hot">Variable genes</a></div></div>
 <div class="toc-group"><div class="toc-gh">Evolution<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#temporal" id="nav-temporal">Temporal</a><a class="toc-link" href="#pnps" id="nav-pnps">pN/pS</a><a class="toc-link" href="#adna" id="nav-adna">aDNA</a></div></div>
 <div class="toc-group"><div class="toc-gh">Variants over time<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#dynamics" id="nav-dyn">SNP dynamics</a><a class="toc-link" href="#epistasis" id="nav-epi">Epistasis</a><a class="toc-link" href="#snpmatrix" id="nav-snpmx">SNP matrix</a><a class="toc-link" href="#drug" id="nav-drug">Drug resistance</a></div></div>
-<div class="toc-group"><div class="toc-gh">Quality<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#flagged">Flagged</a></div></div>
 </nav>
 <header><span class="logo"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</span><span class="meta" id="meta"></span><button id="themeToggle" title="Toggle dark / light theme" aria-label="Toggle dark / light theme" style="margin-left:auto"></button></header>
 <div class="wrap">
+<p class="lede">Short-read bacterial / MTBC cohort QC. Review <a href="#flagged">flagged samples</a>, tick any to drop, then export <b>keep_list.txt</b> / <b>exclusion.tsv</b>. Thresholds below are live; the pipeline gate itself is unchanged.</p>
 <section class="hero"><div class="summary" id="summary"></div><div class="chips" id="chips"></div></section>
 <div class="provbar"><div class="prov" id="prov"></div><button class="btn" id="printBtn" title="expand + print / save as PDF"><span data-ic="printer"></span> print</button></div>
-<section><details class="dd" style="display:inline-block"><summary><span data-ic="sliders"></span> Live thresholds &amp; presets - adjust and everything re-flags</summary>
+<section><details class="dd" style="display:inline-block"><summary><span data-ic="sliders"></span> Live thresholds &amp; presets - adjust and everything re-flags<span class="ddcaret" data-ic="chevronDown" data-ic-cls="sort"></span></summary>
 <div class="menu" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;min-width:min(520px,calc(100vw - 28px))">
   <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;flex-basis:100%" id="thbox"></div>
   <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;flex-basis:100%" id="athbox"></div>
@@ -2945,7 +2966,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <section id="cons"><h2>Consensus completeness <span class="c">- callable / IUPAC / missing per sample, worst first</span></h2>
 <div class="panel"><div id="stacks" style="max-height:60vh;overflow:auto"></div>
 <div class="legend"><span><i style="background:#22a06b"></i>callable</span><span><i style="background:#e6b25a"></i>IUPAC</span><span><i style="background:#cbd5e1"></i>missing (- / N)</span></div></div></section>
-<section id="genome"><h2>Genome landscape <span class="c">- a signal along the reference; rows = samples (grouped by lineage). A contiguous block = a localised feature (e.g. an RD deletion, a variant cluster). Missing = consensus callability (coverage proxy); SNPs/Het/Indels = VCF variant density</span>
+<section id="genome"><h2>Genome landscape <span class="c">- a signal along the reference; rows = samples (grouped by lineage). A contiguous block = a localised feature (e.g. an RD deletion, a variant cluster). Missing = consensus callability (coverage proxy); SNPs/Het/Indels = VCF variant density. Drag across the track to zoom a region</span>
 <input class="gsearch" id="genegoto" type="search" placeholder="go to gene" style="margin-left:auto"><span id="gselreadout" style="font-size:11px;color:var(--accent)"></span><button class="btn" id="maskbtn"><span data-ic="ban"></span>mask regions</button><span class="seg" id="gtrack"></span>
 <button class="exp-h" data-panel="genomePanel" data-render="genome"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="genomePanel"><div class="genome-scroll"><div id="genome_body" class="pad"></div></div>
@@ -2981,14 +3002,14 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <section id="pnps"><h2>Selection: pN/pS and dN/dS <span class="c">- alignment-based per-gene dN/dS from eskaks; a cohort selection screen, not a per-sample QC metric</span>
 <input class="gsearch" id="pnpsq" type="search" placeholder="search gene" style="margin-left:auto"><button class="exp-h" data-panel="pnpsPanel" data-render="pnps"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="pnpsPanel"><div id="pnps_body"><div class="hot-note" id="pnps_note"></div><div class="gtable" style="max-height:48vh"><table id="pnpstable"></table></div></div></div></section>
-<section id="flagged"><h2>Flagged samples <span class="c">- <span id="nflag"></span> to review; click a flag to filter, hover for the margin</span>
+<section id="flagged"><h2>Flagged samples <span class="c">- <span id="nflag"></span> to review; the margin is shown under each flag; click a flag to filter the cohort</span>
 <button class="btn" id="basketFlagged" style="margin-left:auto"><span data-ic="basket"></span> basket all flagged</button></h2>
 <div class="panel gtable" style="max-height:50vh"><table id="flagtable"></table></div></section>
 <div class="footer" id="foot"></div>
 </div>
 <button id="expClose" class="exp-close" aria-label="exit fullscreen"><span data-ic="x"></span>close (Esc)</button>
 <div id="modal" class="modal"><div class="modalcard" role="dialog" aria-modal="true" aria-label="Sample detail"><button class="modalx" id="modalx" aria-label="close"><span data-ic="x"></span></button><div id="modalbody"></div></div></div>
-<div id="tt"></div><div id="toast"></div>
+<div id="tt"></div><div id="toast" role="status" aria-live="polite"></div>
 <div id="infopop"></div>
 <script>var REPORT=__JSON__;</script>
 <script>__JS__</script>
