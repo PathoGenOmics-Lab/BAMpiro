@@ -81,7 +81,11 @@ lines.drop(1).eachWithIndex { raw, idx ->
     if (!line.trim()) return
     if (line.startsWith('#')) return
 
-    def p = line.split('\t', -1)
+    // split(-1) only keeps trailing empties when the tabs are physically present; pad short rows so a
+    // row that omits trailing columns becomes empty fields (reported below) instead of crashing on an
+    // out-of-bounds Java-array read.
+    def p = line.split('\t', -1).toList()
+    while (p.size() < header.size()) p << ''
 
     def sampleId = sanitizeId(p[col.sampleId])
     def r1Str    = cleanStr(p[col.r1])
@@ -104,7 +108,7 @@ lines.drop(1).eachWithIndex { raw, idx ->
     if (nullish(r2Str)) r2Str = null
     def mode = (r2Str ? "PE" : "SE")
 
-    if (taxId != null && (taxId == "" || taxId == ".")) taxId = null
+    if (nullish(taxId)) taxId = null   // treat NA / N/A / null / . / blank as "no taxId" (as r2 already does)
     if (taxId != null) hasTax = true
 
     if (!runId) runId = inferRunId(r1Str)

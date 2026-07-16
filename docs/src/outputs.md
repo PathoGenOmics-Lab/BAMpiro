@@ -41,6 +41,9 @@ results_bampiro/
     ├── MP00091.LENS.var.het.SNPs.ann...    # 📂 Split VCFs: Subset of Heterozygous SNPs (Annotated)
     ├── MP00091.LENS.var.homo.indel...      # 📂 SPLIT VCF: Homozygous Indels only
     │
+    ├── lineage/                            # 🧬 Pathotypr typing (only if --run_pathotypr)
+    │   └── MP00091.pathotypr.lineage_summary.tsv   # -> Pathotypr lineage / sub-lineage call
+    │
     └── stats/                              # 📉 Statistics & Logs Folder
         ├── MP00091.log                     # -> LEGACY summary log (Tab-separated metrics)
         ├── MP00091.LENS.dedup.stats        # -> Samtools stats (reads mapped, coverage, etc.)
@@ -48,7 +51,6 @@ results_bampiro/
         ├── MP00091...fastp.html/.json      # -> Trimming quality reports
         ├── MP00091...kraken.report         # -> Taxonomic classification report
         ├── MP00091.LENS.snpeff.csv         # -> Variant effect statistics
-        ├── MP00091.pathotypr.lineage_summary.tsv  # -> Pathotypr lineage/sub-lineage call (only if --run_pathotypr)
         ├── MP00091.dr_mutations.tsv        # -> Pathotypr per-sample DR mutations (only if --run_pathotypr)
         └── Locus_to_exclude_LENS.txt       # -> List of repetitive regions excluded from calling
 ```

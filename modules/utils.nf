@@ -147,17 +147,18 @@ def getSavePath(filename, params) {
         }
     }
 
-    // C. STATS FOLDER
-    if (lower.endsWith('.log')    || lower.endsWith('.stats') || 
-        lower.endsWith('.json')   || lower.endsWith('.html')  || 
-        lower.endsWith('.report') || lower.endsWith('.csv')   || 
-        lower.endsWith('.tsv')    || lower.endsWith('.txt')) {
-        return "stats/${name}"
-    }
-    
-    // D. LINEAGE FOLDER (PATHOTYPR)
+    // C. LINEAGE FOLDER (PATHOTYPR) - must precede the generic stats/.tsv rule below, otherwise the
+    //    pathotypr *.tsv deliverables end in .tsv and get routed to stats/ (this block never fires).
     if (lower.contains('pathotypr') || lower.endsWith('.lineage.tsv') || lower.endsWith('.split_kmer.tsv')) {
         return "lineage/${name}"
+    }
+
+    // D. STATS FOLDER
+    if (lower.endsWith('.log')    || lower.endsWith('.stats') ||
+        lower.endsWith('.json')   || lower.endsWith('.html')  ||
+        lower.endsWith('.report') || lower.endsWith('.csv')   ||
+        lower.endsWith('.tsv')    || lower.endsWith('.txt')) {
+        return "stats/${name}"
     }
 
     // E. DEFAULT PUBLISH
