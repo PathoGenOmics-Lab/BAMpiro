@@ -384,13 +384,9 @@ workflow {
     }
 
     // Prepare FastP JSONs (grouped by sample)
-    def json_ch = fastp_pe.json.mix(fastp_se.json)
-        .map { json -> 
-            def meta = json.name.split('__') 
-            tuple(meta[0], json) // [sId, json]
-        }
-        .groupTuple()
-        .map { sId, jsons -> tuple(sId, jsons[0]) } // Take first JSON if multiple
+    def json_ch = fastp_pe.json.mix(fastp_se.json)   // already [sId, json], keyed by the real sampleId val
+        .groupTuple()                                 // (do NOT re-derive sId from the filename: a sampleId
+        .map { sId, jsons -> tuple(sId, jsons[0]) }   //  containing '__' would be truncated by split('__'))
 
     // BAM stats already carry (sampleId, refId) as vals -- do NOT re-parse the filename with
     // tokenize('.'), which truncates any dotted refId (e.g. NC_000962.3) and breaks the join.
@@ -438,7 +434,7 @@ workflow {
     // FastP JSONs and Kraken reports are reference-independent (QC of the raw reads), so a sample
     // mapped to >1 reference emits identically-named copies from parallel tasks. Deduplicate by
     // filename before collecting, otherwise MultiQC hits a fatal input-name collision.
-    def fastp_json_mqc = fastp_pe.json.mix(fastp_se.json).unique { it.name }
+    def fastp_json_mqc = fastp_pe.json.mix(fastp_se.json).map { sId, json -> json }.unique { it.name }
     def kraken_mqc     = ch_kraken_reports.unique { it.name }
     // Provenance: dump the container's tool versions once and surface them in the report.
     def versions_mqc   = DUMP_VERSIONS().mqc

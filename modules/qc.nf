@@ -152,7 +152,7 @@ process FASTP_PE {
     output:
     tuple val(sampleId), val(runId), path("${sampleId}__${runId}_R1.clean.fq.gz"), path("${sampleId}__${runId}_R2.clean.fq.gz"), val(refId), val(taxId), emit: pe_reads
     tuple val(sampleId), val(runId), path("${sampleId}__${runId}_se_combined.fq.gz"), val(refId), val(taxId), emit: se_reads
-    path("${sampleId}__${runId}_fastp.json"), emit: json
+    tuple val(sampleId), path("${sampleId}__${runId}_fastp.json"), emit: json
     path("${sampleId}__${runId}_fastp.html"), emit: html
     
     shell:
@@ -194,7 +194,7 @@ process FASTP_SE {
     
     output:
     tuple val(sampleId), val(runId), path("${sampleId}__${runId}_SE.clean.fq.gz"), val(refId), val(taxId), emit: se_reads
-    path("${sampleId}__${runId}_fastp.json"), emit: json
+    tuple val(sampleId), path("${sampleId}__${runId}_fastp.json"), emit: json
     path("${sampleId}__${runId}_fastp.html"), emit: html
     
     shell:
