@@ -285,10 +285,7 @@ The name is a play on words (a pun) combining bioinformatics and folklore:
 The Metaphor: Just as a vampire seeks blood to sustain itself, BAMpiro seeks BAM files (and FASTQ data) to extract vital information (variants, lineages, and stats). It is a "creature" that lives in your cluster and processes bacterial genomes.
 
 ---
-<h2 id="contributors" align="center">
-
-✨ <a href="https://github.com/PathoGenOmics-Lab/BAMpiro/graphs/contributors">Contributors</a>
-</h2>
+<h2 id="contributors" align="center">✨ <a href="https://github.com/PathoGenOmics-Lab/BAMpiro/graphs/contributors">Contributors</a></h2>
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
@@ -333,9 +330,8 @@ This project follows the [all-contributors](https://github.com/all-contributors/
 <!-- prettier-ignore-end -->
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
----  
-<h2 id="contributors" align="center">
-</h2>
+
+---
 
 <div align="justify">
 
