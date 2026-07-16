@@ -985,6 +985,25 @@ body.has-expanded{overflow:hidden} body.has-expanded::after{content:"";position:
 .krk-mut{color:var(--mut);font-size:11px}
 .krk-chart{margin-bottom:4px} .krk-plotscroll{overflow-x:auto;overflow-y:hidden}
 .krk-plotscroll svg rect{transition:opacity .1s} .krk-plotscroll svg rect:hover{opacity:.82}
+/* Executive summary */
+.exec-narr{font-size:14.5px;line-height:1.65;color:var(--ink);margin:0 0 18px;max-width:82ch}
+.exec-narr b{font-weight:700} .tone-bad{color:var(--fail)} .tone-warn{color:var(--warn)}
+.exec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:20px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:13px 15px 12px;box-shadow:var(--sh);position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--line)}
+.kpi.good::before{background:var(--pass)} .kpi.warn::before{background:var(--warn)} .kpi.bad::before{background:var(--fail)}
+.kpi-l{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mut)}
+.kpi-n{font-size:27px;font-weight:800;letter-spacing:-.6px;color:var(--ink);margin:2px 0 3px;font-variant-numeric:tabular-nums;line-height:1.05}
+.kpi.good .kpi-n{color:var(--pass)} .kpi.warn .kpi-n{color:var(--warn)} .kpi.bad .kpi-n{color:var(--fail)}
+.kpi-s{font-size:11.5px;color:var(--txt2);line-height:1.45} .v.xs{font-size:9.5px;padding:1px 6px;vertical-align:middle}
+.exec-cols{display:grid;grid-template-columns:1.25fr 1fr;gap:26px}
+.exec-block .exec-h{font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--mut);margin-bottom:11px}
+.qcp-row{display:flex;align-items:center;gap:11px;margin-bottom:7px}
+.qcp-lab{flex:0 0 128px;font-size:11.5px;color:var(--txt2);font-weight:600;font-variant-numeric:tabular-nums}
+.qcp-bar{flex:1;height:8px;background:var(--track);border-radius:5px;overflow:hidden}
+.qcp-bar span{display:block;height:100%;border-radius:5px}
+.qcp-n{flex:0 0 22px;text-align:right;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
+@media(max-width:760px){.exec-cols{grid-template-columns:1fr;gap:18px}}
 .flagrsn{display:flex;flex-direction:column;gap:1px;margin-top:5px;font-size:11px;color:var(--txt2);font-variant-numeric:tabular-nums}   /* always-visible flag margins (touch-safe, not hover-only) */
 .dsub{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);font-weight:600;margin:16px 0 8px}
 .lcomp{display:flex;flex-direction:column;gap:5px;margin-bottom:2px}
@@ -1607,6 +1626,40 @@ function donut(c){var t=(c.PASS+c.WARN+c.FAIL)||1,R0=38,C=2*Math.PI*R0,off=0,seg
   var pct=Math.round(100*c.PASS/t);
   return '<svg width="92" height="92" viewBox="0 0 92 92">'+segs+'<text x="46" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="'+TH.ink+'" letter-spacing="-.5">'+pct+'%</text><text x="46" y="58" text-anchor="middle" font-size="9.5" fill="'+TH.axis+'" letter-spacing=".1em">PASS</text></svg>';}
 
+// ---- Executive summary: cohort KPIs, quality profile and headline findings (for the PI receiving the file)
+function _median(vals){var a=vals.filter(function(v){return v!=null;}).sort(function(x,y){return x-y;}); if(!a.length)return null; var m=Math.floor(a.length/2); return a.length%2?a[m]:(a[m-1]+a[m])/2;}
+function _range(vals){var a=vals.filter(function(v){return v!=null;}); return a.length?[Math.min.apply(null,a),Math.max.apply(null,a)]:null;}
+function renderExec(){
+  var host=el('exec_body'); if(!host)return;
+  var S=R.samples, N=S.length, c=R.counts, toEx=c.FAIL;
+  function med(k){return _median(S.map(function(s){return s.m[k];}));}
+  function rg(k){return _range(S.map(function(s){return s.m[k];}));}
+  var mDepth=med('mean_depth'), mBreadth=med('breadth_pct'), rDepth=rg('mean_depth'), rBreadth=rg('breadth_pct');
+  var contam=(R.kraken&&R.kraken.samples)?R.kraken.samples.filter(function(k){return k.primary&&k.primary.pct<90;}).length:null;
+  var resSamp=null, resDrugs=[];
+  if(R.dr&&R.dr.calls){var rs={},dd={}; R.dr.calls.forEach(function(cl){if(cl.gn===1||cl.gn===2){rs[cl.s]=1; if(cl.drug)dd[cl.drug]=(dd[cl.drug]||0)+1;}});
+    resSamp=Object.keys(rs).length; resDrugs=Object.keys(dd).sort(function(a,b){return dd[b]-dd[a];}).slice(0,4);}
+  function card(l,n,s,tone){return '<div class="kpi'+(tone?' '+tone:'')+'"><div class="kpi-l">'+l+'</div><div class="kpi-n">'+n+'</div><div class="kpi-s">'+(s||'')+'</div></div>';}
+  var passRate=N?Math.round(c.PASS/N*100):0;
+  var cards=[
+    card('Samples', N, '<span class="v PASS xs">'+c.PASS+' pass</span> <span class="v WARN xs">'+c.WARN+' warn</span> <span class="v FAIL xs">'+c.FAIL+' fail</span>'),
+    card('Pass rate', passRate+'%', toEx?('<b>'+toEx+'</b> to exclude'):'all usable', passRate>=80?'good':(passRate>=50?'warn':'bad')),
+    card('Median depth', (mDepth!=null?fmt(mDepth,'float')+'&#215;':'NA'), rDepth?(fmt(rDepth[0],'float')+'-'+fmt(rDepth[1],'float')+'&#215; range'):''),
+    card('Median breadth', (mBreadth!=null?mBreadth.toFixed(1)+'%':'NA'), rBreadth?(rBreadth[0].toFixed(0)+'-'+rBreadth[1].toFixed(0)+'% range'):'')];
+  if(contam!=null) cards.push(card('Contamination', contam, contam?'sample(s) &lt; 90% primary':'none flagged', contam?'warn':'good'));
+  if(resSamp!=null) cards.push(card('Resistance', resSamp, resDrugs.length?esc(resDrugs.join(' · ')):'no R calls', resSamp?'warn':''));
+  var flagc={}; S.forEach(function(s){(s.f||[]).forEach(function(f){flagc[f]=(flagc[f]||0)+1;});});
+  var flags=Object.keys(flagc).sort(function(a,b){return flagc[b]-flagc[a];});
+  var prof=flags.length?flags.map(function(f){var n=flagc[f],w=Math.round(n/N*100),fatal=FAILF[f];
+    return '<div class="qcp-row"><span class="qcp-lab">'+f+'</span><span class="qcp-bar"><span style="width:'+Math.max(4,w)+'%;background:'+(fatal?'var(--fail)':'var(--warn)')+'"></span></span><span class="qcp-n">'+n+'</span></div>';}).join(''):'<div class="krk-mut">No sample trips any check at the current thresholds.</div>';
+  var linc={}; S.forEach(function(s){if(s.lineage)linc[s.lineage]=(linc[s.lineage]||0)+1;});
+  var lins=Object.keys(linc).sort();
+  var strip=lins.length?'<div class="lincomp-bar" style="margin:0 0 8px">'+lins.map(function(l){return '<div class="lseg" style="width:'+(linc[l]/N*100).toFixed(2)+'%;background:'+linColor(l)+'" title="'+esc(l)+' n='+linc[l]+'"></div>';}).join('')+'</div><div class="lincomp-lab" style="padding:0">'+lins.map(function(l){return '<span class="lchip"><i style="background:'+linColor(l)+'"></i>'+esc(l)+' <b>'+linc[l]+'</b></span>';}).join('')+'</div>':'<div class="krk-mut">no lineage calls</div>';
+  var narr='<b>'+N+'</b> samples analysed against '+(R.provenance&&R.provenance.reference?esc(R.provenance.reference):'the reference')+' &#183; <b>'+c.PASS+'</b> pass, '+(toEx?'<b class="tone-bad">'+toEx+'</b> recommended for exclusion':'0 to exclude')+' &#183; median depth <b>'+(mDepth!=null?fmt(mDepth,'float')+'&#215;':'NA')+'</b>, breadth <b>'+(mBreadth!=null?mBreadth.toFixed(1)+'%':'NA')+'</b>'+(contam?' &#183; <b class="tone-warn">'+contam+'</b> possibly contaminated':'')+(resSamp?' &#183; drug resistance in <b class="tone-warn">'+resSamp+'</b> sample(s)':'')+'.';
+  host.innerHTML='<div class="exec-narr">'+narr+'</div><div class="exec-grid">'+cards.join('')+'</div>'+
+    '<div class="exec-cols"><div class="exec-block"><div class="exec-h">QC quality profile <span class="krk-mut">- samples tripping each check (red = gate-failing)</span></div>'+prof+'</div>'+
+    '<div class="exec-block"><div class="exec-h">Cohort lineages</div>'+strip+'</div></div>';
+}
 function renderOverview(){
   var c=R.counts;
   el('summary').innerHTML=donut(c)+'<div class="counts">'+
@@ -2666,7 +2719,7 @@ function renderDrug(){
   draw();
 }
 
-function renderAll(){renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderEpistasis();renderSnpMatrix();renderDrug();renderKraken();renderFlags();renderCuration();}
+function renderAll(){renderExec();renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderEpistasis();renderSnpMatrix();renderDrug();renderKraken();renderFlags();renderCuration();}
 
 // ---- static wiring ----
 el('meta').textContent=R.samples.length+' samples · '+R.generated;
@@ -3009,7 +3062,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div id="tocscrim" aria-hidden="true"></div>
 <nav id="toc" aria-label="Contents">
 <div class="toc-brand"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</div>
-<div class="toc-group"><div class="toc-gh">Overview<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#gstats">Stats</a><a class="toc-link" href="#flagged">Flagged</a><a class="toc-link" href="#linsum" id="nav-lin">Lineages</a><a class="toc-link" href="#dist">Distributions</a><a class="toc-link" href="#kraken" id="nav-kraken">Kraken</a></div></div>
+<div class="toc-group"><div class="toc-gh">Overview<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#exec">Summary</a><a class="toc-link" href="#gstats">Stats</a><a class="toc-link" href="#flagged">Flagged</a><a class="toc-link" href="#linsum" id="nav-lin">Lineages</a><a class="toc-link" href="#dist">Distributions</a><a class="toc-link" href="#kraken" id="nav-kraken">Kraken</a></div></div>
 <div class="toc-group"><div class="toc-gh">Correlation &amp; structure<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#corr">Correlations</a><a class="toc-link" href="#corrmatrix">Corr matrix</a><a class="toc-link" href="#qcpca" id="nav-pca">QC space</a><a class="toc-link" href="#divcomp" id="nav-divcomp">Divergence</a></div></div>
 <div class="toc-group"><div class="toc-gh">Genome &amp; genes<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#cons">Consensus</a><a class="toc-link" href="#genome" id="nav-genome">Genome</a><a class="toc-link" href="#function" id="nav-function">Function</a><a class="toc-link" href="#geneburden" id="nav-geneburden">Gene burden</a><a class="toc-link" href="#hotspots" id="nav-hot">Variable genes</a></div></div>
 <div class="toc-group"><div class="toc-gh">Evolution<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#temporal" id="nav-temporal">Temporal</a><a class="toc-link" href="#pnps" id="nav-pnps">pN/pS</a><a class="toc-link" href="#adna" id="nav-adna">aDNA</a></div></div>
@@ -3019,6 +3072,8 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="wrap">
 <p class="lede">Short-read bacterial / MTBC cohort QC. Review <a href="#flagged">flagged samples</a>, tick any to drop, then export <b>keep_list.txt</b> / <b>exclusion.tsv</b>. Thresholds below are live; the pipeline gate itself is unchanged.</p>
 <section class="hero"><div class="summary" id="summary"></div><div class="chips" id="chips"></div></section>
+<section id="exec"><h2>Executive summary <span class="c">- cohort health and headline findings at a glance</span></h2>
+<div class="panel pad" id="exec_body"></div></section>
 <div class="provbar"><div class="prov" id="prov"></div><button class="btn" id="printBtn" title="expand + print / save as PDF"><span data-ic="printer"></span> print</button></div>
 <section><details class="dd" style="display:inline-block"><summary><span data-ic="sliders"></span> Live thresholds &amp; presets - adjust and everything re-flags<span class="ddcaret" data-ic="chevronDown" data-ic-cls="sort"></span></summary>
 <div class="menu" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;min-width:min(520px,calc(100vw - 28px))">
