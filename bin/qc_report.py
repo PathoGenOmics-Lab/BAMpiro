@@ -814,6 +814,12 @@ th.s{z-index:6;background:#f7f9fc} tr.hl td.s{background:#fff3ce!important}
 .v{font-weight:600;padding:3px 11px;border-radius:20px;font-size:12px;display:inline-block;letter-spacing:.02em}
 .v.PASS{color:#0b7350;background:#dff5ec} .v.WARN{color:#95560d;background:#fdefd6} .v.FAIL{color:#a01f2d;background:#fde3e6}
 .flags{color:var(--mut);font-size:12.5px;text-align:left;white-space:normal}
+/* per-column filter row under the header */
+tr.colfilt th{position:sticky;top:33px;background:#fbfcfe;cursor:auto;text-transform:none;letter-spacing:0;padding:4px 7px;z-index:4;box-shadow:0 1px 0 var(--line)}
+tr.colfilt th.s{left:0;z-index:6;background:#fbfcfe}
+tr.colfilt .cfx{width:100%;min-width:56px;box-sizing:border-box;padding:3px 6px;border:1px solid var(--line);border-radius:6px;font-size:11.5px;font-weight:400;text-transform:none;background:#fff;color:var(--ink)}
+tr.colfilt .cfx:focus{border-color:var(--accent);outline:none}
+tr.colfilt .cfx::placeholder{color:#aeb8c6}
 /* plots */
 .bee{display:flex;align-items:center;border-bottom:1px solid #f2f5f9;height:40px} .bee:last-child{border:0}
 .bl{flex:0 0 150px;padding:0 14px;font-size:12px;color:#516074;text-align:right;font-weight:500} .nd{color:#c4ccd7;font-size:12px;padding-left:14px}
@@ -1255,7 +1261,7 @@ function renderTemporal(){var host=el('temporal_body'),cap=el('temporal_caption'
 // ---- auto-discovered extra metrics: merge into the registry, hidden by default ----
 var extraSet={}; R.extra.forEach(function(e){extraSet[e.key]=1;R.metrics.push(e);R.defs[e.key]=R.defs[e.key]||['Auto-detected metric from the summary TSV (not a named QC metric).',''];});
 var st={sortKey:'s',asc:true,q:'',onlyFlagged:false,hidden:{},hi:null,flagFilter:null,ptype:'beeswarm',
-        sx:'mean_depth',sy:'breadth_pct',excl:{},detail:null,colorBy:'qc',groupLin:false,ancOnly:null,linFilter:null,gtrack:'missing',maskOn:false,gsel:null,gzoom:null,gbq:'',hotq:'',pnpsq:''};
+        sx:'mean_depth',sy:'breadth_pct',excl:{},detail:null,colorBy:'qc',groupLin:false,ancOnly:null,linFilter:null,gtrack:'missing',maskOn:false,gsel:null,gzoom:null,gbq:'',hotq:'',pnpsq:'',colf:{},showColF:false};
 var SGEO=null, GGEO=null;   // scatter + genome brush geometry caches (for inverse-mapping the rubber-band)
 R.extra.forEach(function(e){st.hidden[e.key]=1;});
 // narrow (embedded panel / mobile): show only the essentials by default; the long tail is one click away in "columns"
@@ -1365,6 +1371,30 @@ function visible(){return R.samples.filter(function(s){
   if(st.ancOnly=='mod'&&s.anc)return false;
   if(st.linFilter&&s.lineage!=st.linFilter)return false;
   if(st.q&&s.s.toLowerCase().indexOf(st.q)<0)return false; return true;});}
+// Per-column filters for the General Statistics table (table-scoped; do NOT touch the global visible()
+// so the plots stay driven by the global filters). A filter string is a numeric operator/range on numeric
+// columns (>50, >=50, <10, 5-9, 5..9), otherwise a case-insensitive substring on the displayed cell text.
+function colMatchOne(raw,val,txt){
+  var q=(raw||'').trim(); if(!q) return true;
+  if(typeof val=='number'&&!isNaN(val)){
+    var m=q.match(/^(>=|<=|>|<|=)\s*(-?\d+(?:\.\d+)?)$/);
+    if(m){var n=parseFloat(m[2]),o=m[1];
+      if(o=='>')return val>n; if(o=='>=')return val>=n; if(o=='<')return val<n; if(o=='<=')return val<=n; return val==n;}
+    m=q.match(/^(-?\d+(?:\.\d+)?)\s*(?:\.\.|-|to)\s*(-?\d+(?:\.\d+)?)$/);
+    if(m){var a=parseFloat(m[1]),b=parseFloat(m[2]); if(a>b){var t=a;a=b;b=t;} return val>=a&&val<=b;}
+  }
+  return String(txt==null?'':txt).toLowerCase().indexOf(q.toLowerCase())>=0;
+}
+function colFilterVal(s,k){   // -> [numericValueOrNull, displayText] for column key k
+  if(k=='s')return [null,s.s];
+  if(k=='v')return [null,s.v];
+  if(k=='lineage')return [null,s.lineage||'NA'];
+  var v=s.m[k]; return [v,(v==null?'NA':fmt(v,(MET[k]||{}).kind))];
+}
+function colMatch(s){if(!st.showColF)return true;   // filters apply only while the filter row is shown
+  for(var k in st.colf){var raw=st.colf[k]; if(!raw||!raw.trim())continue;
+  var pv=colFilterVal(s,k); if(!colMatchOne(raw,pv[0],pv[1]))return false;} return true;}
+function colAnyActive(){if(!st.showColF)return false; for(var k in st.colf){if(st.colf[k]&&st.colf[k].trim())return true;} return false;}
 function dotColor(s){return st.colorBy=='lineage'?linColor(s.lineage):VCOL[s.v];}
 // shared colour key for every dot plot (adapts to the QC/lineage colour toggle)
 function colorLegend(){
@@ -1406,9 +1436,14 @@ function renderTable(){
   var head='<tr><th class="s" data-k="s"><input type="checkbox" id="cbAll" title="exclude all shown samples"><span class="hlab"> Sample</span></th><th data-k="v">QC</th>'+
     mets.map(function(m){var d=(R.defs[m.key]||[''])[0];return '<th data-k="'+m.key+'" title="'+esc(d)+'">'+esc(m.label)+(d?'<span class="infoi" title="'+esc(d)+'">i</span>':'')+(st.sortKey==m.key?(st.asc?' ▲':' ▼'):'')+'</th>';}).join('')+
     '<th data-k="lineage" style="text-align:left">Lineage</th></tr>';
+  // optional per-column filter row: one input per column (numeric ops on metric columns, substring otherwise)
+  function cfIn(k,ph){return '<input class="cfx" data-fk="'+k+'" value="'+esc(st.colf[k]||'')+'" placeholder="'+esc(ph)+'">';}
+  var filtRow = st.showColF ? ('<tr class="colfilt"><th class="s">'+cfIn('s','name…')+'</th><th>'+cfIn('v','PASS/WARN…')+'</th>'+
+    mets.map(function(m){return '<th>'+cfIn(m.key,'>50  5-9…')+'</th>';}).join('')+'<th>'+cfIn('lineage','L4…')+'</th></tr>') : '';
   var linRank={}; (R.lineages||[]).forEach(function(l,i){linRank[l]=i;});
   function lr(s){return (s.lineage&&linRank[s.lineage]!=null)?linRank[s.lineage]:9999;}
-  var rows=visible().slice().sort(function(a,b){
+  var shown=visible().filter(colMatch);
+  var rows=shown.slice().sort(function(a,b){
     if(st.groupLin){var la=lr(a),lb=lr(b);if(la!=lb)return la-lb;}
     var k=st.sortKey,x=(k=='s')?a.s:(k=='v'?a.v:a.m[k]),y=(k=='s')?b.s:(k=='v'?b.v:b.m[k]),c;
     if(typeof x=='number'&&typeof y=='number')c=x-y;else c=String(x==null?'':x).localeCompare(String(y==null?'':y));return st.asc?c:-c;});
@@ -1425,18 +1460,22 @@ function renderTable(){
       tds+='<td data-v="'+v+'" style="background:linear-gradient(90deg,'+BAR[m.dir]+'2b 0 '+p+'%,#0000 '+p+'%)">'+fmt(v,m.kind)+'</td>';});
     tds+='<td data-v="'+esc(s.lineage||'')+'" style="text-align:left">'+(s.lineage?'<span class="ldot" style="background:'+linColor(s.lineage)+'"></span>':'')+esc(s.lineage||'NA')+'</td>';
     return pre+'<tr class="'+(st.hi==s.s?'hl':'')+'" data-s="'+esc(s.s)+'">'+tds+'</tr>';}).join('');
-  var t=el('gstable'); t.innerHTML='<thead>'+head+'</thead><tbody>'+body+'</tbody>';
-  el('nshown').textContent=rows.length+' / '+R.samples.length+' shown';
-  Array.prototype.forEach.call(t.querySelectorAll('th'),function(th){th.onclick=function(){var k=th.getAttribute('data-k');if(st.sortKey==k)st.asc=!st.asc;else{st.sortKey=k;st.asc=(k=='s');}renderTable();};});
+  var t=el('gstable'); t.innerHTML='<thead>'+head+filtRow+'</thead><tbody>'+body+'</tbody>';
+  el('nshown').textContent=rows.length+' / '+R.samples.length+' shown'+(colAnyActive()?' (filtered)':'');
+  Array.prototype.forEach.call(t.querySelectorAll('th[data-k]'),function(th){th.onclick=function(){var k=th.getAttribute('data-k');if(st.sortKey==k)st.asc=!st.asc;else{st.sortKey=k;st.asc=(k=='s');}renderTable();};});
+  Array.prototype.forEach.call(t.querySelectorAll('.cfx'),function(inp){
+    inp.onclick=function(e){e.stopPropagation();};
+    inp.oninput=function(){var k=inp.getAttribute('data-fk'),pos=inp.selectionStart;st.colf[k]=inp.value;renderTable();
+      var again=t.querySelector('.cfx[data-fk="'+k+'"]');if(again){again.focus();try{again.setSelectionRange(pos,pos);}catch(e){}}};});
   Array.prototype.forEach.call(t.querySelectorAll('tbody tr[data-s]'),function(tr){tr.onclick=function(){setHi(tr.getAttribute('data-s'));};});
   // curation basket: exclusion checkboxes (stopPropagation so they don't sort/highlight)
   var cbAll=el('cbAll');
-  if(cbAll){var vis=visible();cbAll.checked=vis.length>0&&vis.every(function(s){return st.excl[s.s];});
-    cbAll.onclick=function(e){e.stopPropagation();var on=cbAll.checked;visible().forEach(function(s){if(on)st.excl[s.s]=1;else delete st.excl[s.s];});renderTable();renderCuration();};}
+  if(cbAll){cbAll.checked=shown.length>0&&shown.every(function(s){return st.excl[s.s];});
+    cbAll.onclick=function(e){e.stopPropagation();var on=cbAll.checked;shown.forEach(function(s){if(on)st.excl[s.s]=1;else delete st.excl[s.s];});renderTable();renderCuration();};}
   Array.prototype.forEach.call(t.querySelectorAll('.cbx'),function(cb){
     cb.onclick=function(e){e.stopPropagation();};
     cb.onchange=function(){var s=cb.getAttribute('data-s');if(cb.checked)st.excl[s]=1;else delete st.excl[s];renderCuration();
-      var cba=el('cbAll');if(cba){var vv=visible();cba.checked=vv.length>0&&vv.every(function(x){return st.excl[x.s];});}};});
+      var cba=el('cbAll');if(cba){cba.checked=shown.length>0&&shown.every(function(x){return st.excl[x.s];});}};});
   Array.prototype.forEach.call(t.querySelectorAll('.sname'),function(sp){sp.onclick=function(e){e.stopPropagation();openDetail(sp.getAttribute('data-s'));};});
 }
 
@@ -2442,7 +2481,7 @@ if(R.n_ancient){var ATH=[['depth_min','aDNA depth min'],['breadth_min','aDNA bre
 // CSV export of the current (filtered rows, visible columns) table
 el('csv').onclick=function(){var mets=R.metrics.filter(function(m){return !st.hidden[m.key];});
   var head=['sample','verdict'].concat(mets.map(function(m){return m.key;})).concat(['lineage','flags']);
-  var lines=[head.join('\t')]; visible().forEach(function(s){lines.push([s.s,s.v].concat(mets.map(function(m){return s.m[m.key]==null?'':s.m[m.key];})).concat([s.lineage||'',s.f.join(';')]).join('\t'));});
+  var lines=[head.join('\t')]; visible().filter(colMatch).forEach(function(s){lines.push([s.s,s.v].concat(mets.map(function(m){return s.m[m.key]==null?'':s.m[m.key];})).concat([s.lineage||'',s.f.join(';')]).join('\t'));});
   var blob=new Blob([lines.join('\n')],{type:'text/tab-separated-values'}),a=document.createElement('a');
   a.href=URL.createObjectURL(blob);a.download='qc_table.tsv';a.click();URL.revokeObjectURL(a.href);};
 // tooltips + click on plots/scatter
@@ -2597,6 +2636,7 @@ el('helpmenu').innerHTML=R.metrics.map(function(m){var d=R.defs[m.key]||['',''];
     renderPlots();renderScatter();renderQCspace();};});})();
 // group-by-lineage checkbox
 var glin=el('glin'); if(glin)glin.onchange=function(){st.groupLin=glin.checked;renderTable();};
+var colfCb=el('colf'); if(colfCb)colfCb.onchange=function(){st.showColF=colfCb.checked;renderTable();};
 // ancient / modern filter
 if(R.n_ancient){el('ancfilter').innerHTML='<span class="seg" id="ancseg"><button class="on" data-a="">all</button><button data-a="mod">modern</button><button data-a="anc">aDNA <span class="k">'+R.n_ancient+'</span></button></span>';
   Array.prototype.forEach.call(document.querySelectorAll('#ancseg button'),function(b){b.onclick=function(){st.ancOnly=b.getAttribute('data-a')||null;
@@ -2713,6 +2753,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
   <input id="q" type="search" placeholder="filter samples…">
   <label><input id="of" type="checkbox"> only flagged</label>
   <label id="groupui"><input id="glin" type="checkbox"> group by lineage</label>
+  <label title="show a search / filter box under every column header"><input id="colf" type="checkbox"> column filters</label>
   <span id="ancfilter"></span>
   <details class="dd"><summary>columns ▾</summary><div class="menu" id="colmenu"></div></details>
   <details class="dd"><summary>? metric help</summary><div class="menu" id="helpmenu"></div></details>
