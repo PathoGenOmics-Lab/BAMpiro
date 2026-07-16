@@ -2954,7 +2954,7 @@ function renderADNA(){
 
 var DYNCOL={fixation:'#2f6fed',emergence:'#1f9d6b',loss:'#e6893a',nonsyn:'#d1495b',high_impact:'#7c3aed'};
 var DYNHELP={emergence:'Emergence: the variant is (near-)absent at the first timepoint, then rises above the emergence threshold - a new allele appearing in this series.',fixation:'Fixation: the allele frequency reaches near 1.0 by the last timepoint - the variant has (almost) taken over.',loss:'Loss: the variant is present early then falls back toward 0 - an allele being lost from the series.',nonsyn:'Non-synonymous: the variant changes the protein (missense / stop / frameshift / splice / inframe indel), per snpEff - potentially functional.',high_impact:'High impact: snpEff predicts a HIGH-impact effect (frameshift, stop gained/lost...) - likely to disrupt the gene.'};
-var dynState={sel:null,q:''};
+var dynState={sel:null,q:'',showAll:false};
 var dynFilter={};
 var dynZoom=250;   // trajectory-card width in px (zoom slider); smaller -> more charts per row
 var dynShowDP=true;   // draw the per-timepoint read-depth (DP) bars behind each trajectory
@@ -3066,7 +3066,7 @@ function renderDynamics(){
   if(dynState.sel===null){
     dynState.sel={};
     var fg=geneList.filter(function(g){return genes[g].some(dynHasFlag);});
-    (fg.length?fg:geneList.slice(0,6)).forEach(function(g){dynState.sel[g]=1;});
+    (fg.length?fg:geneList).slice(0,8).forEach(function(g){dynState.sel[g]=1;});   // collapsed default: the top few genes; 'show all' reveals the rest
   }
   var filterUI=dynFields.length?('<div class="dyn-filters"><span class="snpmx-flabel" title="Show only the connected series (patient / passage line...) matching these metadata values. The time axis of each trajectory is unchanged.">filter series:</span>'+
     dynFields.map(function(f){ return '<label class="snpmx-fsel">'+esc(f)+' <select data-df="'+esc(f)+'"><option value="">all</option>'+
@@ -3153,8 +3153,14 @@ function renderDynamics(){
   }
   el('dynsearch').oninput=function(){ dynState.q=this.value; paintChips(); paintGrid(); };
   el('dynFlag').onclick=function(){ dynState.sel={}; geneList.filter(function(g){return genes[g].some(dynHasFlag);}).forEach(function(g){dynState.sel[g]=1;}); paintChips(); paintGrid(); };
-  el('dynAll').onclick=function(){ dynState.sel={}; geneList.forEach(function(g){dynState.sel[g]=1;}); paintChips(); paintGrid(); };
-  window.__dynShowAll=el('dynAll').onclick;   // let the header 'show all' shortcut expand every trajectory too
+  function dynSetAll(on){ dynState.showAll=on; dynState.sel={};
+    if(on){ geneList.forEach(function(g){dynState.sel[g]=1;}); }
+    else { var fg=geneList.filter(function(g){return genes[g].some(dynHasFlag);}); (fg.length?fg:geneList).slice(0,8).forEach(function(g){dynState.sel[g]=1;}); }
+    var bb=el('dynAll'); if(bb){ bb.textContent=on?'show less':'show all'; bb.classList.toggle('on',on); }
+    paintChips(); paintGrid(); }
+  el('dynAll').onclick=function(){ dynSetAll(!dynState.showAll); };   // toggle: every trajectory <-> flagged genes only
+  window.__dynSetAll=dynSetAll;
+  if(dynState.showAll){ el('dynAll').textContent='show less'; el('dynAll').classList.add('on'); }
   el('dynNone').onclick=function(){ dynState.sel={}; paintChips(); paintGrid(); };
   el('dynzoom').oninput=function(){ dynZoom=+this.value; el('dyngrid').style.setProperty('--dyncw', dynZoom+'px'); };
   el('dynDP').onchange=function(){ dynShowDP=this.checked; paintGrid(); };
@@ -3167,7 +3173,7 @@ function renderDynamics(){
 
 
 var EPICOL={A:'#2f6fed',B:'#e6893a'};
-var epiState={dir:'all',q:'',minr:null,conf:'all',view:'cards',tsort:{k:'q',asc:true}};
+var epiState={dir:'all',q:'',minr:null,conf:'all',view:'cards',tsort:{k:'q',asc:true},showAll:false};
 function epiMiniChart(p){
   var times=p.times||[], A=p.trajA||[], B=p.trajB||[], n=times.length;
   var W=250,H=150,ml=30,mr=12,mt=10,mb=26,pw=W-ml-mr,ph=H-mt-mb;
@@ -3242,7 +3248,8 @@ function renderEpistasis(){
   function epiCards(list){
     var grid=el('epi-cards');
     if(!list.length){ grid.innerHTML='<div class="dyn-empty" style="grid-column:1/-1">&#128204; no variant pair matches the current filter.</div>'; return; }
-    grid.innerHTML=list.map(function(p){
+    var show=epiState.showAll?list:list.slice(0,12);   // collapsed shows the top pairs; 'show all' switch reveals them all
+    grid.innerHTML=show.map(function(p){
       var arrow=p.direction==='concordant'?'&#8596;':'&#8646;';
       var rec=(p.n>1)?('<span class="epi-recur" title="seen in '+p.n+' independent series'+(p.consistent?' with the same sign - recurrent':'')+'">&#8635; '+p.n+' series</span>'):('<span title="from a single series">series '+esc(p.group)+'</span>');
       return '<div class="epi-card '+p.direction+'">'+
@@ -3282,10 +3289,11 @@ function renderEpistasis(){
     var COLS=[['pair','Variant A &#8596; Variant B'],['direction','dynamics'],['ar','|r|'],['r','r'],['n','series'],['p','p'],['q','q (FDR)'],['tier','confidence']];
     var k=epiState.tsort.k, asc=epiState.tsort.asc;
     var rows=list.slice().sort(function(a,b){ var x=tsortVal(a,k),y=tsortVal(b,k),c; if(typeof x==='number'&&typeof y==='number')c=x-y; else c=String(x).localeCompare(String(y)); return asc?c:-c; });
-    var h='<div class="epitbl-top"><button class="dyn-btn" id="epidl" title="Download every reported pair as a TSV">'+icon('download')+'download pairs (TSV)</button><span class="dyn-count">'+rows.length+' pair(s)</span></div>';
+    var shown=epiState.showAll?rows:rows.slice(0,12);
+    var h='<div class="epitbl-top"><button class="dyn-btn" id="epidl" title="Download every reported pair as a TSV">'+icon('download')+'download pairs (TSV)</button><span class="dyn-count">'+rows.length+' pair(s)'+((!epiState.showAll&&rows.length>shown.length)?(' &#183; showing '+shown.length):'')+'</span></div>';
     h+='<div class="epitbl-wrap"><table class="epitbl"><thead><tr>'+COLS.map(function(c){return '<th data-k="'+c[0]+'">'+c[1]+(k===c[0]?(asc?icon('chevronUp','sort'):icon('chevronDown','sort')):'')+'</th>';}).join('')+'</tr></thead><tbody>';
     if(!rows.length){ h+='<tr><td colspan="'+COLS.length+'" class="c" style="padding:20px;text-align:center">no variant pair matches the current filter.</td></tr>'; }
-    rows.forEach(function(p){
+    shown.forEach(function(p){
       var a='<b style="color:'+EPICOL.A+'">'+esc(p.geneA||'(intergenic)')+'</b>'+geneRvTag(p.geneA)+' '+String(p.posA).split(':').pop()+(p.aaA?(' '+aaDual(p.aaA,p.aaA_h37rv)):'');
       var b='<b style="color:'+EPICOL.B+'">'+esc(p.geneB||'(intergenic)')+'</b>'+geneRvTag(p.geneB)+' '+String(p.posB).split(':').pop()+(p.aaB?(' '+aaDual(p.aaB,p.aaB_h37rv)):'');
       h+='<tr><td>'+a+' <span class="epi-vs">'+(p.direction==='concordant'?'&#8596;':'&#8646;')+'</span> '+b+'</td>'+
@@ -3309,7 +3317,7 @@ function renderEpistasis(){
   }
   function draw(){
     var list=epiFilter();
-    el('epicount').innerHTML=(epiState.view==='matrix')?((E.matrix?E.matrix.nodes.length:0)+' variant(s) in the matrix'):(list.length+' pair(s)'+((epiState.dir==='all'&&epiState.conf==='all')?(' &#183; '+E.n_concordant+' concordant / '+E.n_discordant+' discordant &#183; '+E.n_strong+' strong'):''));
+    el('epicount').innerHTML=(epiState.view==='matrix')?((E.matrix?E.matrix.nodes.length:0)+' variant(s) in the matrix'):(list.length+' pair(s)'+((!epiState.showAll&&list.length>12)?(' &#183; showing 12'):'')+((epiState.dir==='all'&&epiState.conf==='all')?(' &#183; '+E.n_concordant+' concordant / '+E.n_discordant+' discordant &#183; '+E.n_strong+' strong'):''));
     el('epi-cards').style.display=epiState.view==='cards'?'':'none';
     el('epi-matrix').style.display=epiState.view==='matrix'?'':'none';
     el('epi-table').style.display=epiState.view==='table'?'':'none';
@@ -3322,8 +3330,10 @@ function renderEpistasis(){
   Array.prototype.forEach.call(host.querySelectorAll('.epi-dirbtn'),function(b){ b.onclick=function(){ epiState.dir=b.getAttribute('data-d'); Array.prototype.forEach.call(host.querySelectorAll('.epi-dirbtn'),function(x){x.className='dyn-btn epi-dirbtn'+(x.getAttribute('data-d')===epiState.dir?' on':'');}); draw(); }; });
   Array.prototype.forEach.call(host.querySelectorAll('.epi-confbtn'),function(b){ b.onclick=function(){ epiState.conf=b.getAttribute('data-c'); Array.prototype.forEach.call(host.querySelectorAll('.epi-confbtn'),function(x){x.className='dyn-btn epi-confbtn'+(x.getAttribute('data-c')===epiState.conf?' on':'');}); draw(); }; });
   el('epir').oninput=function(){ epiState.minr=+this.value; el('epirv').textContent=epiState.minr.toFixed(2); draw(); };
-  window.__epiShowAll=function(){ epiState.dir='all'; epiState.conf='all'; epiState.q=''; epiState.minr=E.min_r||0.8; renderEpistasis(); };
-  el('epiShowAll').onclick=window.__epiShowAll;   // clear every filter -> show all reported pairs (also driven by the header shortcut)
+  function epiSetAll(on){ epiState.showAll=on; var eb=el('epiShowAll'); if(eb){ eb.textContent=on?'show less':'show all'; eb.classList.toggle('on',on); } draw(); }
+  el('epiShowAll').onclick=function(){ epiSetAll(!epiState.showAll); };   // toggle: every reported pair <-> the top 12
+  window.__epiSetAll=epiSetAll;
+  if(epiState.showAll){ el('epiShowAll').textContent='show less'; el('epiShowAll').classList.add('on'); }
   draw();
 }
 
@@ -3858,11 +3868,13 @@ renderAll();
   if(!hasAny){ b.style.display='none'; return; }
   b.style.display='';
   window.__syncSitesBtn=function(){};   // kept so the matrix panel button can call it harmlessly
-  b.onclick=function(){
-    if(window.__dynShowAll) window.__dynShowAll();                                   // every trajectory
-    if(window.__epiShowAll) window.__epiShowAll();                                   // every epistasis pair
-    if(R.snp_matrix&&R.snp_matrix.rows){ snpmxAll=true; var w=el('snpmxwrap'); if(w)w.scrollTop=0; if(window.__snpmxDraw)window.__snpmxDraw(); }   // every matrix site
-    var s=el('dynamics')||el('snpmatrix'); if(s)s.scrollIntoView({behavior:'smooth',block:'start'});
+  b.onclick=function(){   // master switch: flip every panel's 'show all' at once, on and off
+    var on=!b.classList.contains('on'); b.classList.toggle('on',on);
+    var l=el('allSitesLbl'); if(l)l.textContent=on?'show less':'show all';
+    if(window.__dynSetAll) window.__dynSetAll(on);                                    // trajectories
+    if(window.__epiSetAll) window.__epiSetAll(on);                                    // epistasis pairs
+    if(R.snp_matrix&&R.snp_matrix.rows){ snpmxAll=on; var w=el('snpmxwrap'); if(w)w.scrollTop=0; if(window.__snpmxDraw)window.__snpmxDraw(); }   // matrix sites
+    if(on){ var s=el('dynamics')||el('snpmatrix'); if(s)s.scrollIntoView({behavior:'smooth',block:'start'}); }
   };
 })();
 (function(){  // left contents sidebar: collapse toggle, collapsible groups, scroll-spy highlight
