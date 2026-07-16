@@ -828,10 +828,10 @@ html.dark table.snpmx td.snpmx-empty{background:repeating-linear-gradient(45deg,
 html.dark .gtable::-webkit-scrollbar-thumb{background:#3a485a;border-color:#18232f}
 #themeToggle,#ghlink{background:none;border:1px solid var(--line);border-radius:9px;width:32px;height:32px;cursor:pointer;color:var(--mut);font-size:15px;display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:var(--sh);text-decoration:none;flex:none}
 #themeToggle:hover,#ghlink:hover{color:var(--accent);border-color:var(--accent)}
-#insightToggle{background:none;border:1px solid var(--line);border-radius:9px;height:32px;padding:0 12px;cursor:pointer;color:var(--mut);font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;line-height:1;box-shadow:var(--sh);flex:none;text-transform:lowercase}
-#insightToggle svg{width:15px;height:15px}
-#insightToggle:hover{color:var(--accent);border-color:var(--accent)}
-#insightToggle.on{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+#insightToggle,#allSitesBtn{background:none;border:1px solid var(--line);border-radius:9px;height:32px;padding:0 12px;cursor:pointer;color:var(--mut);font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;line-height:1;box-shadow:var(--sh);flex:none;text-transform:lowercase}
+#insightToggle svg,#allSitesBtn svg{width:15px;height:15px}
+#insightToggle:hover,#allSitesBtn:hover{color:var(--accent);border-color:var(--accent)}
+#insightToggle.on,#allSitesBtn.on{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
 .ver{font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:20px;padding:2px 9px;letter-spacing:.2px}
 html.dark .ver{background:var(--accent-soft);color:var(--accent)}
 *{box-sizing:border-box} html{scroll-behavior:smooth}
@@ -1590,6 +1590,7 @@ function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;
 var IC={
   printer:'<path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>',
   spark:'<path d="M12 2.5l2.1 5.9 5.9 2.1-5.9 2.1L12 18.5l-2.1-6L4 10.5l5.9-2.1z"/><path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>',
+  grid:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>',
   sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.3 17.7-1.4 1.4"/><path d="m19.1 4.9-1.4 1.4"/>',
   moon:'<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
   panel:'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>',
@@ -3377,7 +3378,7 @@ function renderSnpMatrix(){
     var allbtn=el('snpmxallbtn');   // a real button toggles between the top sites and the full virtualized scroll
     if(allbtn){ if(capped){ allbtn.style.display=''; allbtn.classList.toggle('on',snpmxAll);
         allbtn.innerHTML=snpmxAll?('show top '+MAXR):('show all '+total+' &#8595;');
-        allbtn.onclick=function(){ snpmxAll=!snpmxAll; el('snpmxwrap').scrollTop=0; draw(); }; }
+        allbtn.onclick=function(){ snpmxAll=!snpmxAll; el('snpmxwrap').scrollTop=0; draw(); if(window.__syncSitesBtn)window.__syncSitesBtn(); }; }
       else { allbtn.style.display='none'; } }
     var mh=22, nf=meta?meta.fields.length:0;
     var metaRows=meta?meta.fields.map(function(f,k){
@@ -3437,7 +3438,9 @@ function renderSnpMatrix(){
       lines.push(row.join('\t'));});
     dl(lines.join('\n')+'\n','snp_matrix.tsv','text/tab-separated-values');
   };
+  window.__snpmxDraw=draw;   // let the header 'all sites' shortcut repaint the matrix without a full re-render
   draw();
+  if(window.__syncSitesBtn)window.__syncSitesBtn();
 }
 
 function drGColor(gn){ return (gn===1||gn===2)?'#dc2626':(gn===3?'#d97706':((gn===4||gn===5)?'#94a3b8':'#b8c2cf')); }
@@ -3835,6 +3838,15 @@ renderAll();
   apply();
   b.onclick=function(){ on=!on; try{localStorage.setItem('bampiro_insights',on?'on':'off');}catch(e){} apply(); };
 })();
+(function(){  // header 'all sites' shortcut -> jump to the SNP matrix and toggle every-site view; shown only when it has > the top-N cap
+  var b=el('allSitesBtn'); if(!b)return;
+  var M=R.snp_matrix, capped=M&&M.rows&&M.rows.length&&(((M.total_sites!=null?M.total_sites:M.rows.length))>400);
+  if(!capped){ b.style.display='none'; return; }
+  b.style.display='';
+  function sync(){ b.classList.toggle('on',snpmxAll); var l=el('allSitesLbl'); if(l)l.textContent=snpmxAll?'top sites':'all sites'; b.setAttribute('aria-pressed',snpmxAll?'true':'false'); }
+  window.__syncSitesBtn=sync; sync();
+  b.onclick=function(){ snpmxAll=!snpmxAll; var w=el('snpmxwrap'); if(w)w.scrollTop=0; if(window.__snpmxDraw)window.__snpmxDraw(); else renderSnpMatrix(); sync(); var s=el('snpmatrix'); if(s)s.scrollIntoView({behavior:'smooth',block:'start'}); };
+})();
 (function(){  // left contents sidebar: collapse toggle, collapsible groups, scroll-spy highlight
   var toc=el('toc'), tg=el('toc-toggle'); if(!toc||!tg)return;
   tg.onclick=function(){ document.body.classList.toggle('toc-collapsed'); };
@@ -3894,7 +3906,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="toc-group"><div class="toc-gh">Evolution<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#temporal" id="nav-temporal">Temporal</a><a class="toc-link" href="#pnps" id="nav-pnps">pN/pS</a><a class="toc-link" href="#adna" id="nav-adna">aDNA</a></div></div>
 <div class="toc-group"><div class="toc-gh">Variants over time<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#dynamics" id="nav-dyn">SNP dynamics</a><a class="toc-link" href="#epistasis" id="nav-epi">Epistasis</a><a class="toc-link" href="#snpmatrix" id="nav-snpmx">SNP matrix</a><a class="toc-link" href="#drug" id="nav-drug">Drug resistance</a></div></div>
 </nav>
-<header><span class="logo"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</span><span class="ver" id="hver"></span><span class="meta" id="meta"></span><a id="ghlink" class="hbtn" href="__REPO__" target="_blank" rel="noopener noreferrer" title="BAMpiro source on GitHub" aria-label="BAMpiro source on GitHub" style="margin-left:auto"><span data-ic="github"></span></a><button id="insightToggle" class="hbtn hbtn-lbl" title="Show / hide the analytical read-out at the top of each panel" aria-label="Toggle analytical read-outs" aria-pressed="true"><span data-ic="spark"></span> insights</button><button id="themeToggle" class="hbtn" title="Toggle dark / light theme" aria-label="Toggle dark / light theme"></button></header>
+<header><span class="logo"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</span><span class="ver" id="hver"></span><span class="meta" id="meta"></span><a id="ghlink" class="hbtn" href="__REPO__" target="_blank" rel="noopener noreferrer" title="BAMpiro source on GitHub" aria-label="BAMpiro source on GitHub" style="margin-left:auto"><span data-ic="github"></span></a><button id="insightToggle" class="hbtn hbtn-lbl" title="Show / hide the analytical read-out at the top of each panel" aria-label="Toggle analytical read-outs" aria-pressed="true"><span data-ic="spark"></span> insights</button><button id="allSitesBtn" class="hbtn hbtn-lbl" style="display:none" title="Show every SNP site in the matrix, or just the top most-shared sites" aria-pressed="false"><span data-ic="grid"></span> <span id="allSitesLbl">all sites</span></button><button id="themeToggle" class="hbtn" title="Toggle dark / light theme" aria-label="Toggle dark / light theme"></button></header>
 <div class="wrap">
 <p class="lede">Short-read bacterial / MTBC cohort QC. Review <a href="#flagged">flagged samples</a>, tick any to drop, then export <b>keep_list.txt</b> / <b>exclusion.tsv</b>. Thresholds below are live; the pipeline gate itself is unchanged.</p>
 <section class="hero"><div class="summary" id="summary"></div><div class="chips" id="chips"></div></section>
