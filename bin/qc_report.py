@@ -3840,8 +3840,8 @@ renderAll();
 })();
 (function(){  // header 'all sites' shortcut -> jump to the SNP matrix and toggle every-site view; shown only when it has > the top-N cap
   var b=el('allSitesBtn'); if(!b)return;
-  var M=R.snp_matrix, capped=M&&M.rows&&M.rows.length&&(((M.total_sites!=null?M.total_sites:M.rows.length))>400);
-  if(!capped){ b.style.display='none'; return; }
+  var M=R.snp_matrix;
+  if(!(M&&M.rows&&M.rows.length)){ b.style.display='none'; return; }   // hide only when there is no SNP matrix at all
   b.style.display='';
   function sync(){ b.classList.toggle('on',snpmxAll); var l=el('allSitesLbl'); if(l)l.textContent=snpmxAll?'top sites':'all sites'; b.setAttribute('aria-pressed',snpmxAll?'true':'false'); }
   window.__syncSitesBtn=sync; sync();
