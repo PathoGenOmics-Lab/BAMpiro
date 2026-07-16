@@ -6,7 +6,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/license-GPL%20v3-%23af64d1?style=flat-square)](LICENSE)
 [![Nextflow](https://img.shields.io/badge/nextflow-%E2%89%A524.04.2-%2323aa62?style=flat-square)](https://www.nextflow.io/)
-[![Version](https://img.shields.io/badge/version-1.0.0-%23149389?style=flat-square)](https://github.com/PathoGenOmics-Lab/BAMpiro)
+[![Version](https://img.shields.io/badge/version-1.0.1-%23149389?style=flat-square)](CHANGELOG.md)
 [![Container](https://img.shields.io/badge/container-paururo%2Fbambard-%232496ed?style=flat-square)](https://hub.docker.com/r/paururo/bambard)
 [![PGO](https://img.shields.io/badge/PathoGenOmics-lab-%23E52421?style=flat-square)](https://github.com/PathoGenOmics-Lab)
 
@@ -107,6 +107,7 @@ Full panel list and interactive features: [Interactive QC Report](docs/qc-report
 | [Interactive QC Report](docs/qc-report.md) | The self-contained HTML dashboard and its 20 panels |
 | [Lineage & Drug-Resistance Typing](docs/pathotypr.md) | Pathotypr typing and dual amino-acid numbering |
 | [Outputs](docs/outputs.md) | The result file tree and the repository layout |
+| [Changelog](CHANGELOG.md) | Version history |
 
 Browse the whole set under [`docs/`](docs/), or build the searchable docs site with
 `make docs` (requires [mdbook](https://rust-lang.github.io/mdBook/)).
@@ -137,7 +138,7 @@ If you use BAMpiro in your research, please cite:
   title   = {BAMpiro: bacterial short-read mapping, variant calling and lineage/drug-resistance typing},
   author  = {Ruiz-Rodriguez, Paula and Coscoll{\'a}, Mireia},
   url      = {https://github.com/PathoGenOmics-Lab/BAMpiro},
-  version = {1.0.0},
+  version = {1.0.1},
   license = {GPL-3.0}
 }
 ```
