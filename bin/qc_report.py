@@ -1058,7 +1058,11 @@ tr.lingrp td{background:#f0f5f9;color:var(--label);font-weight:600;font-size:11p
   #modal{display:none!important}   /* never capture an open detail dialog over the printed page */
   body{background:#ffffff;padding-left:0} .wrap{max-width:none;padding:0}
   .gtable,.snpmx-wrap,.epimx-wrap,.dr-mxwrap,.epitbl-wrap,#stacks,#fn_stacks{max-height:none!important;overflow:visible!important}
-  section{break-inside:avoid} .panel{box-shadow:none}
+  .panel{box-shadow:none}
+  /* let large sections/panels flow across pages (avoid blank pages); keep only small units intact */
+  section,.panel{break-inside:auto}
+  .kpi,.dyn-card,.exp-block,.insight,.bee,tr,.qcp-row{break-inside:avoid}
+  section>h2{break-after:avoid}
 }
 @media (max-width:760px){
   header{padding:11px 16px} .wrap{padding:16px 14px 70px}
@@ -3779,8 +3783,14 @@ if(R.n_ancient){el('ancfilter').innerHTML='<span class="seg" id="ancseg"><button
   if(p.commit)items.push('commit '+p.commit);
   items.push(R.samples.length+' samples'+(R.n_ancient?' · '+R.n_ancient+' aDNA':''));
   var pe=el('prov'); if(pe)pe.innerHTML=items.map(function(t){return '<span>'+esc(t)+'</span>';}).join('');})();
-// print
-var pbtn=el('printBtn'); if(pbtn)pbtn.onclick=function(){window.print();};
+// print / save as PDF. The SNP matrix in "show all" mode only keeps the visible window in the DOM (with tall
+// spacer rows), which would print as a few rows over a big blank; collapse it to the top sites for a clean
+// printout, then restore. Run synchronously in the click handler AND via beforeprint (Ctrl+P) to be safe.
+function _printPrep(){ if(snpmxAll){ window.__printWasAll=true; snpmxAll=false; if(window.__snpmxDraw)window.__snpmxDraw(); if(window.__syncSitesBtn)window.__syncSitesBtn(); } }
+function _printRestore(){ if(window.__printWasAll){ window.__printWasAll=false; snpmxAll=true; if(window.__snpmxDraw)window.__snpmxDraw(); if(window.__syncSitesBtn)window.__syncSitesBtn(); } }
+var pbtn=el('printBtn'); if(pbtn)pbtn.onclick=function(){ _printPrep(); window.print(); _printRestore(); };
+window.addEventListener('beforeprint',_printPrep);
+window.addEventListener('afterprint',_printRestore);
 // ---- persistence of the curated view (basket + thresholds), namespaced per sample-set so two reports don't bleed ----
 var SKEY='bampiro_qc_v2:'+R.samples.length+':'+(R.samples[0]?R.samples[0].s:'')+':'+(R.samples.length?R.samples[R.samples.length-1].s:'');
 function saveState(){try{localStorage.setItem(SKEY,JSON.stringify({excl:st.excl,thr:thr,athr:athr,hidden:st.hidden,sortKey:st.sortKey,asc:st.asc}));}catch(e){}}
