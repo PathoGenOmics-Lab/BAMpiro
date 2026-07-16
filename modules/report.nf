@@ -98,6 +98,7 @@ process QC_REPORT {
         \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$DR_ARG \\
         --aa2-label "${params.canonical_label}" \\
         --provenance ${provenance} \\
+        --version "${workflow.manifest.version}" \\
         --out-html ${basename}_qc_report.html \\
         --out-flags ${basename}_qc_flags.tsv \\
         --title "BAMpiro QC report" \\

@@ -37,6 +37,7 @@ ANC_DEF = dict(depth_min=3.0, breadth_min=30.0, missing_max=70.0, dup_max=60.0,
                iupac_max=5.0, mapping_min=20.0, damage_min_ct=0.05)
 FAIL_FLAGS = {"LOW_DEPTH", "LOW_BREADTH", "HIGH_MISSING", "NO_DATA"}
 NBINS = 200  # bins along the reference for the genome callability-landscape heatmap
+REPO_URL = "https://github.com/PathoGenOmics-Lab/BAMpiro"   # surfaced in the report header + footer
 
 # metric definitions + typical acceptable ranges (surfaced as in-report help)
 DEFS = {
@@ -755,7 +756,7 @@ html.dark .v.PASS{color:#7fe4be;background:#123727} html.dark .v.WARN{color:#f1c
 html.dark .chip{color:#aebccb} html.dark .chip.on{color:#0f1720}
 html.dark .modal{background:rgba(4,8,12,.62)}
 html.dark #toc-toggle:hover{color:var(--accent);border-color:var(--accent)}
-html.dark #themeToggle{color:var(--mut)}
+html.dark #themeToggle,html.dark #ghlink{color:var(--mut)}
 html.dark .btn,html.dark details.dd>summary,html.dark .seg button,html.dark .exp-h{background:var(--panel);color:#b7c4d3}
 html.dark .btn:hover,html.dark .exp-h:hover,html.dark details.dd>summary:hover{border-color:var(--accent);color:var(--accent)}
 html.dark details.dd .menu{background:#1b2836;box-shadow:0 16px 44px rgba(0,0,0,.55)}
@@ -782,8 +783,10 @@ html.dark .epimx-diag{background:repeating-linear-gradient(45deg,#2a3543,#2a3543
 html.dark .epimx-grad{background:linear-gradient(90deg,#a24a8f,#2a3543,#2f8f5b)}
 html.dark table.snpmx td.snpmx-empty{background:repeating-linear-gradient(45deg,#1e2a38,#1e2a38 3px,#243141 3px,#243141 6px)}
 html.dark .gtable::-webkit-scrollbar-thumb{background:#3a485a;border-color:#18232f}
-#themeToggle{background:none;border:1px solid var(--line);border-radius:9px;width:32px;height:32px;cursor:pointer;color:var(--mut);font-size:15px;display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:var(--sh)}
-#themeToggle:hover{color:var(--accent);border-color:var(--accent)}
+#themeToggle,#ghlink{background:none;border:1px solid var(--line);border-radius:9px;width:32px;height:32px;cursor:pointer;color:var(--mut);font-size:15px;display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:var(--sh);text-decoration:none;flex:none}
+#themeToggle:hover,#ghlink:hover{color:var(--accent);border-color:var(--accent)}
+.ver{font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:20px;padding:2px 9px;letter-spacing:.2px}
+html.dark .ver{background:var(--accent-soft);color:var(--accent)}
 *{box-sizing:border-box} html{scroll-behavior:smooth}
 body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,sans-serif;color:var(--ink);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;
  --tocw:232px;padding-left:var(--tocw);transition:padding-left .2s ease;
@@ -817,7 +820,7 @@ body.toc-collapsed header{padding-left:56px}
 .ic{width:1.05em;height:1.05em;flex:none;vertical-align:-.16em;stroke-width:2;margin-right:.36em}
 .ic.sort{width:.85em;height:.85em;margin:0 0 0 .25em;opacity:.85;vertical-align:-.05em}
 .toc-chev .ic{width:13px;height:13px;margin:0}
-#toc-toggle .ic,#themeToggle .ic,.modalx .ic{margin:0}
+#toc-toggle .ic,#themeToggle .ic,.modalx .ic,#ghlink .ic{margin:0}
 /* first-run orientation lede + expandable-dropdown caret */
 .lede{color:var(--mut);font-size:13px;line-height:1.55;margin:0 0 16px;max-width:74ch}
 .lede a{color:var(--accent);text-decoration:none} .lede a:hover{text-decoration:underline}
@@ -896,6 +899,7 @@ tr.colfilt .cfx::placeholder{color:#aeb8c6}
 .legend{display:flex;gap:18px;font-size:11.5px;color:var(--mut);padding:10px 16px;border-top:1px solid var(--line);flex-wrap:wrap}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
 .footer{color:var(--mut);font-size:11.5px;margin-top:30px;border-top:1px solid var(--line);padding-top:14px;line-height:1.8}
+.footer a{color:var(--accent);text-decoration:none} .footer a:hover{text-decoration:underline} .foot-brand{white-space:nowrap}
 #tt{position:fixed;pointer-events:none;background:#0f2431;color:#fff;font-size:12px;line-height:1.5;padding:7px 11px;border-radius:9px;opacity:0;transition:opacity .08s;z-index:80;white-space:nowrap;box-shadow:0 8px 24px rgba(15,36,49,.32)}
 #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(8px);background:#0f2431;color:#fff;font-size:12.5px;padding:10px 16px;border-radius:10px;box-shadow:0 12px 34px rgba(15,36,49,.4);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:120}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -995,7 +999,7 @@ tr.lingrp td{background:#f0f5f9;color:var(--label);font-weight:600;font-size:11p
   .controls label{padding:4px 2px} .controls input[type=checkbox],tr.colfilt input[type=checkbox]{width:17px;height:17px}
   .chip{padding:8px 13px} .seg button{padding:8px 13px} .exp-h{padding:7px 11px}
   .modalx{width:38px;height:38px;font-size:22px} .btn{padding:8px 13px}
-  #themeToggle{width:44px;height:44px} #toc-toggle{width:44px;height:44px}
+  #themeToggle,#ghlink{width:44px;height:44px} #toc-toggle{width:44px;height:44px}
   /* the frozen (sticky left:0) sample column is opaque and covers the viewport; long sample
      names would otherwise push the metric columns off-screen and out of reach, so cap it */
   td.s .sname,th.s .hlab{display:inline-block;max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
@@ -1479,7 +1483,9 @@ var IC={
   chevronUp:'<path d="m18 15-6-6-6 6"/>',
   help:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
   alert:'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
-  ban:'<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>'
+  ban:'<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+  github:'<path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/>',
+  ext:'<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>'
 };
 function icon(n,cls){return '<svg class="ic'+(cls?' '+cls:'')+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+(IC[n]||'')+'</svg>';}
 function fillIcons(root){Array.prototype.forEach.call((root||document).querySelectorAll('[data-ic]'),function(e){e.innerHTML=icon(e.getAttribute('data-ic'),e.getAttribute('data-ic-cls')||'');e.removeAttribute('data-ic');});}
@@ -2569,6 +2575,7 @@ function renderAll(){renderOverview();renderTable();renderLineages();renderPlots
 
 // ---- static wiring ----
 el('meta').textContent=R.samples.length+' samples · '+R.generated;
+(function(){var hv=el('hver'); if(hv){ if(R.version){hv.textContent='v'+R.version; hv.title='BAMpiro version '+R.version;} else hv.style.display='none'; }})();
 fillIcons();   // swap every static data-ic placeholder (header, TOC chevrons, buttons, modal) for its inline SVG
 // click an (i) info icon -> show a persistent popover with its definition (capture phase so it
 // beats the column-sort handler); click anywhere / Esc / scroll to dismiss.
@@ -2590,7 +2597,7 @@ fillIcons();   // swap every static data-ic placeholder (header, TOC chevrons, b
   document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&pop.style.display==='block'){pop.style.display='none';pop._for=null;} });
   window.addEventListener('scroll',function(){ if(pop.style.display==='block'){pop.style.display='none';pop._for=null;} },true);
 })();
-el('foot').innerHTML='Generated '+R.generated+' · thresholds are adjustable live above; the pipeline gate uses the defaults ('+
+el('foot').innerHTML='<span class="foot-brand">BAMpiro'+(R.version?' <b>v'+esc(R.version)+'</b>':'')+' · <a href="'+esc(R.repo_url)+'" target="_blank" rel="noopener noreferrer">'+icon('github','sort')+'source on GitHub'+icon('ext','sort')+'</a></span> · Generated '+R.generated+' · thresholds are adjustable live above; the pipeline gate uses the defaults ('+
   Object.keys(R.thresholds).map(function(k){return k+'='+R.thresholds[k];}).join(', ')+'). Values scale within each column; NA = not reported.';
 el('colmenu').innerHTML='<div style="display:flex;gap:12px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--line);font-size:12px"><a href="#" id="colall" style="color:var(--accent)">show all</a><a href="#" id="colnone" style="color:var(--accent)">hide all</a></div>'+R.metrics.map(function(m){return '<label><input type="checkbox" data-k="'+m.key+'"'+(st.hidden[m.key]?'':' checked')+'> '+esc(m.label)+'</label>';}).join('');
 Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.onchange=function(){if(cb.checked)delete st.hidden[cb.getAttribute('data-k')];else st.hidden[cb.getAttribute('data-k')]=1;renderTable();saveState();};});
@@ -2912,7 +2919,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="toc-group"><div class="toc-gh">Evolution<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#temporal" id="nav-temporal">Temporal</a><a class="toc-link" href="#pnps" id="nav-pnps">pN/pS</a><a class="toc-link" href="#adna" id="nav-adna">aDNA</a></div></div>
 <div class="toc-group"><div class="toc-gh">Variants over time<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#dynamics" id="nav-dyn">SNP dynamics</a><a class="toc-link" href="#epistasis" id="nav-epi">Epistasis</a><a class="toc-link" href="#snpmatrix" id="nav-snpmx">SNP matrix</a><a class="toc-link" href="#drug" id="nav-drug">Drug resistance</a></div></div>
 </nav>
-<header><span class="logo"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</span><span class="meta" id="meta"></span><button id="themeToggle" title="Toggle dark / light theme" aria-label="Toggle dark / light theme" style="margin-left:auto"></button></header>
+<header><span class="logo"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</span><span class="ver" id="hver"></span><span class="meta" id="meta"></span><a id="ghlink" class="hbtn" href="__REPO__" target="_blank" rel="noopener noreferrer" title="BAMpiro source on GitHub" aria-label="BAMpiro source on GitHub" style="margin-left:auto"><span data-ic="github"></span></a><button id="themeToggle" class="hbtn" title="Toggle dark / light theme" aria-label="Toggle dark / light theme"></button></header>
 <div class="wrap">
 <p class="lede">Short-read bacterial / MTBC cohort QC. Review <a href="#flagged">flagged samples</a>, tick any to drop, then export <b>keep_list.txt</b> / <b>exclusion.tsv</b>. Thresholds below are live; the pipeline gate itself is unchanged.</p>
 <section class="hero"><div class="summary" id="summary"></div><div class="chips" id="chips"></div></section>
@@ -3026,6 +3033,7 @@ def build_html(title, payload):
     # contain a placeholder token (e.g. "__JS__") can never pull in the CSS/JS/logo/JSON blob.
     return (SHELL.replace("__CSS__", CSS).replace("__LOGO__", LOGO_DATA_URI)
                  .replace("__JS__", JS).replace("__JSON__", data)
+                 .replace("__REPO__", html.escape(REPO_URL))
                  .replace("__TITLE__", html.escape(title)))
 
 
@@ -3555,6 +3563,8 @@ def main():
                     help="Cohort per-gene dN/dS TSV (eskaks) -> the Selection pN/pS panel (optional; a cohort analysis, not per-sample QC).")
     ap.add_argument("--provenance", nargs="*", default=[],
                     help="key=value provenance pairs surfaced in the report header (reference, container, commit...).")
+    ap.add_argument("--version", default="",
+                    help="BAMpiro version string (workflow.manifest.version) shown in the header + footer.")
     ap.add_argument("--metadata", default=None,
                     help="Optional TSV (e.g. the samplesheet) with a sample column + time (passage/timepoint) "
                          "and group (patient/series/cluster) columns -> the SNP dynamics panel. Auto-detected.")
@@ -3690,7 +3700,8 @@ def main():
     _sample_meta = parse_sample_meta(args.metadata)   # shared by the dynamics filter and the SNP matrix header
     _dynamics = build_dynamics(parse_metadata(args.metadata), _variants, _sample_meta)   # feeds dynamics + epistasis
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    payload = {"generated": now, "counts": counts, "thresholds": thr, "dist": DIST,
+    payload = {"generated": now, "version": clean_str(args.version) or "", "repo_url": REPO_URL,
+               "counts": counts, "thresholds": thr, "dist": DIST,
                "genome_len": genome_len, "snp_density_ok": snp_density_ok, "defs": DEFS, "nbins": NBINS,
                "genes": parse_gff(args.gff), "lin_colors": parse_lineage_colors(args.lineage_colors),
                "gene_map": build_gene_map(args.gff), "aa2_label": args.aa2_label,
