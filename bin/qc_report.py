@@ -1096,11 +1096,35 @@ th .infoi,.dyn-legend .infoi{background:#dde5f0}
 .dyn-chip b{font-weight:700;color:#98a6b8}
 .dyn-chip.sel{background:var(--accent);border-color:var(--accent);color:#fff} .dyn-chip.sel:hover{color:#fff} .dyn-chip.sel b{color:#d7e6ff}
 .dyn-dot{width:8px;height:8px;border-radius:50%;background:#d1495b;display:inline-block}
+.dyn-insight{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:12px;background:var(--panel);padding:13px 16px;margin-bottom:14px}
+.dyn-ins-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:7px}
+.dyn-ins-title{font-size:12.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--accent)}
+.dyn-ins-sub{font-size:11.5px;color:var(--label)}
+.dyn-ins-narr{font-size:13.5px;line-height:1.55;color:var(--ink);margin-bottom:9px}
+.dyn-conv{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}
+.dyn-conv-chip{font-size:11.5px;font-weight:600;color:#fff;background:#c2703d;border-radius:20px;padding:3px 12px;cursor:help}
+.dyn-ins-scroll{overflow-x:auto}
+.dyn-ins-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.dyn-ins-tbl th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--label);font-weight:600;padding:2px 9px 6px;border-bottom:1px solid var(--line)}
+.dyn-ins-tbl td{padding:6px 9px;border-bottom:1px solid var(--line);vertical-align:middle}
+.dyn-ins-tbl tbody tr:last-child td{border-bottom:0}
+.dyn-ins-row{cursor:pointer}
+.dyn-ins-row:hover{background:var(--accent-soft)}
+.dyn-ins-v b{font-size:13px} .dyn-ins-mut{color:var(--accent);font-weight:600;margin-left:3px}
+.dyn-ins-grp{display:block;font-size:11px;color:var(--label);margin-top:1px}
+.dyn-ins-sp{width:116px}
+.dyn-ins-tr{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.dyn-ins-arrow{font-size:14px;font-weight:700;margin-right:1px}
+.dyn-ins-ep{display:block;font-size:10.5px;color:var(--label);font-weight:400}
+.dyn-ins-chip{display:inline-block;color:#fff;font-size:10.5px;font-weight:600;border-radius:5px;padding:2px 8px;white-space:nowrap}
+.dyn-drtag{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:700;border-radius:5px;padding:2px 7px;background:#8895a6;color:#fff;white-space:nowrap}
+.dyn-drtag.r{background:#b3261e}
+.dyn-ins-caveat{font-size:11px;color:var(--label);margin-top:10px;line-height:1.45;font-style:italic}
 .dyn-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--dyncw,250px),1fr));gap:14px;align-items:start}
 .dyn-grid.flow{grid-template-columns:1fr;gap:16px}
 .dyn-scard{border:1px solid var(--line);border-radius:13px;padding:12px 15px 8px;background:var(--soft)}
 .dyn-scard-h{display:flex;align-items:baseline;gap:10px;margin-bottom:4px;flex-wrap:wrap}
-.dyn-scard-h b{font-size:14px;color:var(--txt)}
+.dyn-scard-h b{font-size:14px;color:var(--ink)}
 .dyn-scard-sub{font-size:11.5px;color:var(--label)}
 .dyn-card{border:1px solid var(--line);border-radius:13px;padding:11px 13px;background:var(--soft);display:flex;flex-direction:column}
 .dyn-card.flagged{border-color:#cdd9ea;box-shadow:0 1px 0 rgba(31,120,180,.04)}
@@ -2341,6 +2365,36 @@ function dynStreamChart(grpName, vs, th){
   svg+='</svg>';
   return svg;
 }
+// ---- Selection screen: turn the AF trajectories into an analytical read-out ----
+// For each trajectory we fit logit(AF) vs time (OLS) to get an apparent selection coefficient s,
+// classify the move (sweep / emerging / rising / declining / lost / stable), cross-reference the
+// drug-resistance catalogue by gene+mutation, and flag genes rising in >=2 independent series
+// (candidate convergent/parallel adaptation). It is a heuristic screen, NOT a formal selection test.
+function dynLogit(p){ p=Math.max(0.02,Math.min(0.98,p)); return Math.log(p/(1-p)); }
+function dynSlope(traj,times){ var xs=[],ys=[],i; for(i=0;i<traj.length;i++){ if(traj[i]!=null){ var t=(times&&times[i]!=null&&!isNaN(+times[i]))?+times[i]:i; xs.push(t); ys.push(dynLogit(traj[i])); } }
+  var n=xs.length; if(n<2) return null; var mx=0,my=0; for(i=0;i<n;i++){mx+=xs[i];my+=ys[i];} mx/=n;my/=n;
+  var sxy=0,sxx=0,syy=0; for(i=0;i<n;i++){ var dx=xs[i]-mx,dy=ys[i]-my; sxy+=dx*dy; sxx+=dx*dx; syy+=dy*dy; }
+  if(sxx<=0) return {s:0,r2:0,n:n}; return {s:sxy/sxx, r2:(syy>0?(sxy*sxy)/(sxx*syy):1), n:n}; }
+function dynSelCls(traj){ var vals=[],i; for(i=0;i<traj.length;i++){ if(traj[i]!=null) vals.push(traj[i]); }
+  if(vals.length<2) return {cls:'single',dir:0,delta:0,a0:vals[0]||0,aN:vals[0]||0};
+  var a0=vals[0],aN=vals[vals.length-1],delta=aN-a0;
+  var cls='stable',dir=0;
+  if(delta>=0.15&&a0<=0.25&&aN>=0.75){cls='sweep';dir=1;}
+  else if(delta>=0.15&&a0<=0.1){cls='emerge';dir=1;}
+  else if(delta>=0.15){cls='rising';dir=1;}
+  else if(delta<=-0.15&&aN<=0.15){cls='lost';dir=-1;}
+  else if(delta<=-0.15){cls='declining';dir=-1;}
+  return {cls:cls,dir:dir,delta:delta,a0:a0,aN:aN}; }
+var DYNCLS={sweep:{lab:'sweep → fixation',col:'#2f6fed'},emerge:{lab:'emerging',col:'#1f9d6b'},rising:{lab:'rising',col:'#2ea36b'},declining:{lab:'declining',col:'#e6893a'},lost:{lab:'lost',col:'#e0544f'},stable:{lab:'stable',col:'#8895a6'},single:{lab:'single point',col:'#8895a6'}};
+function dynDRindex(){ var idx={}; if(R.dr&&R.dr.calls){ R.dr.calls.forEach(function(c){ if(!c.gene)return; var k=((c.gene||'')+'|'+(c.mutation||'')).toLowerCase().replace(/\s+/g,''); if(!idx[k]||((c.gn===1||c.gn===2)&&!(idx[k].gn===1||idx[k].gn===2))) idx[k]=c; }); } return idx; }
+function dynDRmatch(idx,v){ if(!v.aa) return null; var k=((v.gene||'')+'|'+v.aa).toLowerCase().replace(/\s+/g,''); return idx[k]||null; }
+function dynSpark(traj,col){ var n=traj.length; if(n<2) return ''; var W=110,H=28,pad=3;
+  function X(i){return pad+(i/(n-1))*(W-2*pad);} function Y(a){return H-pad-a*(H-2*pad);}
+  var pts=[],i; for(i=0;i<n;i++){ if(traj[i]!=null) pts.push(X(i).toFixed(1)+','+Y(traj[i]).toFixed(1)); }
+  if(pts.length<2) return ''; var y0=Y(0).toFixed(1), li=n-1;
+  return '<svg width="'+W+'" height="'+H+'" style="display:block"><path d="M'+pts.join(' L')+' L'+X(li).toFixed(1)+','+y0+' L'+X(0).toFixed(1)+','+y0+' Z" fill="'+col+'" opacity="0.15"/>'+
+    '<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+col+'" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>'+
+    '<circle cx="'+X(li).toFixed(1)+'" cy="'+Y(traj[li]).toFixed(1)+'" r="2.5" fill="'+col+'"/></svg>'; }
 function renderDynamics(){
   var host=el('dyn_body'), sec=el('dynamics'); if(!host)return;
   var D=R.dynamics;
@@ -2385,6 +2439,7 @@ function renderDynamics(){
       dynFieldVals[f].map(function(v){return '<option value="'+esc(v)+'"'+(dynFilter[f]===v?' selected':'')+'>'+esc(v)+'</option>';}).join('')+'</select></label>'; }).join('')+
     '<button class="dyn-btn" id="dynfclear">clear</button></div>'):'';
   host.innerHTML=
+    '<div class="dyn-insight" id="dyn_insight"></div>'+
     '<div class="dyn-controls">'+
       '<input id="dynsearch" class="dyn-search" type="search" title="Type a gene name to filter the gene chips and the grid below" placeholder="search gene..." value="'+esc(dynState.q)+'">'+
       '<button class="dyn-btn" id="dynFlag" title="Show only genes that have at least one flagged variant">flagged genes</button>'+
@@ -2441,6 +2496,38 @@ function renderDynamics(){
     });
     grid.innerHTML=cards.join('');
   }
+  function paintInsight(){
+    var box=el('dyn_insight'); if(!box) return;
+    var drIdx=dynDRindex();
+    var scored=vars.filter(function(v){ return passFilter(v.group); }).map(function(v){ var sl=dynSlope(v.traj,v.times), c=dynSelCls(v.traj); return {v:v,s:sl?sl.s:0,r2:sl?sl.r2:0,cls:c.cls,dir:c.dir,delta:c.delta,a0:c.a0,aN:c.aN,dr:dynDRmatch(drIdx,v)}; });
+    var movers=scored.filter(function(x){ return x.dir!==0; }).sort(function(a,b){ return (Math.abs(b.s)-Math.abs(a.s))||(Math.abs(b.delta)-Math.abs(a.delta)); });
+    if(!movers.length){ box.innerHTML='<div class="dyn-ins-h"><span class="dyn-ins-title">Selection screen</span></div><div class="dyn-ins-narr">No trajectory shows a directional allele-frequency change beyond noise'+(filterActive()?' in the current series filter':'')+' &#8212; the alleles present look static across the sampled timepoints.</div>'; return; }
+    var sweeps=movers.filter(function(x){return x.cls==='sweep';});
+    var drUp=movers.filter(function(x){return x.dr&&x.dir>0;});
+    var drugsUp={}; drUp.forEach(function(x){ if(x.dr.drug) drugsUp[x.dr.drug]=1; });
+    var byGene={}; movers.filter(function(x){return x.dir>0;}).forEach(function(x){ var g=x.v.gene||'(intergenic)'; (byGene[g]=byGene[g]||{})[x.v.group]=1; });
+    var conv=[]; for(var g in byGene){ var ser=Object.keys(byGene[g]); if(ser.length>=2) conv.push({gene:g,series:ser.sort()}); }
+    var risers=movers.filter(function(x){return x.dir>0;}).length, fallers=movers.length-risers;
+    var narr='<b>'+movers.length+'</b> of <b>'+scored.length+'</b> trajectories are moving directionally &#8212; <b>'+risers+'</b> rising'+(fallers?', <b>'+fallers+'</b> declining':'')+
+      (sweeps.length?', <b>'+sweeps.length+'</b> sweeping toward fixation':'')+
+      (drUp.length?'. <b class="tone-bad">'+drUp.length+'</b> rising allele'+(drUp.length>1?'s are':' is a')+' known resistance mutation'+(drUp.length>1?'s':'')+' ('+esc(Object.keys(drugsUp).join(', '))+')':'')+
+      (conv.length?'. <b class="tone-warn">'+conv.length+'</b> gene'+(conv.length>1?'s':'')+' rising in parallel across independent series &#8212; candidate convergent adaptation':'')+'.';
+    var convHTML=conv.length?'<div class="dyn-conv">'+conv.map(function(c){ return '<span class="dyn-conv-chip" title="'+esc(c.gene)+' has a rising variant in '+c.series.length+' independent series ('+esc(c.series.join(', '))+'). The same gene under selection in parallel is a strong signal of real adaptation (e.g. drug pressure), not noise.">'+esc(c.gene)+' &#8593; '+c.series.length+' series &#183; parallel</span>'; }).join('')+'</div>':'';
+    var rows=movers.slice(0,8).map(function(x){ var v=x.v, cc=DYNCLS[x.cls]||DYNCLS.stable, spCol=(x.dir>0?cc.col:'#e6893a');
+      var drTag=x.dr?('<span class="dyn-drtag'+((x.dr.gn===1||x.dr.gn===2)?' r':'')+'" title="Drug-resistance catalogue match: '+esc(x.dr.drug||'')+' &#183; grade '+esc(x.dr.grade||'')+'">'+esc(x.dr.drug||'DR')+'</span>'):'';
+      return '<tr class="dyn-ins-row" data-g="'+esc(v.gene||'')+'" title="Click to show this gene in the charts below &#183; logit-slope s='+x.s.toFixed(3)+', fit R&#178;='+x.r2.toFixed(2)+'">'+
+        '<td class="dyn-ins-v"><b>'+esc(v.gene||'(intergenic)')+'</b>'+(v.aa?' <span class="dyn-ins-mut">'+esc(v.aa)+'</span>':'')+'<span class="dyn-ins-grp">'+esc(v.group)+'</span></td>'+
+        '<td class="dyn-ins-sp">'+dynSpark(v.traj,spCol)+'</td>'+
+        '<td class="dyn-ins-tr"><span class="dyn-ins-arrow" style="color:'+spCol+'">'+(x.dir>0?'&#8593;':'&#8595;')+'</span> '+(x.delta>0?'+':'')+x.delta.toFixed(2)+'<span class="dyn-ins-ep">'+x.a0.toFixed(2)+'&#8594;'+x.aN.toFixed(2)+'</span></td>'+
+        '<td><span class="dyn-ins-chip" style="background:'+cc.col+'">'+cc.lab+'</span>'+drTag+'</td>'+
+      '</tr>';
+    }).join('');
+    box.innerHTML='<div class="dyn-ins-h"><span class="dyn-ins-title">Selection screen</span><span class="dyn-ins-sub">which alleles are changing, how fast, and whether it looks like selection</span></div>'+
+      '<div class="dyn-ins-narr">'+narr+'</div>'+convHTML+
+      '<div class="dyn-ins-scroll"><table class="dyn-ins-tbl"><thead><tr><th>variant &#183; series</th><th>trajectory</th><th>change</th><th>call</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+      '<div class="dyn-ins-caveat">Heuristic screen from a logit-AF slope, not a formal selection test: few timepoints, allele frequencies carry depth noise, and drift or hitchhiking (linkage) can mimic selection. Convergence across independent series is the most robust signal.</div>';
+    Array.prototype.forEach.call(box.querySelectorAll('.dyn-ins-row'),function(r){ r.onclick=function(){ var g=r.getAttribute('data-g'); if(!g)return; dynState.sel={}; dynState.sel[g]=1; dynState.q=''; el('dynsearch').value=''; paintChips(); paintGrid(); el('dyngrid').scrollIntoView({behavior:'smooth',block:'nearest'}); }; });
+  }
   el('dynsearch').oninput=function(){ dynState.q=this.value; paintChips(); paintGrid(); };
   el('dynFlag').onclick=function(){ dynState.sel={}; geneList.filter(function(g){return genes[g].some(dynHasFlag);}).forEach(function(g){dynState.sel[g]=1;}); paintChips(); paintGrid(); };
   el('dynAll').onclick=function(){ dynState.sel={}; geneList.forEach(function(g){dynState.sel[g]=1;}); paintChips(); paintGrid(); };
@@ -2449,10 +2536,10 @@ function renderDynamics(){
   el('dynDP').onchange=function(){ dynShowDP=this.checked; paintGrid(); };
   Array.prototype.forEach.call(host.querySelectorAll('#dynview button'),function(b){ b.onclick=function(){ dynState.view=b.getAttribute('data-v'); Array.prototype.forEach.call(host.querySelectorAll('#dynview button'),function(x){x.classList.toggle('on',x===b);}); paintGrid(); }; });
   if(dynFields.length){
-    Array.prototype.forEach.call(host.querySelectorAll('.dyn-filters select'),function(sel){ sel.onchange=function(){ var f=sel.getAttribute('data-df'); if(sel.value)dynFilter[f]=sel.value; else delete dynFilter[f]; recompute(); paintChips(); paintGrid(); }; });
-    el('dynfclear').onclick=function(){ dynFilter={}; Array.prototype.forEach.call(host.querySelectorAll('.dyn-filters select'),function(s){s.value='';}); recompute(); paintChips(); paintGrid(); };
+    Array.prototype.forEach.call(host.querySelectorAll('.dyn-filters select'),function(sel){ sel.onchange=function(){ var f=sel.getAttribute('data-df'); if(sel.value)dynFilter[f]=sel.value; else delete dynFilter[f]; recompute(); paintInsight(); paintChips(); paintGrid(); }; });
+    el('dynfclear').onclick=function(){ dynFilter={}; Array.prototype.forEach.call(host.querySelectorAll('.dyn-filters select'),function(s){s.value='';}); recompute(); paintInsight(); paintChips(); paintGrid(); };
   }
-  paintChips(); paintGrid();
+  paintInsight(); paintChips(); paintGrid();
 }
 
 
