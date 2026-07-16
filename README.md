@@ -7,7 +7,7 @@
 [![License: GPL v3](https://img.shields.io/badge/license-GPL%20v3-%23af64d1?style=flat-square)](LICENSE)
 [![Nextflow](https://img.shields.io/badge/nextflow-%E2%89%A524.04.2-%2323aa62?style=flat-square)](https://www.nextflow.io/)
 [![Version](https://img.shields.io/badge/version-1.0.1-%23149389?style=flat-square)](CHANGELOG.md)
-[![Container](https://img.shields.io/badge/container-paururo%2Fbambard-%232496ed?style=flat-square)](https://hub.docker.com/r/paururo/bambard)
+[![Container](https://img.shields.io/badge/container-paururo%2Fbampiro-%232496ed?style=flat-square)](https://hub.docker.com/r/paururo/bampiro)
 [![PGO](https://img.shields.io/badge/PathoGenOmics-lab-%23E52421?style=flat-square)](https://github.com/PathoGenOmics-Lab)
 
 **General bacterial short-read mapping, variant calling & lineage/DR typing.**
@@ -60,7 +60,7 @@ tuberculosis* but is **organism-agnostic** - point it at any reference genome + 
 ## Installation
 
 Requires **Nextflow ≥ 24.04.2** and **Docker** or **Singularity**. The pipeline
-pulls a pinned `paururo/bambard` image with every tool built in - nothing else to
+pulls a pinned `paururo/bampiro` image with every tool built in - nothing else to
 install.
 
 ```bash

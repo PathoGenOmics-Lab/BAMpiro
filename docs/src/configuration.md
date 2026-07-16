@@ -8,7 +8,7 @@ Customize execution by passing parameters on the command line (e.g.
 | **Input/Output** | `--tsv` | `samples_legio.tsv` | Path to the input sample sheet (TSV). |
 | | `--outdir` | `results_bampiro` | Directory where results will be saved. |
 | | `--threads` | `8` | Max CPUs per process (where applicable). |
-| | `--container` | *(pinned digest)* | Container image. Defaults to a pinned `paururo/bambard` digest for reproducibility. |
+| | `--container` | *(pinned digest)* | Container image. Defaults to a pinned `paururo/bampiro` digest for reproducibility. |
 | | `--nested_output` | `true` | Nest per-sample folders (e.g. `MP001` → `MP/00/1`). |
 | | `--publish_mode` | `copy` | `copy` duplicates outputs into `outdir`; `link` hardlinks them to the work dir. |
 | | `--output_cram` | `false` | Publish the alignment as CRAM (~40-50% smaller) instead of BAM. |

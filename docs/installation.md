@@ -6,7 +6,7 @@
 - **Singularity** or **Docker**
 - **Java** (version 17 or later, as required by Nextflow >= 24.04.2)
 
-The pipeline automatically pulls the container `docker://paururo/bambard:latest`,
+The pipeline automatically pulls the container `docker://paururo/bampiro:1.0.1`,
 which contains every tool it needs (BWA-MEM2, Samtools, FreeBayes, SnpEff,
 Pathotypr, Python, …). `nextflow.config` pins the image to a specific digest for
 reproducibility; override it with `--container`.
@@ -20,7 +20,7 @@ See [Quick Start](quickstart.md) for a full example and the
 
 ## Container contents (software versions)
 
-The Docker container (`paururo/bambard:latest`) bundles the following tools:
+The Docker container (`paururo/bampiro:1.0.1`) bundles the following tools:
 
 | Tool | Version | Purpose |
 | :--- | :--- | :--- |

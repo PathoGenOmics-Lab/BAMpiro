@@ -2,7 +2,7 @@
 FROM --platform=linux/amd64 debian:bullseye-slim
 
 LABEL maintainer="paula.ruiz.rodriguez@csic.es"
-LABEL description="Self-contained Docker image for the BAMbard Nextflow pipeline (Short-Reads)"
+LABEL description="Self-contained Docker image for the BAMpiro Nextflow pipeline (Short-Reads)"
 
 WORKDIR /app
 
@@ -30,7 +30,7 @@ RUN wget -qO- https://micromamba.snakepit.net/api/micromamba/linux-64/latest \
 
 ENV MAMBA_ROOT_PREFIX=/opt/conda
 
-# 3. Create Conda environment with BAMbard tools
+# 3. Create Conda environment with BAMpiro tools
 # Channels: conda-forge (general), bioconda (bioinformatics)
 # Tools:
 # - nextflow: Workflow manager
@@ -43,7 +43,7 @@ ENV MAMBA_ROOT_PREFIX=/opt/conda
 # - multiqc: Reporting
 # - pathotypr: alignment-free MTBC lineage + WHO drug-resistance genotyping (k-mer, reference-agnostic)
 # - python=3.12: Latest stable python requested
-RUN micromamba create -n bambard-env -c conda-forge -c bioconda -y \
+RUN micromamba create -n bampiro-env -c conda-forge -c bioconda -y \
     'python' \
     'openjdk' \
     'nextflow' \
@@ -62,7 +62,7 @@ RUN micromamba create -n bambard-env -c conda-forge -c bioconda -y \
     && micromamba clean --all --yes
 
 # Put the env binaries on PATH up front so the RUN steps below (snpEff, pathotypr) can find them.
-ENV PATH=/opt/conda/envs/bambard-env/bin:/opt/conda/bin:$PATH
+ENV PATH=/opt/conda/envs/bampiro-env/bin:/opt/conda/bin:$PATH
 
 # 3b. Bundle the pathotypr marker panels + pre-trained model from Zenodo (v1.0.0, pinned) so runs are
 # reproducible and offline. Positions are in MTBC-ancestor coordinates; pathotypr is k-mer based so it is
