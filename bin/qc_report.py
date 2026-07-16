@@ -3222,7 +3222,7 @@ function renderEpistasis(){
       '<span class="epi-flabel">confidence</span>'+
       CONF.map(function(c){return '<button class="dyn-btn epi-confbtn'+(epiState.conf===c[0]?' on':'')+'" data-c="'+c[0]+'" title="'+c[1]+'">'+c[0]+'</button>';}).join('')+
       '<label class="dyn-zoom" title="Minimum |Pearson r| for a pair to be shown (cards / table)"><span>|r| &#8805;</span><input type="range" id="epir" min="'+(E.min_r||0.8)+'" max="0.99" step="0.01" value="'+epiState.minr+'"><b id="epirv">'+epiState.minr.toFixed(2)+'</b></label>'+
-      '<label class="dyn-zoom" title="Resize the pair cards - drag left to fit more per row"><span>'+icon('search','sort')+'&#8211;/+</span><input type="range" id="epizoom" min="200" max="440" step="10" value="'+epiZoom+'"></label>'+
+      '<label class="dyn-zoom" title="Resize the pair cards - drag left to fit more per row"><span>'+icon('search','sort')+'&#8211;/+</span><input type="range" id="epizoom" min="165" max="360" step="5" value="'+epiZoom+'"></label>'+
       '<button class="dyn-btn showall-btn" id="epiShowAll" title="Show every reported pair (clear the direction / confidence / |r| filters)">show all</button>'+
       '<span class="dyn-count" id="epicount"></span></div>'+
     '<div class="epi-legend">'+
