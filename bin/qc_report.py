@@ -839,7 +839,8 @@ tr.colfilt .cfx::placeholder{color:#aeb8c6}
 .cbx{vertical-align:middle;margin-right:7px;accent-color:var(--accent);cursor:pointer;width:14px;height:14px}
 .sname{cursor:pointer;border-bottom:1px dashed transparent;transition:.12s} .sname:hover{color:var(--accent);border-bottom-color:var(--accent)}
 th.s .hlab{font-weight:600}
-.curation{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:12px;padding:12px 16px;background:linear-gradient(180deg,#fff,var(--soft));border:1px solid var(--line);border-radius:12px;box-shadow:var(--sh)}
+.curation{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:12px;padding:12px 16px;background:linear-gradient(180deg,#fff,var(--soft));border:1px solid var(--line);border-radius:12px;box-shadow:var(--sh);scroll-margin-top:64px}
+#nbasket:hover{text-decoration:underline!important}
 .cur-intro{flex-basis:100%;font-size:11.5px;color:var(--mut);line-height:1.55;margin-bottom:2px} .cur-intro b{color:#33465c}
 .cur-read{font-size:13px;color:#33465c} .cur-read b{color:var(--ink);font-variant-numeric:tabular-nums;font-size:15px} .cur-read .arw{color:var(--accent);margin:0 3px;font-weight:700}
 /* expand-to-fill (fullscreen-within-window) */
@@ -1651,6 +1652,7 @@ function renderFlags(){
 // ---- curation basket + exclusion exports ----
 function nExcl(){return R.samples.filter(function(s){return st.excl[s.s];}).length;}
 function renderCuration(){var ex=nExcl(),keep=R.samples.length-ex;
+  var nb=el('nbasket'); if(nb)nb.textContent='🧺 '+ex+' basketed';   // always-visible toolbar mirror of the basket
   el('curation').innerHTML='<div class="cur-intro"><b>Exclusion basket</b> - the set of samples you are dropping from the downstream analysis (phylogeny / clock). Tick a sample&#39;s box in the table (or use the buttons), then export the drop list (<b>exclusion.tsv</b>) or the survivors (<b>keep_list.txt</b>).</div>'+
     '<div class="cur-read"><b>'+ex+'</b> to exclude <span class="arw">→</span> <b>'+keep+'</b> kept for downstream</div>'+
    '<div class="cur-btns"><button class="btn" data-cur="fail">exclude FAILs</button><button class="btn" data-cur="flagged">exclude all flagged</button>'+
@@ -2789,6 +2791,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
   <details class="dd"><summary>columns ▾</summary><div class="menu" id="colmenu"></div></details>
   <details class="dd"><summary>? metric help</summary><div class="menu" id="helpmenu"></div></details>
   <button class="btn" id="csv">↓ export TSV</button>
+  <a class="hint" id="nbasket" href="#curation" title="samples in the exclusion basket - click to jump to it" style="text-decoration:none;color:var(--accent);cursor:pointer"></a>
   <span class="hint"><span id="nshown"></span></span>
 </div>
 <div class="panel gtable" id="gstatsPanel"><table id="gstable"></table></div>
