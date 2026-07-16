@@ -2933,8 +2933,11 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
   <a class="hint" id="nbasket" href="#curation" title="samples in the exclusion basket - click to jump to it" style="text-decoration:none;color:var(--accent);cursor:pointer"></a>
   <span class="hint"><span id="nshown"></span></span>
 </div>
-<div class="panel gtable" id="gstatsPanel"><table id="gstable"></table></div>
-<div class="curation" id="curation"></div></section>
+<div class="panel gtable" id="gstatsPanel"><table id="gstable"></table></div></section>
+<section id="flagged"><h2>Flagged samples <span class="c">- <span id="nflag"></span> to review; the margin is shown under each flag; click a flag to filter the cohort</span>
+<button class="btn" id="basketFlagged" style="margin-left:auto"><span data-ic="basket"></span> basket all flagged</button></h2>
+<div class="panel gtable" style="max-height:50vh"><table id="flagtable"></table></div></section>
+<section id="curation-sec"><div class="curation" id="curation"></div></section>
 <section id="dist"><h2>Distributions <span class="c">- one mark per sample; shaded band = acceptable range (modern gate); hover for detail</span>
 <span class="seg" id="colorby" style="margin-left:auto"><button class="on" data-cb="qc">colour: QC</button><button data-cb="lineage">lineage</button></span>
 <span class="seg" id="ptype"><button class="on" data-t="beeswarm">beeswarm</button><button data-t="bar">bar</button><button data-t="histogram">histogram</button></span>
@@ -3002,9 +3005,6 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <section id="pnps"><h2>Selection: pN/pS and dN/dS <span class="c">- alignment-based per-gene dN/dS from eskaks; a cohort selection screen, not a per-sample QC metric</span>
 <input class="gsearch" id="pnpsq" type="search" placeholder="search gene" style="margin-left:auto"><button class="exp-h" data-panel="pnpsPanel" data-render="pnps"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="pnpsPanel"><div id="pnps_body"><div class="hot-note" id="pnps_note"></div><div class="gtable" style="max-height:48vh"><table id="pnpstable"></table></div></div></div></section>
-<section id="flagged"><h2>Flagged samples <span class="c">- <span id="nflag"></span> to review; the margin is shown under each flag; click a flag to filter the cohort</span>
-<button class="btn" id="basketFlagged" style="margin-left:auto"><span data-ic="basket"></span> basket all flagged</button></h2>
-<div class="panel gtable" style="max-height:50vh"><table id="flagtable"></table></div></section>
 <div class="footer" id="foot"></div>
 </div>
 <button id="expClose" class="exp-close" aria-label="exit fullscreen"><span data-ic="x"></span>close (Esc)</button>
