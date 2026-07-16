@@ -287,7 +287,7 @@ The Metaphor: Just as a vampire seeks blood to sustain itself, BAMpiro seeks BAM
 ---
 <h2 id="contributors" align="center">
 
-✨ [Contributors]((https://github.com/PathoGenOmics-Lab/AMAP/graphs/contributors))
+✨ <a href="https://github.com/PathoGenOmics-Lab/BAMpiro/graphs/contributors">Contributors</a>
 </h2>
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
