@@ -1230,6 +1230,9 @@ table.drmx th{position:sticky;background:var(--soft);z-index:2}
 .snpmx-fsel{font-size:12.5px;color:var(--label);display:flex;align-items:center;gap:5px}
 .snpmx-fsel select{font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:4px 9px;background:var(--panel);color:var(--label);cursor:pointer}
 .snpmx-wrap{overflow:auto;max-height:74vh;border:1px solid var(--line);border-radius:12px}
+table.snpmx tr.snpmx-spacer td{padding:0!important;border:0!important;background:transparent!important}
+.snpmx-morelink{color:var(--accent);cursor:pointer;text-decoration:none;font-weight:600;margin-left:5px}
+.snpmx-morelink:hover{text-decoration:underline}
 table.snpmx{border-collapse:separate;border-spacing:0;font-size:12px;width:auto;margin:0 auto}
 table.snpmx th,table.snpmx td{border-bottom:1px solid #eef2f6}
 table.snpmx thead th{position:sticky;background:var(--soft);z-index:5}   /* top offset set inline per header row */
@@ -3310,6 +3313,7 @@ var SNPMX_PAL=['#bcd0ea','#f3d1b0','#c3e0c9','#f0c4cf','#d6c9ec','#b8e0dd','#ead
 // dark-theme categorical palette for the SNP-matrix metadata rows (same hues, muted/dark so they don't glare as light bands)
 var SNPMX_PAL_DARK=['#2f4a6b','#6b4c2f','#2f5a40','#6b3a4a','#4a3a6b','#2f5a55','#5c4a2f','#3a4450','#6b3838','#4c4c2f','#5a2f5a','#35506b'];
 var snpmxFilter={};
+var snpmxAll=false;   // false = show the top MAXR most-shared sites; true = virtualized scroll over every site
 function renderSnpMatrix(){
   var host=el('snpmx_body'), sec=el('snpmatrix'); if(!host)return;
   var M=R.snp_matrix;
@@ -3347,7 +3351,7 @@ function renderSnpMatrix(){
       '<span class="dyn-count" id="snpmxcount"></span></div>'+
     filterUI+
     (meta?('<div class="snpmx-metanote">column levels from the samplesheet: '+meta.fields.map(function(f){return '<b>'+esc(f)+'</b>';}).join(' &#183; ')+' &#183; hover a header cell for its value</div>'):'')+
-    '<div class="snpmx-wrap"><table class="snpmx" id="snpmxtable"></table></div>';
+    '<div class="snpmx-wrap" id="snpmxwrap"><table class="snpmx" id="snpmxtable"></table></div>';
   function draw(){
     var q=(el('snpmxq').value||'').toLowerCase(), showDP=el('snpmxdp').checked;
     var vi=visIdx();
@@ -3356,8 +3360,13 @@ function renderSnpMatrix(){
       return vi.some(function(i){return r.cells[i];});   // only SNPs seen in the visible columns
     });
     var nfilt=0; for(var kf in snpmxFilter){ if(snpmxFilter[kf]) nfilt++; }
-    el('snpmxcount').innerHTML=rows.length+' SNP site(s) &#215; '+vi.length+' sample(s)'+(nfilt?' (filtered)':'')+(rows.length>MAXR?(' - showing '+MAXR):'')+(M.truncated?' &#183; full matrix in the TSV':'');
-    var shown=rows.slice(0,MAXR), mh=22, nf=meta?meta.fields.length:0;
+    var total=rows.length, capped=total>MAXR, ncol=1+vi.length;
+    var ctl='';   // let the user page from the top-MAXR default to a virtualized scroll over everything, and back
+    if(capped){ ctl = snpmxAll
+      ? (' &#183; showing <b>all '+total+'</b> (scroll) <a href="#" id="snpmxall" class="snpmx-morelink">show top '+MAXR+'</a>')
+      : (' &#183; showing <b>'+MAXR+'</b> of '+total+' <a href="#" id="snpmxall" class="snpmx-morelink">show all '+total+' &#8595;</a>'); }
+    el('snpmxcount').innerHTML=total+' SNP site(s) &#215; '+vi.length+' sample(s)'+(nfilt?' (filtered)':'')+ctl+(M.truncated?' &#183; full matrix in the TSV':'');
+    var mh=22, nf=meta?meta.fields.length:0;
     var metaRows=meta?meta.fields.map(function(f,k){
       return '<tr>'+'<th class="snpmx-info snpmx-metalabel" style="top:'+(k*mh)+'px">'+esc(f)+'</th>'+
         vi.map(function(i){var s=samples[i],v=(meta.rows[s]||{})[f]||'',bg=metaColor(f,v); return '<th class="snpmx-metacell" style="top:'+(k*mh)+'px;background:'+bg+';color:'+metaText(bg)+'" title="'+esc(f)+': '+esc(v||'-')+'">'+esc(v)+'</th>';}).join('')+'</tr>';
@@ -3365,7 +3374,7 @@ function renderSnpMatrix(){
     var stop=nf*mh;
     var nameRow='<tr><th class="snpmx-info snpmx-corner" style="top:'+stop+'px">SNP '+esc(M.reference?('('+M.reference+')'):'')+'</th>'+
       vi.map(function(i){var s=samples[i];return '<th class="snpmx-hcell" style="top:'+stop+'px" title="'+esc(s)+'"><span class="snpmx-h">'+esc(s)+'</span></th>';}).join('')+'</tr>';
-    var body='<tbody>'+shown.map(function(r){
+    function rowHTML(r){
       var lbl='<b>'+esc(r.gene||r.contig)+'</b>'+geneRvTag(r.gene)+' '+r.pos+' '+esc(r.ref)+'&#8594;'+esc(r.alt)+(r.aa?(' <span class="snpmx-aa">'+aaDual(r.aa,r.aa_h37rv)+'</span>'):'');
       var cells=vi.map(function(i){var c=r.cells[i], s=samples[i];
         if(!c) return '<td class="snpmx-cell snpmx-empty" title="'+esc(s)+' - not called"></td>';
@@ -3374,8 +3383,31 @@ function renderSnpMatrix(){
         return '<td class="snpmx-cell'+(showDP?' wdp':'')+'" style="background:'+snpAfColor(c[0])+'" title="'+esc(s)+'  AF='+c[0].toFixed(3)+(c[1]!=null?('  DP='+c[1]):'')+'"><span class="snpmx-af">'+afTxt+'</span>'+dpTxt+'</td>';
       }).join('');
       return '<tr><td class="snpmx-info">'+lbl+'</td>'+cells+'</tr>';
-    }).join('')+'</tbody>';
-    el('snpmxtable').innerHTML='<thead>'+metaRows+nameRow+'</thead>'+body;
+    }
+    var tbl=el('snpmxtable'), thead='<thead>'+metaRows+nameRow+'</thead>', wrap=el('snpmxwrap');
+    wrap.onscroll=null;
+    if(snpmxAll&&capped){
+      // virtualized scroll: render only the rows in view, with top/bottom spacer rows keeping the scrollbar honest
+      tbl.innerHTML=thead+'<tbody id="snpmxbody"></tbody>';
+      var tb=el('snpmxbody'), RH=27, lastStart=-1;
+      var win=function(force){
+        var stp=wrap.scrollTop, vh=wrap.clientHeight||500;
+        var per=Math.ceil(vh/RH)+10, start=Math.max(0,Math.floor(stp/RH)-5), end=Math.min(total,start+per);
+        if(!force&&start===lastStart)return; lastStart=start;
+        var topH=start*RH, botH=(total-end)*RH, h='';
+        if(topH>0)h+='<tr class="snpmx-spacer"><td colspan="'+ncol+'" style="height:'+topH+'px"></td></tr>';
+        for(var i=start;i<end;i++)h+=rowHTML(rows[i]);
+        if(botH>0)h+='<tr class="snpmx-spacer"><td colspan="'+ncol+'" style="height:'+botH+'px"></td></tr>';
+        tb.innerHTML=h;
+      };
+      win(true);
+      var probe=tb.querySelector('tr:not(.snpmx-spacer)'); if(probe){ var ph=probe.offsetHeight; if(ph>6&&Math.abs(ph-RH)>1){ RH=ph; lastStart=-1; win(true); } }
+      // repaint the window straight from the scroll event; win() cheaply no-ops until the start row actually changes
+      wrap.onscroll=function(){ win(false); };
+    } else {
+      tbl.innerHTML=thead+'<tbody>'+rows.slice(0,MAXR).map(rowHTML).join('')+'</tbody>';
+    }
+    var al=el('snpmxall'); if(al) al.onclick=function(e){ e.preventDefault(); snpmxAll=!snpmxAll; wrap.scrollTop=0; draw(); };
   }
   el('snpmxq').oninput=function(){clearTimeout(_mxdb);_mxdb=setTimeout(draw,160);};
   el('snpmxdp').onchange=draw;
