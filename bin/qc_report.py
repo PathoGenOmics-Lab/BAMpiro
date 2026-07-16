@@ -2155,7 +2155,7 @@ function dynMiniChart(v,th,showDP){
   function YD(d){ return mt+ph-(d/maxDP)*ph; }          // read depth (right axis)
   var col=dynColor(v.flags), nonsyn=v.flags&&v.flags.indexOf('nonsyn')>=0;
   var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block"><title>Allele frequency (0-1, left axis, line) across timepoints'+(hasDP?'; read depth DP as bars with the value on top':'')+'. Hover for exact values.</title>';
-  [0,0.5,1].forEach(function(a){ svg+='<line x1="'+ml+'" y1="'+Y(a).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(a).toFixed(1)+'" stroke="#eef2f7"/><text x="'+(ml-5)+'" y="'+(Y(a)+3.5).toFixed(1)+'" text-anchor="end" font-size="10.5" fill="#8a97a8">'+a.toFixed(1)+'</text>'; });
+  [0,0.5,1].forEach(function(a){ svg+='<line x1="'+ml+'" y1="'+Y(a).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(a).toFixed(1)+'" stroke="'+TH.grid+'"/><text x="'+(ml-5)+'" y="'+(Y(a)+3.5).toFixed(1)+'" text-anchor="end" font-size="10.5" fill="'+TH.mut+'">'+a.toFixed(1)+'</text>'; });
   if(hasDP){   // depth bars behind the AF line; each bar carries its DP value on top (see the pass after the line)
     var bw=Math.min(n<=1?18:(pw/n)*0.5, 16);
     dps.forEach(function(d,i){ if(d==null)return; var x=X(i), y=YD(d), h=(mt+ph)-y; svg+='<rect x="'+(x-bw/2).toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(0,h).toFixed(1)+'" fill="#7ea8d6" opacity="0.45" rx="1.5"><title>t='+esc(v.times[i]==null?i:v.times[i])+'  DP='+d+'</title></rect>'; });
@@ -2163,8 +2163,8 @@ function dynMiniChart(v,th,showDP){
   if(th){ [[th.emerge,DYNCOL.emergence],[th.fix,DYNCOL.fixation]].forEach(function(t){ svg+='<line x1="'+ml+'" y1="'+Y(t[0]).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(t[0]).toFixed(1)+'" stroke="'+t[1]+'" stroke-dasharray="3 3" opacity="0.3"/>'; }); }
   var pts=v.traj.map(function(a,i){return X(i).toFixed(1)+','+Y(a).toFixed(1);}).join(' ');
   svg+='<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="2.6" stroke-linejoin="round"/>';
-  v.traj.forEach(function(a,i){ svg+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(a).toFixed(1)+'" r="3.6" fill="'+col+'" stroke="'+(nonsyn?DYNCOL.nonsyn:'#fff')+'" stroke-width="'+(nonsyn?1.8:1)+'"><title>t='+esc(v.times[i]==null?i:v.times[i])+'  AF='+a.toFixed(3)+(hasDP&&dps[i]!=null?('  DP='+dps[i]):'')+'</title></circle>'; });
-  if(hasDP){ dps.forEach(function(d,i){ if(d==null)return; svg+='<text x="'+X(i).toFixed(1)+'" y="'+(YD(d)-3).toFixed(1)+'" text-anchor="middle" font-size="8.5" font-weight="600" fill="#3f6fa8" stroke="#fff" stroke-width="2.6" paint-order="stroke" style="paint-order:stroke">'+d+'</text>'; }); }   // DP value on top of each bar
+  v.traj.forEach(function(a,i){ svg+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(a).toFixed(1)+'" r="3.6" fill="'+col+'" stroke="'+(nonsyn?DYNCOL.nonsyn:TH.panel)+'" stroke-width="'+(nonsyn?1.8:1)+'"><title>t='+esc(v.times[i]==null?i:v.times[i])+'  AF='+a.toFixed(3)+(hasDP&&dps[i]!=null?('  DP='+dps[i]):'')+'</title></circle>'; });
+  if(hasDP){ dps.forEach(function(d,i){ if(d==null)return; svg+='<text x="'+X(i).toFixed(1)+'" y="'+(YD(d)-3).toFixed(1)+'" text-anchor="middle" font-size="8.5" font-weight="600" fill="'+TH.ink+'" stroke="'+TH.panel+'" stroke-width="2.6" paint-order="stroke" style="paint-order:stroke">'+d+'</text>'; }); }   // DP value on top of each bar
   v.times.forEach(function(t,i){ svg+='<text x="'+X(i).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10.5" fill="'+TH.mut+'">'+esc(t==null?i:t)+'</text>'; });
   svg+='</svg>';
   return svg;
@@ -2280,7 +2280,7 @@ function epiMiniChart(p){
   function X(i){ return ml+(n<=1?pw/2:(i/(n-1))*pw); }
   function Y(a){ return mt+(1-a)*ph; }
   var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block"><title>Two allele-frequency trajectories over time; parallel lines = concordant, mirrored = discordant. Hover a point for its value.</title>';
-  [0,0.5,1].forEach(function(a){ svg+='<line x1="'+ml+'" y1="'+Y(a).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(a).toFixed(1)+'" stroke="#eef2f7"/><text x="'+(ml-5)+'" y="'+(Y(a)+3.5).toFixed(1)+'" text-anchor="end" font-size="10.5" fill="#8a97a8">'+a.toFixed(1)+'</text>'; });
+  [0,0.5,1].forEach(function(a){ svg+='<line x1="'+ml+'" y1="'+Y(a).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(a).toFixed(1)+'" stroke="'+TH.grid+'"/><text x="'+(ml-5)+'" y="'+(Y(a)+3.5).toFixed(1)+'" text-anchor="end" font-size="10.5" fill="'+TH.mut+'">'+a.toFixed(1)+'</text>'; });
   [[A,EPICOL.A],[B,EPICOL.B]].forEach(function(pr){ var t=pr[0],c=pr[1]; var pts=t.map(function(a,i){return X(i).toFixed(1)+','+Y(a).toFixed(1);}).join(' '); svg+='<polyline points="'+pts+'" fill="none" stroke="'+c+'" stroke-width="2.4" stroke-linejoin="round"/>'; t.forEach(function(a,i){ svg+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(a).toFixed(1)+'" r="3" fill="'+c+'"><title>t='+esc(times[i]==null?i:times[i])+'  AF='+a.toFixed(3)+'</title></circle>'; }); });
   times.forEach(function(t,i){ svg+='<text x="'+X(i).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10.5" fill="'+TH.mut+'">'+esc(t==null?i:t)+'</text>'; });
   svg+='</svg>';
@@ -2422,6 +2422,8 @@ function renderEpistasis(){
 
 function snpAfColor(af){return 'rgba(31,120,180,'+(0.16+af*0.8).toFixed(2)+')';}
 var SNPMX_PAL=['#bcd0ea','#f3d1b0','#c3e0c9','#f0c4cf','#d6c9ec','#b8e0dd','#eadfb0','#dfe4ea','#f2c4c4','#cdd1a8','#e6c3e0','#b9d6ee'];
+// dark-theme categorical palette for the SNP-matrix metadata rows (same hues, muted/dark so they don't glare as light bands)
+var SNPMX_PAL_DARK=['#2f4a6b','#6b4c2f','#2f5a40','#6b3a4a','#4a3a6b','#2f5a55','#5c4a2f','#3a4450','#6b3838','#4c4c2f','#5a2f5a','#35506b'];
 var snpmxFilter={};
 function renderSnpMatrix(){
   var host=el('snpmx_body'), sec=el('snpmatrix'); if(!host)return;
@@ -2431,14 +2433,15 @@ function renderSnpMatrix(){
   var samples=M.samples, MAXR=400;
   var meta=(R.sample_meta&&R.sample_meta.fields&&R.sample_meta.fields.length)?R.sample_meta:null;
   var metaMaps={}, metaVals={};
-  if(meta){ meta.fields.forEach(function(f){ var m={},vals=[],k=0; samples.forEach(function(s){var v=(meta.rows[s]||{})[f]; if(v&&!(v in m)){m[v]=SNPMX_PAL[k%SNPMX_PAL.length];k++;vals.push(v);}}); metaMaps[f]=m; metaVals[f]=vals.sort(); }); }
+  var PAL=isDark()?SNPMX_PAL_DARK:SNPMX_PAL;
+  if(meta){ meta.fields.forEach(function(f){ var m={},vals=[],k=0; samples.forEach(function(s){var v=(meta.rows[s]||{})[f]; if(v&&!(v in m)){m[v]=PAL[k%PAL.length];k++;vals.push(v);}}); metaMaps[f]=m; metaVals[f]=vals.sort(); }); }
   // a field is "the lineage field" only if every (non-NA) value is a known lineage -> reuse the canonical
   // report palette (mycolorsTB / linColor) for it; all other fields get the neutral pastels. Keying on the
   // field (not just the value) stops an unrelated column whose value happens to equal a lineage label from
   // being mis-coloured.
   var linField={};
   if(meta){ meta.fields.forEach(function(f){ var vs=(metaVals[f]||[]).filter(function(v){return v&&v!=='NA'&&v!=='.'&&v!=='-';}); if(vs.length&&vs.every(function(v){return LINCOL[v];})) linField[f]=1; }); }
-  function metaColor(f,v){ if(v&&linField[f]&&LINCOL[v]) return LINCOL[v]; return (v&&metaMaps[f]&&metaMaps[f][v])?metaMaps[f][v]:'#eef2f7'; }
+  function metaColor(f,v){ if(v&&linField[f]&&LINCOL[v]) return LINCOL[v]; return (v&&metaMaps[f]&&metaMaps[f][v])?metaMaps[f][v]:TH.cellnull; }
   function metaText(bg){
     if(bg&&bg.charAt(0)==='#'){ var h=bg.length===4?('#'+bg.charAt(1)+bg.charAt(1)+bg.charAt(2)+bg.charAt(2)+bg.charAt(3)+bg.charAt(3)):bg;
       var L=(0.299*parseInt(h.substr(1,2),16)+0.587*parseInt(h.substr(3,2),16)+0.114*parseInt(h.substr(5,2),16))/255; return L<0.62?'#fff':'#1c2b3a'; }
