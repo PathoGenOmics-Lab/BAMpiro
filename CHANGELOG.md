@@ -31,7 +31,8 @@ drug-resistance typing**, and a restructured documentation set. Rebranded to
     sidebar, per-section **(i)** info popovers, a sample exclusion basket, and
     panels for lineage summary, distributions, correlations, a metric-correlation
     heatmap, QC-space PCA, genome landscape, functional annotation, gene burden,
-    variable genes, and aDNA damage.
+    variable genes, taxonomic composition (Kraken2: primary taxon / contaminants /
+    unclassified, for a read-level contamination check), and aDNA damage.
  - **Report presentation & UX** - a **dark / light theme** (header toggle, follows
     the OS preference, persisted per viewer); a single homogeneous inline icon set;
     a **mobile-responsive** layout (capped frozen column, scrollable matrices, a

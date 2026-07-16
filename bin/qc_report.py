@@ -433,6 +433,48 @@ def parse_dr(path):
     return {"samples": samples, "drugs": drugs, "calls": calls}
 
 
+def parse_kraken(paths):
+    """Per-sample Kraken2 `.report` files (6 columns: clade%, clade reads, taxon reads, rank, taxid,
+    name) -> {'samples':[{s, unclassified, classified, primary, secondary, top}]} or None. The sample id
+    is the filename up to the first '__' (the pipeline writes '<sampleId>__<runId>.kraken.report'). The
+    'primary' taxon is the top species-level clade; contamination shows as a low primary% / large
+    secondary taxon / high unclassified%."""
+    out = []
+    for p in paths or []:
+        if not p or not os.path.exists(p):
+            continue
+        sid = os.path.basename(p).split("__")[0].split(".")[0]
+        unclass, species = 0.0, []
+        try:
+            with open(p, encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    c = line.rstrip("\n").split("\t")
+                    if len(c) < 6:
+                        continue
+                    try:
+                        pct = float(c[0])
+                    except ValueError:
+                        continue
+                    rank, name = c[3].strip(), c[5].strip()
+                    if rank == "U":
+                        unclass = pct
+                    elif rank == "S":            # species-level clades = the interpretable composition
+                        species.append((pct, name))
+        except OSError:
+            continue
+        if not species and unclass == 0.0:
+            continue
+        species.sort(key=lambda x: -x[0])
+        top = [{"name": n, "pct": round(p, 2)} for p, n in species[:6]]
+        out.append({"s": sid, "unclassified": round(unclass, 2),
+                    "classified": round(100.0 - unclass, 2),
+                    "primary": (top[0] if top else None),
+                    "secondary": (top[1] if len(top) > 1 else None), "top": top})
+    if not out:
+        return None
+    return {"samples": out}
+
+
 def parse_gff(path):
     """Best-effort GFF3 parse of gene/CDS features -> [{name, start, end}] (1-based). Empty on any problem."""
     if not path or not os.path.exists(path):
@@ -934,6 +976,13 @@ body.has-expanded{overflow:hidden} body.has-expanded::after{content:"";position:
 .chip.failc{background:#fde3e6;color:#a01f2d;border-color:#f5c2c8}   /* FAIL-tier flags read red everywhere (flagged panel + table + modal), not just the modal */
 .fchips{display:flex;gap:6px;flex-wrap:wrap}
 .chip-hint{font-size:10.5px;color:var(--mut);align-self:center;margin-left:2px;white-space:nowrap}
+/* Kraken taxonomic-composition panel */
+.krktable td{vertical-align:middle} .krktable .krk-barcell{width:34%;min-width:150px}
+.krk-bar{display:flex;height:13px;border-radius:4px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(16,24,40,.06)}
+.krk-seg{height:100%;transition:filter .1s} .krk-seg:hover{filter:brightness(1.1)}
+.krk-legend{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:11.5px;color:var(--mut);margin-bottom:12px}
+.krk-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.krk-mut{color:var(--mut);font-size:11px}
 .flagrsn{display:flex;flex-direction:column;gap:1px;margin-top:5px;font-size:11px;color:var(--txt2);font-variant-numeric:tabular-nums}   /* always-visible flag margins (touch-safe, not hover-only) */
 .dsub{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);font-weight:600;margin:16px 0 8px}
 .lcomp{display:flex;flex-direction:column;gap:5px;margin-bottom:2px}
@@ -2520,6 +2569,29 @@ function renderSnpMatrix(){
 
 function drGColor(gn){ return (gn===1||gn===2)?'#dc2626':(gn===3?'#d97706':((gn===4||gn===5)?'#94a3b8':'#b8c2cf')); }
 function drStatus(gns){ var r=false,u=false,n=false; for(var i=0;i<gns.length;i++){var g=gns[i]; if(g===1||g===2)r=true; else if(g===3)u=true; else if(g===4||g===5)n=true;} return r?{t:'R',c:'#dc2626'}:(u?{t:'?',c:'#d97706'}:(n?{t:'&#183;',c:'#94a3b8'}:{t:'',c:'#eef2f7'})); }
+// ---- Kraken2 taxonomic composition (contamination / host check on the reads before mapping) ----
+function renderKraken(){
+  var host=el('kraken_body'), sec=el('kraken'); if(!host)return;
+  var K=R.kraken;
+  if(!(K&&K.samples&&K.samples.length)){ if(sec)sec.style.display='none'; var nv=el('nav-kraken'); if(nv)nv.style.display='none'; return; }
+  var rows=K.samples.slice().sort(function(a,b){ return (a.primary?a.primary.pct:0)-(b.primary?b.primary.pct:0); });  // most-contaminated (lowest primary %) first
+  var body=rows.map(function(s){
+    var pri=s.primary?s.primary.pct:0, unc=s.unclassified||0, other=Math.max(0,100-pri-unc), lowPri=pri<90, hiUnc=unc>15;
+    var bar='<div class="krk-bar">'+
+      '<div class="krk-seg" style="width:'+pri.toFixed(1)+'%;background:'+(lowPri?'#e0a11f':'#2ea36b')+'" title="primary: '+esc(s.primary?s.primary.name:'-')+' '+pri.toFixed(1)+'%"></div>'+
+      '<div class="krk-seg" style="width:'+other.toFixed(1)+'%;background:#c0704f" title="other classified '+other.toFixed(1)+'%"></div>'+
+      '<div class="krk-seg" style="width:'+unc.toFixed(1)+'%;background:var(--track)" title="unclassified '+unc.toFixed(1)+'%"></div></div>';
+    return '<tr class="hit" data-s="'+esc(s.s)+'"'+(st.hi==s.s?' style="background:'+TH.hl+'"':'')+'><td class="s">'+esc(s.s)+'</td>'+
+      '<td style="text-align:left"><b>'+esc(s.primary?s.primary.name:'-')+'</b></td>'+
+      '<td'+(lowPri?' style="color:var(--fail);font-weight:600"':'')+'>'+pri.toFixed(1)+'</td>'+
+      '<td style="text-align:left">'+((s.secondary&&s.secondary.pct>=1)?esc(s.secondary.name)+' <span class="krk-mut">'+s.secondary.pct.toFixed(1)+'%</span>':'<span class="krk-mut">-</span>')+'</td>'+
+      '<td'+(hiUnc?' style="color:var(--warn)"':'')+'>'+unc.toFixed(1)+'</td>'+
+      '<td class="krk-barcell">'+bar+'</td></tr>';
+  }).join('');
+  host.innerHTML='<div class="krk-legend"><span><i style="background:#2ea36b"></i>primary organism</span><span><i style="background:#c0704f"></i>other classified (possible contaminant)</span><span><i style="background:var(--track)"></i>unclassified</span> <span class="krk-mut">- worst first; amber primary bar = &lt; 90%. Click a row to highlight the sample everywhere.</span></div>'+
+    '<div class="gtable"><table class="krktable"><thead><tr><th class="s">Sample</th><th style="text-align:left">Primary taxon</th><th>Primary %</th><th style="text-align:left">Top other</th><th>Unclass. %</th><th style="text-align:left">Composition</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+  Array.prototype.forEach.call(host.querySelectorAll('tbody tr[data-s]'),function(tr){tr.onclick=function(){setHi(tr.getAttribute('data-s'));};});
+}
 var drState={q:''};
 function renderDrug(){
   var host=el('drug_body'), sec=el('drug'); if(!host)return;
@@ -2571,7 +2643,7 @@ function renderDrug(){
   draw();
 }
 
-function renderAll(){renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderEpistasis();renderSnpMatrix();renderDrug();renderFlags();renderCuration();}
+function renderAll(){renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderEpistasis();renderSnpMatrix();renderDrug();renderKraken();renderFlags();renderCuration();}
 
 // ---- static wiring ----
 el('meta').textContent=R.samples.length+' samples · '+R.generated;
@@ -2763,6 +2835,7 @@ if(!R.n_ancient){var adx=el('adna');if(adx)adx.style.display='none';var nadx=el(
 if(!(R.dynamics&&R.dynamics.groups&&R.dynamics.groups.length)){var dyx=el('dynamics');if(dyx)dyx.style.display='none';var ndyx=el('nav-dyn');if(ndyx)ndyx.style.display='none';}
 if(!(R.epistasis&&R.epistasis.pairs&&R.epistasis.pairs.length)){var epx=el('epistasis');if(epx)epx.style.display='none';var nepx=el('nav-epi');if(nepx)nepx.style.display='none';}
 if(!(R.dr&&R.dr.calls&&R.dr.calls.length)){var drx=el('drug');if(drx)drx.style.display='none';var ndrx=el('nav-drug');if(ndrx)ndrx.style.display='none';}
+if(!(R.kraken&&R.kraken.samples&&R.kraken.samples.length)){var kkx=el('kraken');if(kkx)kkx.style.display='none';var nkkx=el('nav-kraken');if(nkkx)nkkx.style.display='none';}
 // genome track selector (Missing / SNPs / Het / Indels) - only offer tracks that have data
 (function(){var host=el('gtrack'); if(!host)return;var avail=GTRACKS.filter(function(g){return gtrackHas(g.k);});
   if(avail.length<=1){host.style.display='none';return;}
@@ -2913,7 +2986,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div id="tocscrim" aria-hidden="true"></div>
 <nav id="toc" aria-label="Contents">
 <div class="toc-brand"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</div>
-<div class="toc-group"><div class="toc-gh">Overview<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#gstats">Stats</a><a class="toc-link" href="#flagged">Flagged</a><a class="toc-link" href="#linsum" id="nav-lin">Lineages</a><a class="toc-link" href="#dist">Distributions</a></div></div>
+<div class="toc-group"><div class="toc-gh">Overview<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#gstats">Stats</a><a class="toc-link" href="#flagged">Flagged</a><a class="toc-link" href="#linsum" id="nav-lin">Lineages</a><a class="toc-link" href="#dist">Distributions</a><a class="toc-link" href="#kraken" id="nav-kraken">Kraken</a></div></div>
 <div class="toc-group"><div class="toc-gh">Correlation &amp; structure<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#corr">Correlations</a><a class="toc-link" href="#corrmatrix">Corr matrix</a><a class="toc-link" href="#qcpca" id="nav-pca">QC space</a><a class="toc-link" href="#divcomp" id="nav-divcomp">Divergence</a></div></div>
 <div class="toc-group"><div class="toc-gh">Genome &amp; genes<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#cons">Consensus</a><a class="toc-link" href="#genome" id="nav-genome">Genome</a><a class="toc-link" href="#function" id="nav-function">Function</a><a class="toc-link" href="#geneburden" id="nav-geneburden">Gene burden</a><a class="toc-link" href="#hotspots" id="nav-hot">Variable genes</a></div></div>
 <div class="toc-group"><div class="toc-gh">Evolution<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#temporal" id="nav-temporal">Temporal</a><a class="toc-link" href="#pnps" id="nav-pnps">pN/pS</a><a class="toc-link" href="#adna" id="nav-adna">aDNA</a></div></div>
@@ -2956,6 +3029,8 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="panel" id="plotsPanel"><div id="plots" class="pad" style="padding-top:6px;padding-bottom:6px"></div>
 <div class="legend" id="leg-qc"><span><i style="background:#94a3b8"></i>PASS</span><span><i style="background:#d97706"></i>WARN</span><span><i style="background:#dc2626"></i>FAIL</span><span style="margin-left:auto">beeswarm dashed line = median</span></div>
 <div class="legend" id="leg-lin" style="display:none"></div></div></section>
+<section id="kraken"><h2>Taxonomic composition <span class="c">- Kraken2 classification of the reads before mapping: the dominant (primary) taxon, the top other taxon, and the unclassified fraction. A low primary % or a large secondary taxon flags possible contamination / a mixed sample.</span></h2>
+<div class="panel pad" id="kraken_body"></div></section>
 <section id="corr"><h2>Correlations <span class="c">- pick two metrics, coloured by QC; drag a box to basket the enclosed samples</span>
 <span id="scbrushinfo" style="margin-left:auto;font-size:11px;color:var(--accent)"></span>
 <select class="msel" id="sx"></select><span style="color:#94a3b8">vs</span><select class="msel" id="sy"></select>
@@ -3559,6 +3634,8 @@ def main():
                     help="Cohort gene-burden TSV (collect_summary --gene-burden-out) -> the Functional gene burden panel (optional).")
     ap.add_argument("--dr-report", default=None,
                     help="Per-sample drug-resistance calls TSV (from pathotypr DR markers) -> the Drug resistance panel (optional).")
+    ap.add_argument("--kraken", nargs="*", default=[],
+                    help="Per-sample Kraken2 .report files -> the Taxonomic composition / contamination panel (optional).")
     ap.add_argument("--pnps", default=None,
                     help="Cohort per-gene dN/dS TSV (eskaks) -> the Selection pN/pS panel (optional; a cohort analysis, not per-sample QC).")
     ap.add_argument("--provenance", nargs="*", default=[],
@@ -3708,6 +3785,7 @@ def main():
                "section_info": SECTION_INFO,
                "gene_burden": parse_gene_burden(args.gene_burden) or None,
                "dr": parse_dr(args.dr_report),
+               "kraken": parse_kraken(args.kraken),
                "pnps": parse_pnps(args.pnps) or None,
                "mask_bins": mask_bins, "mask_pct": mask_pct,
                "mask_iv": (mask_iv[:5000] if mask_iv else None),

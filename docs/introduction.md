@@ -21,7 +21,7 @@ sequences, and a consolidated interactive quality-control report.
 - **Lineage & drug-resistance typing** - alignment-free (k-mer) MTBC lineage + WHO
   drug-resistance genotyping with [Pathotypr](pathotypr.md), reference-agnostic and
   bundled in the container.
-- **Interactive QC report** - a single self-contained HTML dashboard (20 panels)
+- **Interactive QC report** - a single self-contained HTML dashboard (21 panels)
   plus a machine-readable per-sample `qc_flags.tsv`, alongside the classic MultiQC
   report. See [Interactive QC Report](qc-report.md).
 - **Dual amino-acid numbering** - optionally re-annotates variants against a

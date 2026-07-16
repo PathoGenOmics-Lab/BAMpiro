@@ -70,6 +70,7 @@ process QC_REPORT {
     path(vcfs)              // per-sample annotated VCFs -> per-SNP allele frequencies for dynamics
     path(vcfs_h37rv)        // per-sample VCFs annotated vs H37Rv -> dual amino-acid numbering (may be NO_FILE)
     path(dr_report)         // run drug-resistance calls TSV (collect_dr) -> Drug resistance panel (may be NO_FILE)
+    path(kraken_reports)    // per-sample Kraken2 .report files -> Taxonomic composition panel (may be empty)
     val(provenance)         // pre-quoted provenance tokens (container=..., reference=...)
     val(basename)
 
@@ -90,12 +91,13 @@ process QC_REPORT {
     VCF_ARG=""; [ -n "${vcfs}" ] && VCF_ARG="--vcfs ${vcfs}"
     VH_ARG="";  case "${vcfs_h37rv}" in ""|NO_FILE) ;; *) VH_ARG="--vcfs-h37rv ${vcfs_h37rv}";; esac
     DR_ARG="";  [ -s "${dr_report}" ] && [ "${dr_report}" != "NO_FILE" ] && DR_ARG="--dr-report ${dr_report}"
+    KRK_ARG=""; [ -n "${kraken_reports}" ] && KRK_ARG="--kraken ${kraken_reports}"
     python3 ${projectDir}/bin/qc_report.py \\
         --summary ${summary} \\
         ${cons_arg} \\
         --gene-burden ${gene_burden} \\
         --gff ${gff} \\
-        \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$DR_ARG \\
+        \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$DR_ARG \$KRK_ARG \\
         --aa2-label "${params.canonical_label}" \\
         --provenance ${provenance} \\
         --version "${workflow.manifest.version}" \\

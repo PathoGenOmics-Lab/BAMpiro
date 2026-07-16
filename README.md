@@ -40,7 +40,7 @@ tuberculosis* but is **organism-agnostic** - point it at any reference genome + 
 
 - Reference-agnostic mapping, variant calling (`FreeBayes`), and consensus
 - Alignment-free MTBC lineage + WHO drug-resistance typing ([Pathotypr](docs/pathotypr.md))
-- A self-contained, interactive [HTML QC report](docs/qc-report.md) with 20 panels
+- A self-contained, interactive [HTML QC report](docs/qc-report.md) with 21 panels
 - Dual amino-acid numbering (used reference + H37Rv / Mycobrowser)
 - One pinned container with every tool and marker panel built in
 
@@ -52,7 +52,7 @@ tuberculosis* but is **organism-agnostic** - point it at any reference genome + 
 | 🧹 Repeat & mappability masking | `nucmer` repeat exclusion plus a length-aware `genmap` read filter |
 | 🧪 Variants & backbone | `FreeBayes` (ploidy 1/2) + "all-sites" VCFs for phylogenetic supermatrices |
 | 🩺 Lineage & drug resistance | Alignment-free MTBC lineage + WHO DR typing ([Pathotypr](docs/pathotypr.md)), reference-agnostic |
-| 📊 Interactive QC report | Self-contained HTML dashboard, [20 panels](docs/qc-report.md) + per-sample `qc_flags.tsv` |
+| 📊 Interactive QC report | Self-contained HTML dashboard, [21 panels](docs/qc-report.md) + per-sample `qc_flags.tsv` |
 | 🔤 Dual amino-acid numbering | Protein changes in both the used reference and H37Rv/Mycobrowser numbering |
 | 📦 Containerized & reproducible | A single pinned image with every tool + bundled marker panels ([details](docs/installation.md)) |
 | ⚙️ Fully configurable | Every step exposed as a Nextflow parameter ([reference](docs/configuration.md)) |
@@ -89,7 +89,7 @@ merging, and [Outputs](docs/outputs.md) for the result layout.
 
 Every run writes a single self-contained `<samplesheet>_qc_report.html` (no internet,
 no CDN) that folds the whole cohort into one dashboard: **live-adjustable QC
-thresholds**, a **dark / light theme**, a collapsible sidebar, and **20 linked
+thresholds**, a **dark / light theme**, a collapsible sidebar, and **21 linked
 panels** - general statistics, flagged samples, per-lineage summary (canonical
 *mycolorsTB* palette), QC-space PCA, genome landscape, SNP dynamics, epistasis, a
 full SNP matrix, and drug resistance - plus a machine-readable per-sample
@@ -106,7 +106,7 @@ Full panel list and interactive features: [Interactive QC Report](docs/qc-report
 | [Installation](docs/installation.md) | Requirements, the container, and bundled software versions |
 | [Quick Start](docs/quickstart.md) | Run commands, the samplesheet format, and multi-run merging |
 | [Configuration](docs/configuration.md) | The full parameter reference |
-| [Interactive QC Report](docs/qc-report.md) | The self-contained HTML dashboard and its 20 panels |
+| [Interactive QC Report](docs/qc-report.md) | The self-contained HTML dashboard and its 21 panels |
 | [Lineage & Drug-Resistance Typing](docs/pathotypr.md) | Pathotypr typing and dual amino-acid numbering |
 | [Outputs](docs/outputs.md) | The result file tree and the repository layout |
 | [Changelog](CHANGELOG.md) | Version history |

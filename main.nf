@@ -487,8 +487,10 @@ workflow {
             ? ANNOTATE_CANONICAL(vcf_for_stats, params.canonical_snpeff_db).out
                              .map { sId, vcf -> vcf }.collect().ifEmpty([])
             : file("NO_FILE")
+        // Kraken2 per-sample reports (deduped) -> Taxonomic composition panel; empty when Kraken is off.
+        def report_kraken = ch_kraken_reports.unique { it.name }.collect().ifEmpty([])
         QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
-                  report_meta, report_vcfs, report_vcfs_h37rv, dr_report, provenance, tsv_name)
+                  report_meta, report_vcfs, report_vcfs_h37rv, dr_report, report_kraken, provenance, tsv_name)
     }
 
     // 11b. Master SNP matrix: rows = SNP sites, columns = reference/annotation + per-sample AF & depth.
