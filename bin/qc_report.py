@@ -2264,6 +2264,13 @@ function insEpistasis(){
   narr+=' Strongest link: <b>'+pairTxt+'</b> at r&#160;=&#160;<b>'+rTxt+'</b>'+
     (best.n>1?(', recurrent in <b>'+best.n+'</b> series'):(' (single series)'))+'.';
   narr+=' Correlation over &#8805;'+E.min_points+' timepoints only flags candidate epistasis &#8212; recurrence across series, not a single trajectory, is what makes it credible.';
+  if(E.vars_capped||E.pairs_capped){   // large-cohort scaling caps - say what was covered so nothing is silently dropped
+    narr+=' <span class="c">Large cohort: '+
+      (E.vars_capped?('scored the top <b>'+E.max_vars+'</b> most-variable variants per series (of up to <b>'+E.n_vars_max+'</b>)'):'')+
+      (E.vars_capped&&E.pairs_capped?'; ':'')+
+      (E.pairs_capped?('significance-tested the <b>'+E.max_pairs_perm+'</b> strongest of <b>'+E.n_candidates+'</b> candidate pairs'):'')+
+      ' &#8212; the full trajectories are in the SNP-dynamics panel / TSV.</span>';
+  }
   var chips=[];
   chips.push({t:pairTxt+'  r '+rTxt, cls:best.direction==='concordant'?'warn':'', title:'Strongest co-varying pair &#183; tier '+best.tier+' &#183; perm p '+best.p.toFixed(3)+', FDR q '+best.q.toFixed(3)});
   if(nStrong>0) chips.push({t:nStrong+' strong (q&#8804;0.05)', cls:'warn', title:'Pairs passing Benjamini-Hochberg FDR q &#8804; 0.05'});
@@ -3205,7 +3212,8 @@ function renderEpistasis(){
       '<span title="The two variants rise and fall together across the series - candidate linkage or co-selection."><i style="background:#2f8f5b"></i>concordant / same dynamics <span class="infoi">i</span></span>'+
       '<span title="One variant rises as the other falls across the series - competing lineages / clonal interference."><i style="background:#a24a8f"></i>discordant / opposite dynamics <span class="infoi">i</span></span>'+
       '<span title="Permutation p-value: how often shuffling the timepoints of one trajectory reaches this |r| by chance. q = Benjamini-Hochberg FDR across every reported pair. strong = q &#8804; 0.05, moderate = p &#8804; 0.05, weak otherwise. With few timepoints a single series cannot beat ~1/n! by chance, so a pattern RECURRING across independent series is what drives a pair to strong."><b>strong</b> &#183; moderate &#183; weak = permutation p &amp; FDR q <span class="infoi">i</span></span>'+
-      '<span class="c">mean Pearson r within a series (&#8805; '+E.min_points+' timepoints), across '+E.n_series+' series; '+E.perm+' permutations.</span>'+
+      '<span class="c">mean Pearson r within a series (&#8805; '+E.min_points+' timepoints), across '+E.n_series+' series; '+E.perm+' permutations.'+
+        ((E.vars_capped||E.pairs_capped)?(' <b>Large cohort:</b> '+(E.vars_capped?('top '+E.max_vars+' most-variable variants/series (of &#8804;'+E.n_vars_max+')'):'')+(E.vars_capped&&E.pairs_capped?', ':'')+(E.pairs_capped?(E.max_pairs_perm+' strongest of '+E.n_candidates+' candidate pairs tested'):'')+'.'):'')+'</span>'+
     '</div>'+
     '<div class="dyn-grid" id="epi-cards"></div>'+
     '<div id="epi-matrix"></div>'+
@@ -4328,23 +4336,41 @@ def _perm_p(series_traj, obs_mean, B=2000, seed=0):
     return (ge + 1) / (B + 1)
 
 
-def build_epistasis(dynamics, min_r=0.8, min_points=3, top=300, perm=2000):
+def _amp(traj):
+    """Amplitude (max-min) of a trajectory's non-null allele frequencies; 0 if flat/empty. Used to pick the
+    most-variable variants when a series has too many to test all pairs of."""
+    vals = [v for v in (traj or []) if v is not None]
+    return (max(vals) - min(vals)) if len(vals) >= 2 else 0.0
+
+
+def build_epistasis(dynamics, min_r=0.8, min_points=3, top=300, perm=2000, max_vars=250, max_pairs_perm=800):
     """Candidate epistatic / linked variant pairs: two SNPs whose allele-frequency trajectories co-vary
     WITHIN a connected series - concordant (rise/fall together) or discordant (one rises as the other
     falls). Score = mean Pearson r of the two trajectories across every series where both move and the
     series has >= min_points timepoints. Significance = a permutation p-value (per pair), then a
     Benjamini-Hochberg FDR q-value across all reported pairs. Recurrence across independent series is
     tracked so a pattern seen in several series (low q) is separable from a lucky single short series.
-    None if nothing qualifies. Built from the dynamics payload (moving variants per series)."""
+    None if nothing qualifies. Built from the dynamics payload (moving variants per series).
+
+    Scaling: the pairwise step is O(variants^2) per series and the permutation test is the dominant cost,
+    so two caps keep it bounded for large cohorts (many variants and/or many samples -> long trajectories):
+    each series contributes at most max_vars variants (the highest-amplitude / most-variable ones), and only
+    the max_pairs_perm strongest-|r| candidate pairs get the (expensive) permutation p-value. Both caps are
+    reported in the payload so the UI can say what was covered; the full trajectories stay in the dynamics/TSV."""
     if not dynamics or not dynamics.get('groups'):
         return None
     pairs, n_series = {}, 0
+    vars_capped, n_vars_max = False, 0
     for g in dynamics['groups']:
         times = g.get('times') or []
         if len(set(times)) < min_points:
             continue
         n_series += 1
         series = g.get('series') or []
+        n_vars_max = max(n_vars_max, len(series))
+        if len(series) > max_vars:   # too many variants to test every pair: keep the most-variable ones
+            vars_capped = True
+            series = sorted(series, key=lambda s: -_amp(s.get('traj')))[:max_vars]
         for i in range(len(series)):
             for j in range(i + 1, len(series)):
                 a, b = series[i], series[j]
@@ -4362,12 +4388,24 @@ def build_epistasis(dynamics, min_r=0.8, min_points=3, top=300, perm=2000):
                 if len(set(times)) > rec['bestn']:   # keep the richest series for the mini-chart
                     rec['bestn'] = len(set(times))
                     rec['times'], rec['trajA'], rec['trajB'], rec['group'] = times, lo['traj'], hi['traj'], g['group']
-    out = []
+    # Collect the pairs that clear the |r| threshold, then permutation-test only the strongest ones: the
+    # permutation p-value is by far the dominant cost, so with many candidate pairs (common when trajectories
+    # are short and spurious high correlations abound) we cap it to the top max_pairs_perm by |mean r|.
+    cands = []
     for key, rec in pairs.items():
         rs = rec['rs']
         mean_r = sum(rs) / len(rs)
         if abs(mean_r) < min_r:
             continue
+        cands.append((abs(mean_r), key, rec, mean_r))
+    n_candidates = len(cands)
+    pairs_capped = n_candidates > max_pairs_perm
+    if pairs_capped:
+        cands.sort(key=lambda c: -c[0])
+        cands = cands[:max_pairs_perm]
+    out = []
+    for _absr, key, rec, mean_r in cands:
+        rs = rec['rs']
         A, B = rec['A'], rec['B']
         n_pos = sum(1 for r in rs if r > 0)
         # seed from the STABLE pair key (positions), not the iteration index, so the permutation p-value is
@@ -4418,6 +4456,8 @@ def build_epistasis(dynamics, min_r=0.8, min_points=3, top=300, perm=2000):
               'truncated': len(deg) > MAXNODES, 'total_nodes': len(deg)}
     return {'pairs': out, 'min_r': min_r, 'min_points': min_points, 'n_series': n_series, 'perm': perm,
             'matrix': matrix,
+            'vars_capped': vars_capped, 'max_vars': max_vars, 'n_vars_max': n_vars_max,
+            'pairs_capped': pairs_capped, 'n_candidates': n_candidates, 'max_pairs_perm': max_pairs_perm,
             'n_concordant': sum(1 for p in out if p['direction'] == 'concordant'),
             'n_discordant': sum(1 for p in out if p['direction'] == 'discordant'),
             'n_strong': sum(1 for p in out if p['tier'] == 'strong')}
