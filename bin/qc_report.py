@@ -1439,15 +1439,17 @@ function renderOverview(){
     ['PASS','WARN','FAIL'].map(function(v){return '<div class="c '+v.toLowerCase()+'"><div class="n">'+c[v]+'</div><div class="l">'+v.toLowerCase()+'</div></div>';}).join('')+'</div>';
   var freq={}; R.samples.forEach(function(s){s.f.forEach(function(f){freq[f]=(freq[f]||0)+1;});});
   var keys=Object.keys(freq).sort(function(a,b){return freq[b]-freq[a];});
-  el('chips').innerHTML='<span class="t">flags</span>'+(keys.length?keys.map(function(f){return '<span class="chip'+(st.flagFilter==f?' on':'')+'" data-f="'+f+'">'+f+'<span class="k">'+freq[f]+'</span></span>';}).join(''):'<span style="color:#94a3b8;font-size:12px">none - every sample clear ✓</span>');
-  Array.prototype.forEach.call(document.querySelectorAll('#chips .chip'),function(ch){ch.onclick=function(){var f=ch.getAttribute('data-f');st.flagFilter=(st.flagFilter==f?null:f);st.onlyFlagged=false;renderAll();};});
+  el('chips').innerHTML='<span class="t">flags</span>'+(keys.length?keys.map(function(f){return '<span class="chip'+(st.flagFilter==f?' on':'')+'" data-f="'+f+'" role="button" tabindex="0" aria-pressed="'+(st.flagFilter==f?'true':'false')+'" aria-label="filter by '+f+'">'+f+'<span class="k">'+freq[f]+'</span></span>';}).join(''):'<span style="color:#94a3b8;font-size:12px">none - every sample clear ✓</span>');
+  Array.prototype.forEach.call(document.querySelectorAll('#chips .chip'),function(ch){function tog(){var f=ch.getAttribute('data-f');st.flagFilter=(st.flagFilter==f?null:f);st.onlyFlagged=false;renderAll();}
+    ch.onclick=tog; ch.onkeydown=function(e){if(e.key=='Enter'||e.key==' '||e.key=='Spacebar'){e.preventDefault();tog();}};});
 }
 
 function renderTable(){
   var mets=R.metrics.filter(function(m){return !st.hidden[m.key];});
-  var head='<tr><th class="s" data-k="s"><input type="checkbox" id="cbAll" title="exclude all shown samples"><span class="hlab"> Sample</span></th><th data-k="v">QC</th>'+
-    mets.map(function(m){var d=(R.defs[m.key]||[''])[0];return '<th data-k="'+m.key+'" title="'+esc(d)+'">'+esc(m.label)+(d?'<span class="infoi" title="'+esc(d)+'">i</span>':'')+(st.sortKey==m.key?(st.asc?' ▲':' ▼'):'')+'</th>';}).join('')+
-    '<th data-k="lineage" style="text-align:left">Lineage</th></tr>';
+  function hsa(k){return ' tabindex="0" aria-sort="'+(st.sortKey==k?(st.asc?'ascending':'descending'):'none')+'"';}  // sortable-header a11y
+  var head='<tr><th class="s" data-k="s"'+hsa('s')+'><input type="checkbox" id="cbAll" title="exclude all shown samples"><span class="hlab"> Sample</span></th><th data-k="v"'+hsa('v')+'>QC</th>'+
+    mets.map(function(m){var d=(R.defs[m.key]||[''])[0];return '<th data-k="'+m.key+'"'+hsa(m.key)+' title="'+esc(d)+'">'+esc(m.label)+(d?'<span class="infoi" title="'+esc(d)+'">i</span>':'')+(st.sortKey==m.key?(st.asc?' ▲':' ▼'):'')+'</th>';}).join('')+
+    '<th data-k="lineage"'+hsa('lineage')+' style="text-align:left">Lineage</th></tr>';
   // optional per-column filter row: one input per column (numeric ops on metric columns, substring otherwise)
   function cfIn(k,ph){return '<input class="cfx" data-fk="'+k+'" value="'+esc(st.colf[k]||'')+'" placeholder="'+esc(ph)+'">';}
   var filtRow = st.showColF ? ('<tr class="colfilt"><th class="s">'+cfIn('s','name…')+'</th><th>'+cfIn('v','PASS/WARN…')+'</th>'+
@@ -1466,7 +1468,7 @@ function renderTable(){
     if(st.groupLin){var lk=s.lineage||'NA'; if(lk!==lastLin){lastLin=lk;
       pre='<tr class="lingrp"><td class="s" colspan="'+ncol+'" style="text-align:left"><span class="ldot" style="background:'+linColor(s.lineage)+'"></span>'+esc(lk)+'</td></tr>';}}
     var badge=s.anc?'<span class="abadge" title="ancient (aDNA) sample">aDNA</span>':'';
-    var tds='<td class="s" data-s="'+esc(s.s)+'"><input type="checkbox" class="cbx" data-s="'+esc(s.s)+'"'+(st.excl[s.s]?' checked':'')+'><span class="sname" data-s="'+esc(s.s)+'">'+esc(s.s)+'</span>'+badge+'</td><td data-v="'+s.v+'"><span class="v '+s.v+'">'+s.v+'</span></td>';
+    var tds='<td class="s" data-s="'+esc(s.s)+'"><input type="checkbox" class="cbx" data-s="'+esc(s.s)+'"'+(st.excl[s.s]?' checked':'')+' aria-label="basket '+esc(s.s)+'"><span class="sname" data-s="'+esc(s.s)+'" role="button" tabindex="0" aria-label="Open profile for '+esc(s.s)+'">'+esc(s.s)+'</span>'+badge+'</td><td data-v="'+s.v+'"><span class="v '+s.v+'">'+s.v+'</span></td>';
     mets.forEach(function(m){var v=s.m[m.key];
       if(v==null){tds+='<td class="na" data-v="">NA</td>';return;}
       var r=RANGES[m.key],nn=r[1]>r[0]?(v-r[0])/(r[1]-r[0]):0;nn=Math.max(0,Math.min(1,nn));var p=(nn*100).toFixed(1);
@@ -1478,7 +1480,8 @@ function renderTable(){
   var af=anyFilterActive(), cntTxt=capped?('first '+TBL_CAP+' of '+total):(total+' / '+R.samples.length);
   el('nshown').innerHTML=cntTxt+' shown'+(af?' <a href="#" id="clrfilt" style="color:var(--accent);cursor:pointer;margin-left:7px;text-decoration:none">clear filters &#10005;</a>':'');
   var cf=el('clrfilt'); if(cf)cf.onclick=function(e){e.preventDefault();clearAllFilters();};
-  Array.prototype.forEach.call(t.querySelectorAll('th[data-k]'),function(th){th.onclick=function(){var k=th.getAttribute('data-k');if(st.sortKey==k)st.asc=!st.asc;else{st.sortKey=k;st.asc=(k=='s');}renderTable();};});
+  Array.prototype.forEach.call(t.querySelectorAll('th[data-k]'),function(th){function srt(){var k=th.getAttribute('data-k');if(st.sortKey==k)st.asc=!st.asc;else{st.sortKey=k;st.asc=(k=='s');}renderTable();}
+    th.onclick=srt; th.onkeydown=function(e){if(e.key=='Enter'||e.key==' '||e.key=='Spacebar'){e.preventDefault();srt();}};});
   Array.prototype.forEach.call(t.querySelectorAll('.cfx'),function(inp){
     inp.onclick=function(e){e.stopPropagation();};
     inp.oninput=function(){var k=inp.getAttribute('data-fk'),pos=inp.selectionStart;st.colf[k]=inp.value;clearTimeout(_cfdb);_cfdb=setTimeout(function(){renderTable();
@@ -1492,7 +1495,8 @@ function renderTable(){
     cb.onclick=function(e){e.stopPropagation();};
     cb.onchange=function(){var s=cb.getAttribute('data-s');if(cb.checked)st.excl[s]=1;else delete st.excl[s];renderCuration();
       var cba=el('cbAll');if(cba){cba.checked=shown.length>0&&shown.every(function(x){return st.excl[x.s];});}};});
-  Array.prototype.forEach.call(t.querySelectorAll('.sname'),function(sp){sp.onclick=function(e){e.stopPropagation();openDetail(sp.getAttribute('data-s'));};});
+  Array.prototype.forEach.call(t.querySelectorAll('.sname'),function(sp){sp.onclick=function(e){e.stopPropagation();openDetail(sp.getAttribute('data-s'));};
+    sp.onkeydown=function(e){if(e.key=='Enter'||e.key==' '||e.key=='Spacebar'){e.preventDefault();e.stopPropagation();openDetail(sp.getAttribute('data-s'));}};});
 }
 
 function renderPlots(){
@@ -1712,8 +1716,9 @@ function openDetail(sid){var s=null;R.samples.forEach(function(x){if(x.s==sid)s=
     '<div class="dbtns"><button class="btn" id="dexcl"></button></div>';
   var dx=el('dexcl');function setlbl(){dx.textContent=st.excl[s.s]?'✓ excluded - click to keep':'exclude this sample';dx.classList.toggle('prim',!st.excl[s.s]);}
   setlbl();dx.onclick=function(){if(st.excl[s.s])delete st.excl[s.s];else st.excl[s.s]=1;setlbl();renderTable();renderCuration();};
-  el('modal').classList.add('open');}
-function closeDetail(){st.detail=null;el('modal').classList.remove('open');}
+  st._opener=document.activeElement; el('modal').classList.add('open'); var mx=el('modalx'); if(mx)mx.focus();}
+function closeDetail(){st.detail=null;el('modal').classList.remove('open');
+  if(st._opener&&st._opener.focus){try{st._opener.focus();}catch(e){}} st._opener=null;}
 
 // ---- genome landscape: samples x reference-position heatmap, multi-track (missing / SNPs / het / indels) ----
 var GTRACKS=[{k:'missing',lab:'Missing',base:[214,64,58]},{k:'snp',lab:'SNPs',base:[14,139,168]},
@@ -2851,7 +2856,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="footer" id="foot"></div>
 </div>
 <button id="expClose" class="exp-close" aria-label="exit fullscreen">✕ close (Esc)</button>
-<div id="modal" class="modal"><div class="modalcard"><button class="modalx" id="modalx" aria-label="close">×</button><div id="modalbody"></div></div></div>
+<div id="modal" class="modal"><div class="modalcard" role="dialog" aria-modal="true" aria-label="Sample detail"><button class="modalx" id="modalx" aria-label="close">×</button><div id="modalbody"></div></div></div>
 <div id="tt"></div>
 <div id="infopop"></div>
 <script>var REPORT=__JSON__;</script>
