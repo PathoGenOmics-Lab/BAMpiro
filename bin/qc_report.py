@@ -1266,6 +1266,7 @@ var extraSet={}; R.extra.forEach(function(e){extraSet[e.key]=1;R.metrics.push(e)
 var st={sortKey:'s',asc:true,q:'',onlyFlagged:false,hidden:{},hi:null,flagFilter:null,ptype:'beeswarm',
         sx:'mean_depth',sy:'breadth_pct',excl:{},detail:null,colorBy:'qc',groupLin:false,ancOnly:null,linFilter:null,gtrack:'missing',maskOn:false,gsel:null,gzoom:null,gbq:'',hotq:'',pnpsq:'',colf:{},showColF:false};
 var SGEO=null, GGEO=null;   // scatter + genome brush geometry caches (for inverse-mapping the rubber-band)
+var _thdb,_qdb,_mxdb,_cfdb;  // debounce timers: keep live inputs snappy at cohort scale (defer heavy re-renders)
 R.extra.forEach(function(e){st.hidden[e.key]=1;});
 // narrow (embedded panel / mobile): show only the essentials by default; the long tail is one click away in "columns"
 if(window.innerWidth<860){['raw_reads','trimmed_reads','read_length','q20_pct','q30_pct','gc_pct','properly_paired_pct','avg_base_quality','het_variants','homo_indels','iupac_pct','het_frac','n_lineages','est_genome_cov','total_variants','median_depth','breadth5x_pct','coverage_cv','unmapped_pct','singleton_pct','mapq0_pct','error_rate_pct','insert_size','insert_size_sd','longest_n_run','n_gaps','ann_moderate','ann_low','ann_modifier','coding_pct','lof_pct','missense_silent','snpeff_warn'].forEach(function(k){st.hidden[k]=1;});}
@@ -1480,8 +1481,8 @@ function renderTable(){
   Array.prototype.forEach.call(t.querySelectorAll('th[data-k]'),function(th){th.onclick=function(){var k=th.getAttribute('data-k');if(st.sortKey==k)st.asc=!st.asc;else{st.sortKey=k;st.asc=(k=='s');}renderTable();};});
   Array.prototype.forEach.call(t.querySelectorAll('.cfx'),function(inp){
     inp.onclick=function(e){e.stopPropagation();};
-    inp.oninput=function(){var k=inp.getAttribute('data-fk'),pos=inp.selectionStart;st.colf[k]=inp.value;renderTable();
-      var again=t.querySelector('.cfx[data-fk="'+k+'"]');if(again){again.focus();try{again.setSelectionRange(pos,pos);}catch(e){}}};});
+    inp.oninput=function(){var k=inp.getAttribute('data-fk'),pos=inp.selectionStart;st.colf[k]=inp.value;clearTimeout(_cfdb);_cfdb=setTimeout(function(){renderTable();
+      var again=el('gstable').querySelector('.cfx[data-fk="'+k+'"]');if(again){again.focus();try{again.setSelectionRange(pos,pos);}catch(e){}}},140);};});
   Array.prototype.forEach.call(t.querySelectorAll('tbody tr[data-s]'),function(tr){tr.onclick=function(){setHi(tr.getAttribute('data-s'));};});
   // curation basket: exclusion checkboxes (stopPropagation so they don't sort/highlight)
   var cbAll=el('cbAll');
@@ -2358,7 +2359,7 @@ function renderSnpMatrix(){
     }).join('')+'</tbody>';
     el('snpmxtable').innerHTML='<thead>'+metaRows+nameRow+'</thead>'+body;
   }
-  el('snpmxq').oninput=draw;
+  el('snpmxq').oninput=function(){clearTimeout(_mxdb);_mxdb=setTimeout(draw,160);};
   el('snpmxdp').onchange=draw;
   if(meta){
     Array.prototype.forEach.call(host.querySelectorAll('.snpmx-filters select'),function(sel){ sel.onchange=function(){ var f=sel.getAttribute('data-f'); if(sel.value) snpmxFilter[f]=sel.value; else delete snpmxFilter[f]; draw(); }; });
@@ -2458,7 +2459,7 @@ el('foot').innerHTML='Generated '+R.generated+' · thresholds are adjustable liv
   Object.keys(R.thresholds).map(function(k){return k+'='+R.thresholds[k];}).join(', ')+'). Values scale within each column; NA = not reported.';
 el('colmenu').innerHTML=R.metrics.map(function(m){return '<label><input type="checkbox" data-k="'+m.key+'"'+(st.hidden[m.key]?'':' checked')+'> '+esc(m.label)+'</label>';}).join('');
 Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.onchange=function(){if(cb.checked)delete st.hidden[cb.getAttribute('data-k')];else st.hidden[cb.getAttribute('data-k')]=1;renderTable();};});
-el('q').oninput=function(e){st.q=e.target.value.toLowerCase().trim();renderTable();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderTemporal();};
+el('q').oninput=function(e){st.q=e.target.value.toLowerCase().trim();renderTable();clearTimeout(_qdb);_qdb=setTimeout(function(){renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderTemporal();},160);};
 // per-panel gene search (Functional gene burden / Variable genes / pN-pS): filter each gene table by gene name
 [['gbq','gbq',renderGeneBurden],['hotq','hotq',renderHotspots],['pnpsq','pnpsq',renderPnps]].forEach(function(w){var inp=el(w[0]);if(inp)inp.oninput=function(e){st[w[1]]=e.target.value.trim();w[2]();};});
 el('of').onchange=function(e){st.onlyFlagged=e.target.checked;renderAll();};
@@ -2485,14 +2486,14 @@ el('thbox').innerHTML='<label style="display:inline-flex;flex-direction:column;f
   '<button class="btn" id="threset" style="align-self:flex-end">reset</button>';
 var thpre=el('thpreset'),thnote=el('thnote');
 if(thpre)thpre.onchange=function(){var p=null;PRESETS.forEach(function(x){if(x.id==thpre.value)p=x;});if(!p){thnote.textContent='';return;}thnote.textContent=p.note;applyThr(p.th);};
-Array.prototype.forEach.call(document.querySelectorAll('#thbox input'),function(inp){inp.oninput=function(){var v=parseFloat(inp.value);if(!isNaN(v)){thr[inp.getAttribute('data-t')]=v;if(thpre)thpre.value='';if(thnote)thnote.textContent='';recompute();renderAll();saveState();}};});
+Array.prototype.forEach.call(document.querySelectorAll('#thbox input'),function(inp){inp.oninput=function(){var v=parseFloat(inp.value);if(!isNaN(v)){thr[inp.getAttribute('data-t')]=v;if(thpre)thpre.value='';if(thnote)thnote.textContent='';clearTimeout(_thdb);_thdb=setTimeout(function(){recompute();renderAll();saveState();},180);}};});
 el('threset').onclick=function(){if(thpre)thpre.value='';if(thnote)thnote.textContent='';applyThr(assign({},R.thresholds));};
 // ancient (aDNA) live thresholds
 if(R.n_ancient){var ATH=[['depth_min','aDNA depth min'],['breadth_min','aDNA breadth %'],['missing_max','aDNA missing %'],['mapping_min','aDNA mapped %'],['dup_max','aDNA dup %'],['iupac_max','aDNA IUPAC %'],['damage_min_ct',"5′ C>T min (0-1)"]];
   el('athbox').innerHTML='<div style="flex-basis:100%;font-size:10px;color:#8a5a12;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Ancient (aDNA) thresholds &middot; a 5x mummy is judged here, not against the modern gate</div>'+
     ATH.map(function(t){return '<label style="display:inline-flex;flex-direction:column;font-size:10px;color:#64748b;gap:2px">'+t[1]+
     '<input type="number" step="any" data-t="'+t[0]+'" value="'+(athr[t[0]]!=null?athr[t[0]]:'')+'" style="width:78px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:12px"></label>';}).join('');
-  Array.prototype.forEach.call(document.querySelectorAll('#athbox input'),function(inp){inp.oninput=function(){var v=parseFloat(inp.value);if(!isNaN(v)){athr[inp.getAttribute('data-t')]=v;recompute();renderAll();saveState();}};});}
+  Array.prototype.forEach.call(document.querySelectorAll('#athbox input'),function(inp){inp.oninput=function(){var v=parseFloat(inp.value);if(!isNaN(v)){athr[inp.getAttribute('data-t')]=v;clearTimeout(_thdb);_thdb=setTimeout(function(){recompute();renderAll();saveState();},180);}};});}
 // CSV export of the current (filtered rows, visible columns) table
 el('csv').onclick=function(){var mets=R.metrics.filter(function(m){return !st.hidden[m.key];});
   var head=['sample','verdict'].concat(mets.map(function(m){return m.key;})).concat(['lineage','flags']);
