@@ -811,8 +811,13 @@ body.toc-collapsed header{padding-left:56px}
 .toc-group{margin-bottom:4px}
 .toc-gh{display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--mut);padding:9px 10px 4px;cursor:pointer;user-select:none;border-radius:7px}
 .toc-gh:hover{color:var(--ink)}
-.toc-chev{font-size:9px;transition:transform .15s;opacity:.7}
+.toc-chev{transition:transform .15s;opacity:.7;display:inline-flex}
 .toc-group.closed .toc-chev{transform:rotate(-90deg)}
+/* homogeneous icon family (inline Lucide SVG, inherits text colour) */
+.ic{width:1.05em;height:1.05em;flex:none;vertical-align:-.16em;stroke-width:2;margin-right:.36em}
+.ic.sort{width:.85em;height:.85em;margin:0 0 0 .25em;opacity:.85;vertical-align:-.05em}
+.toc-chev .ic{width:13px;height:13px;margin:0}
+#toc-toggle .ic,#themeToggle .ic,.modalx .ic{margin:0}
 .toc-group.closed .toc-items{display:none}
 .toc-items{display:flex;flex-direction:column;gap:1px}
 .toc-link{color:#5b6b7e;text-decoration:none;font-size:13.5px;padding:6px 12px;border-radius:8px;font-weight:500;border-left:2px solid transparent}
@@ -1114,6 +1119,13 @@ table.snpmx td.snpmx-cell.wdp{min-width:42px}
 .snpmx-dp{display:block;font-size:8.5px;color:var(--txt2);line-height:1.15}
 table.snpmx td.snpmx-empty{background:repeating-linear-gradient(45deg,#f6f8fb,#f6f8fb 3px,#eef2f7 3px,#eef2f7 6px)}
 table.snpmx tbody tr:hover td.snpmx-info{background:var(--soft)}
+/* leading search glyph on search fields (background SVG). Placed last so it wins over the
+   `background:var(--panel)` shorthands above, which would otherwise reset background-image. */
+.dyn-search,.gsearch,.controls input[type=search]{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238895a6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:11px 50%;background-size:15px;padding-left:33px}
+html.dark .dyn-search,html.dark .gsearch,html.dark .controls input[type=search]{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236f7f92' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E")}
 """
 
 JS = r"""
@@ -1441,6 +1453,27 @@ function flagWhy(s,fl){var T=actv(s),M=MET;function u(k){return (M[k]&&M[k].kind
     case 'ANNOTATION_POOR':return 'annotated '+shortv(s.m.annotated_pct,'pct')+'% below floor '+ANNOT_FLOOR+' or below cohort; the GFF-to-snpEff database may be mismatched for this reference';
     default:return fl;}}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+// ---- Icon set (Lucide, MIT): one homogeneous stroke family; currentColor -> auto light/dark ----
+var IC={
+  printer:'<path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.3 17.7-1.4 1.4"/><path d="m19.1 4.9-1.4 1.4"/>',
+  moon:'<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  panel:'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>',
+  sliders:'<line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/>',
+  maximize:'<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/>',
+  minimize:'<polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" x2="21" y1="10" y2="3"/><line x1="3" x2="10" y1="21" y2="14"/>',
+  basket:'<path d="m15 11-1 9"/><path d="m19 11-4-7"/><path d="M2 11h20"/><path d="m3.5 11 1.6 7.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6l1.6-7.4"/><path d="m5 11 4-7"/><path d="m9 11 1 9"/>',
+  download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+  search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  x:'<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  chevronDown:'<path d="m6 9 6 6 6-6"/>',
+  chevronUp:'<path d="m18 15-6-6-6 6"/>',
+  help:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+  alert:'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  ban:'<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>'
+};
+function icon(n,cls){return '<svg class="ic'+(cls?' '+cls:'')+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+(IC[n]||'')+'</svg>';}
+function fillIcons(root){Array.prototype.forEach.call((root||document).querySelectorAll('[data-ic]'),function(e){e.innerHTML=icon(e.getAttribute('data-ic'),e.getAttribute('data-ic-cls')||'');e.removeAttribute('data-ic');});}
 function fmt(v,k){if(v==null)return'NA';if(k=='int')return Math.round(v).toLocaleString('en-US');if(k=='pct')return v.toFixed(1);return v.toFixed(2);}
 function shortv(v,k){if(v==null)return'';if(k=='int')return Math.round(v).toLocaleString('en-US');return (+v).toPrecision(3);}
 function el(id){return document.getElementById(id);}
@@ -1524,7 +1557,7 @@ function renderTable(){
   var mets=R.metrics.filter(function(m){return !st.hidden[m.key];});
   function hsa(k){return ' tabindex="0" aria-sort="'+(st.sortKey==k?(st.asc?'ascending':'descending'):'none')+'"';}  // sortable-header a11y
   var head='<tr><th class="s" data-k="s"'+hsa('s')+'><input type="checkbox" id="cbAll" title="exclude all shown samples"><span class="hlab"> Sample</span></th><th data-k="v"'+hsa('v')+'>QC</th>'+
-    mets.map(function(m){var d=(R.defs[m.key]||[''])[0];return '<th data-k="'+m.key+'"'+hsa(m.key)+' title="'+esc(d)+'">'+esc(m.label)+(d?'<span class="infoi" title="'+esc(d)+'">i</span>':'')+(st.sortKey==m.key?(st.asc?' ▲':' ▼'):'')+'</th>';}).join('')+
+    mets.map(function(m){var d=(R.defs[m.key]||[''])[0];return '<th data-k="'+m.key+'"'+hsa(m.key)+' title="'+esc(d)+'">'+esc(m.label)+(d?'<span class="infoi" title="'+esc(d)+'">i</span>':'')+(st.sortKey==m.key?(st.asc?icon('chevronUp','sort'):icon('chevronDown','sort')):'')+'</th>';}).join('')+
     '<th data-k="lineage"'+hsa('lineage')+' style="text-align:left">Lineage</th></tr>';
   // optional per-column filter row: one input per column (numeric ops on metric columns, substring otherwise)
   function cfIn(k,ph,lab,num){return '<input class="cfx" type="search" data-fk="'+k+'" value="'+esc(st.colf[k]||'')+'" placeholder="'+esc(ph)+'" aria-label="Filter '+esc(lab||k)+'"'+(num?' title="operators: &gt; &gt;= &lt; &lt;= = , a range 5-9 or 5..9; otherwise matches the text"':'')+'>';}
@@ -1554,7 +1587,7 @@ function renderTable(){
   var bodyOut=draw.length?body:'<tr><td colspan="'+ncol+'" style="text-align:left;color:#5f6f81;padding:14px 12px">No samples match the current filters.</td></tr>';
   var t=el('gstable'); t.innerHTML='<thead>'+head+filtRow+'</thead><tbody>'+bodyOut+'</tbody>';
   var af=anyFilterActive(), cntTxt=capped?('first '+TBL_CAP+' of '+total):(total+' / '+R.samples.length);
-  el('nshown').innerHTML=cntTxt+' shown'+(af?' <a href="#" id="clrfilt" style="color:var(--accent);cursor:pointer;margin-left:7px;text-decoration:none">clear filters &#10005;</a>':'');
+  el('nshown').innerHTML=cntTxt+' shown'+(af?' <a href="#" id="clrfilt" style="color:var(--accent);cursor:pointer;margin-left:7px;text-decoration:none">clear filters '+icon('x','sort')+'</a>':'');
   var cf=el('clrfilt'); if(cf)cf.onclick=function(e){e.preventDefault();clearAllFilters();};
   Array.prototype.forEach.call(t.querySelectorAll('th[data-k]'),function(th){function srt(){var k=th.getAttribute('data-k');if(st.sortKey==k)st.asc=!st.asc;else{st.sortKey=k;st.asc=(k=='s');}renderTable();saveState();}
     th.onclick=srt; th.onkeydown=function(e){if(e.key=='Enter'||e.key==' '||e.key=='Spacebar'){e.preventDefault();srt();}};});
@@ -1725,12 +1758,12 @@ function renderFlags(){
 // ---- curation basket + exclusion exports ----
 function nExcl(){return R.samples.filter(function(s){return st.excl[s.s];}).length;}
 function renderCuration(){var ex=nExcl(),keep=R.samples.length-ex;
-  var nb=el('nbasket'); if(nb)nb.textContent='🧺 '+ex+' basketed';   // always-visible toolbar mirror of the basket
+  var nb=el('nbasket'); if(nb)nb.innerHTML=icon('basket')+ex+' basketed';   // always-visible toolbar mirror of the basket
   el('curation').innerHTML='<div class="cur-intro"><b>Exclusion basket</b> - the set of samples you are dropping from the downstream analysis (phylogeny / clock). Tick a sample&#39;s box in the table (or use the buttons), then export the drop list (<b>exclusion.tsv</b>) or the survivors (<b>keep_list.txt</b>).</div>'+
     '<div class="cur-read"><b>'+ex+'</b> to exclude <span class="arw">→</span> <b>'+keep+'</b> kept for downstream</div>'+
    '<div class="cur-btns"><button class="btn" data-cur="fail">exclude FAILs</button><button class="btn" data-cur="flagged">exclude all flagged</button>'+
    '<button class="btn" data-cur="clear">clear</button><button class="btn" data-cur="invert">invert (shown)</button>'+
-   '<button class="btn prim" data-cur="excl">↓ exclusion.tsv</button><button class="btn prim" data-cur="keep">↓ keep_list.txt</button></div>';
+   '<button class="btn prim" data-cur="excl">'+icon('download')+'exclusion.tsv</button><button class="btn prim" data-cur="keep">'+icon('download')+'keep_list.txt</button></div>';
   Array.prototype.forEach.call(el('curation').querySelectorAll('[data-cur]'),function(b){b.onclick=function(){curAction(b.getAttribute('data-cur'));};});
   if(typeof saveState=='function')saveState();}
 function curAction(a){
@@ -2084,7 +2117,7 @@ function renderADNA(){
       '<div class="astat"><span class="ak">5&#39; C&gt;T</span><span class="av '+ctcls+'">'+pctv(d.ct1)+'</span></div>'+
       '<div class="astat"><span class="ak">3&#39; G&gt;A</span><span class="av">'+pctv(d.ga1)+'</span></div>'+
       '<div class="astat"><span class="ak">frag len</span><span class="av">'+(d.fraglen==null?'NA':d.fraglen.toFixed(0)+' bp')+'</span></div></div></div>'+
-      (low?'<div class="alow">⚠ terminal C&gt;T below the '+(lim*100).toFixed(0)+'% authentication floor - possible modern contamination; verify before using as a calibration tip.</div>':'');
+      (low?'<div class="alow">'+icon('alert','sort')+'terminal C&gt;T below the '+(lim*100).toFixed(0)+'% authentication floor - possible modern contamination; verify before using as a calibration tip.</div>':'');
     return '<div class="acard'+(low?' low':'')+'">'+head+body+'</div>';}).join('');
   host.innerHTML='<div class="anote">Elevated terminal C&gt;T (5&#39;) / G&gt;A (3&#39;) deamination is <b>consistent with</b> post-mortem damage and is a necessary authentication signal. It does <b>not</b> by itself prove the DNA is ancient (deaminated modern contaminant DNA can mimic it) or endogenous, and its absence (below the floor) is a red flag for a modern sample mislabelled ancient. Treat this as a screen, not a proof.</div>'+
     '<div class="acards">'+cards+'</div>';
@@ -2168,12 +2201,12 @@ function renderDynamics(){
     '<button class="dyn-btn" id="dynfclear">clear</button></div>'):'';
   host.innerHTML=
     '<div class="dyn-controls">'+
-      '<input id="dynsearch" class="dyn-search" type="search" title="Type a gene name to filter the gene chips and the grid below" placeholder="&#128269; search gene..." value="'+esc(dynState.q)+'">'+
+      '<input id="dynsearch" class="dyn-search" type="search" title="Type a gene name to filter the gene chips and the grid below" placeholder="search gene..." value="'+esc(dynState.q)+'">'+
       '<button class="dyn-btn" id="dynFlag" title="Show only genes that have at least one flagged variant">flagged genes</button>'+
       '<button class="dyn-btn" id="dynAll" title="Select every gene that has a moving variant">all</button>'+
       '<button class="dyn-btn" id="dynNone" title="Deselect all genes">clear</button>'+
       '<label class="dyn-toggle" title="Show a per-timepoint read-depth (DP) bar behind each trajectory"><input type="checkbox" id="dynDP"'+(dynShowDP?' checked':'')+'> depth bars</label>'+
-      '<label class="dyn-zoom" title="Resize the trajectory cards - drag left to fit more charts per row"><span>&#128269;&#8211;/+</span><input type="range" id="dynzoom" min="165" max="360" step="5" value="'+dynZoom+'"></label>'+
+      '<label class="dyn-zoom" title="Resize the trajectory cards - drag left to fit more charts per row"><span>'+icon('search','sort')+'&#8211;/+</span><input type="range" id="dynzoom" min="165" max="360" step="5" value="'+dynZoom+'"></label>'+
       '<span class="dyn-count" id="dynCount"></span></div>'+
     filterUI+
     '<div class="dyn-legend"><span title="'+DYNHELP.emergence+'"><i style="background:'+DYNCOL.emergence+'"></i>emergence <span class="infoi">i</span></span><span title="'+DYNHELP.fixation+'"><i style="background:'+DYNCOL.fixation+'"></i>fixation <span class="infoi">i</span></span><span title="'+DYNHELP.loss+'"><i style="background:'+DYNCOL.loss+'"></i>loss <span class="infoi">i</span></span><span title="'+DYNHELP.nonsyn+'"><i style="border:2px solid '+DYNCOL.nonsyn+';background:var(--panel)"></i>non-synonymous <span class="infoi">i</span></span></div>'+
@@ -2260,7 +2293,7 @@ function renderEpistasis(){
   host.innerHTML=
     '<div class="epi-views">'+VIEWS.map(function(v){return '<button class="epi-viewbtn'+(epiState.view===v[0]?' on':'')+'" data-v="'+v[0]+'">'+v[1]+'</button>';}).join('')+'</div>'+
     '<div class="epi-controls">'+
-      '<input id="epiq" class="dyn-search" type="search" title="Filter the pairs by gene name or position" placeholder="&#128269; filter by gene / position..." value="'+esc(epiState.q)+'">'+
+      '<input id="epiq" class="dyn-search" type="search" title="Filter the pairs by gene name or position" placeholder="filter by gene / position..." value="'+esc(epiState.q)+'">'+
       '<span class="epi-flabel">dynamics</span>'+
       DIRS.map(function(d){return '<button class="dyn-btn epi-dirbtn'+(epiState.dir===d[0]?' on':'')+'" data-d="'+d[0]+'" title="Show '+d[1]+'">'+d[0]+'</button>';}).join('')+
       '<span class="epi-flabel">confidence</span>'+
@@ -2331,8 +2364,8 @@ function renderEpistasis(){
     var COLS=[['pair','Variant A &#8596; Variant B'],['direction','dynamics'],['ar','|r|'],['r','r'],['n','series'],['p','p'],['q','q (FDR)'],['tier','confidence']];
     var k=epiState.tsort.k, asc=epiState.tsort.asc;
     var rows=list.slice().sort(function(a,b){ var x=tsortVal(a,k),y=tsortVal(b,k),c; if(typeof x==='number'&&typeof y==='number')c=x-y; else c=String(x).localeCompare(String(y)); return asc?c:-c; });
-    var h='<div class="epitbl-top"><button class="dyn-btn" id="epidl" title="Download every reported pair as a TSV">&#8595; download pairs (TSV)</button><span class="dyn-count">'+rows.length+' pair(s)</span></div>';
-    h+='<div class="epitbl-wrap"><table class="epitbl"><thead><tr>'+COLS.map(function(c){return '<th data-k="'+c[0]+'">'+c[1]+(k===c[0]?(asc?' &#9650;':' &#9660;'):'')+'</th>';}).join('')+'</tr></thead><tbody>';
+    var h='<div class="epitbl-top"><button class="dyn-btn" id="epidl" title="Download every reported pair as a TSV">'+icon('download')+'download pairs (TSV)</button><span class="dyn-count">'+rows.length+' pair(s)</span></div>';
+    h+='<div class="epitbl-wrap"><table class="epitbl"><thead><tr>'+COLS.map(function(c){return '<th data-k="'+c[0]+'">'+c[1]+(k===c[0]?(asc?icon('chevronUp','sort'):icon('chevronDown','sort')):'')+'</th>';}).join('')+'</tr></thead><tbody>';
     if(!rows.length){ h+='<tr><td colspan="'+COLS.length+'" class="c" style="padding:20px;text-align:center">no variant pair matches the current filter.</td></tr>'; }
     rows.forEach(function(p){
       var a='<b style="color:'+EPICOL.A+'">'+esc(p.geneA||'(intergenic)')+'</b>'+geneRvTag(p.geneA)+' '+String(p.posA).split(':').pop()+(p.aaA?(' '+aaDual(p.aaA,p.aaA_h37rv)):'');
@@ -2407,9 +2440,9 @@ function renderSnpMatrix(){
     '<button class="dyn-btn" id="snpmxfclear">clear</button></div>'):'';
   host.innerHTML=
     '<div class="snpmx-controls">'+
-      '<input id="snpmxq" class="dyn-search" type="search" placeholder="&#128269; filter by gene / position / amino acid...">'+
+      '<input id="snpmxq" class="dyn-search" type="search" placeholder="filter by gene / position / amino acid...">'+
       '<label class="snpmx-toggle"><input type="checkbox" id="snpmxdp" checked> show depth</label>'+
-      '<button class="dyn-btn" id="snpmxdl" title="Download the full matrix (all samples) as a wide TSV">&#8595; download matrix (TSV)</button>'+
+      '<button class="dyn-btn" id="snpmxdl" title="Download the full matrix (all samples) as a wide TSV">'+icon('download')+'download matrix (TSV)</button>'+
       '<span class="dyn-count" id="snpmxcount"></span></div>'+
     filterUI+
     (meta?('<div class="snpmx-metanote">column levels from the samplesheet: '+meta.fields.map(function(f){return '<b>'+esc(f)+'</b>';}).join(' &#183; ')+' &#183; hover a header cell for its value</div>'):'')+
@@ -2489,7 +2522,7 @@ function renderDrug(){
       '<span title="WHO groups 4-5: not associated with resistance"><i style="background:#94a3b8"></i>4&#8211;5 not associated</span>'+
       '<span class="c">Cell = worst grade per drug (R / ? / &#183;). A genomic screen (pathotypr, WHO catalogue, H37Rv numbering), not a clinical DST result.</span></div>'+
     mx+
-    '<div class="dr-controls"><input id="drq" class="dyn-search" type="search" placeholder="&#128269; filter by sample / drug / gene / mutation..." value="'+esc(drState.q)+'"><button class="dyn-btn" id="drdl" title="Download every resistance call as a TSV">&#8595; download calls (TSV)</button><span class="dyn-count" id="drcount"></span></div>'+
+    '<div class="dr-controls"><input id="drq" class="dyn-search" type="search" placeholder="filter by sample / drug / gene / mutation..." value="'+esc(drState.q)+'"><button class="dyn-btn" id="drdl" title="Download every resistance call as a TSV">'+icon('download')+'download calls (TSV)</button><span class="dyn-count" id="drcount"></span></div>'+
     '<div class="epitbl-wrap"><table class="epitbl" id="drtable"></table></div>';
   function draw(){
     var q=drState.q.toLowerCase();
@@ -2519,6 +2552,7 @@ function renderAll(){renderOverview();renderTable();renderLineages();renderPlots
 
 // ---- static wiring ----
 el('meta').textContent=R.samples.length+' samples · '+R.generated;
+fillIcons();   // swap every static data-ic placeholder (header, TOC chevrons, buttons, modal) for its inline SVG
 // click an (i) info icon -> show a persistent popover with its definition (capture phase so it
 // beats the column-sort handler); click anywhere / Esc / scroll to dismiss.
 (function(){
@@ -2766,12 +2800,12 @@ function loadState(){try{var s=JSON.parse(localStorage.getItem(SKEY)||'null');if
   return true;}catch(e){return false;}}
 // ---- expand-to-fill (fullscreen within the window) for the big panels ----
 function collapseExpanded(){var ex=document.querySelector('.panel.expanded');if(!ex)return;ex.classList.remove('expanded');document.body.classList.remove('has-expanded');
-  Array.prototype.forEach.call(document.querySelectorAll('.exp-h'),function(b){b.textContent='⤢ full';});
+  Array.prototype.forEach.call(document.querySelectorAll('.exp-h'),function(b){b.innerHTML=icon('maximize')+'full';});
   renderGenome();renderPlots();renderScatter();renderTable();renderQCspace();renderRefBias();renderFunction();renderGeneBurden();renderHotspots();renderPnps();}
 Array.prototype.forEach.call(document.querySelectorAll('.exp-h'),function(b){b.onclick=function(){
   var panel=el(b.getAttribute('data-panel')); if(!panel)return;
   var willExpand=!panel.classList.contains('expanded'); collapseExpanded();
-  if(willExpand){panel.classList.add('expanded');document.body.classList.add('has-expanded');b.textContent='⤡ close';}
+  if(willExpand){panel.classList.add('expanded');document.body.classList.add('has-expanded');b.innerHTML=icon('minimize')+'close';}
   var rn=b.getAttribute('data-render');
   setTimeout(function(){if(rn=='genome')renderGenome();else if(rn=='plots')renderPlots();else if(rn=='scatter')renderScatter();else if(rn=='corr')renderCorr();else if(rn=='pca')renderQCspace();else if(rn=='divcomp')renderRefBias();else if(rn=='function')renderFunction();else if(rn=='geneburden')renderGeneBurden();else if(rn=='hotspots')renderHotspots();else if(rn=='pnps')renderPnps();else if(rn=='table')renderTable();},20);};});
 if(el('expClose'))el('expClose').onclick=collapseExpanded;
@@ -2789,7 +2823,7 @@ if(!(hadSaved&&Object.keys(st.excl).length))R.samples.forEach(function(s){if(s.v
 renderAll();
 (function(){  // dark / light theme toggle (the early head script set the initial class from the saved pref or OS)
   var tb=el('themeToggle'); if(!tb)return;
-  function setIcon(){tb.textContent=isDark()?'☀️':'🌙';}
+  function setIcon(){tb.innerHTML=icon(isDark()?'sun':'moon');}
   setIcon();
   tb.onclick=function(){var d=!isDark();document.documentElement.classList.toggle('dark',d);
     try{localStorage.setItem('bampiro_theme',d?'dark':'light');}catch(e){}
@@ -2843,38 +2877,38 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>__TITLE__</title>
 <script>(function(){try{var t=localStorage.getItem('bampiro_theme');if(t=='dark'||(!t&&window.matchMedia&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.className+=' dark';}catch(e){}})();</script>
 <style>__CSS__</style></head><body>
-<button id="toc-toggle" title="Show / hide the contents sidebar" aria-label="Toggle contents">&#9776;</button>
+<button id="toc-toggle" title="Show / hide the contents sidebar" aria-label="Toggle contents"><span data-ic="panel"></span></button>
 <div id="tocscrim" aria-hidden="true"></div>
 <nav id="toc" aria-label="Contents">
 <div class="toc-brand"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</div>
-<div class="toc-group"><div class="toc-gh">Overview<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#gstats">Stats</a><a class="toc-link" href="#linsum" id="nav-lin">Lineages</a><a class="toc-link" href="#dist">Distributions</a></div></div>
-<div class="toc-group"><div class="toc-gh">Correlation &amp; structure<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#corr">Correlations</a><a class="toc-link" href="#corrmatrix">Corr matrix</a><a class="toc-link" href="#qcpca" id="nav-pca">QC space</a><a class="toc-link" href="#divcomp" id="nav-divcomp">Divergence</a></div></div>
-<div class="toc-group"><div class="toc-gh">Genome &amp; genes<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#cons">Consensus</a><a class="toc-link" href="#genome" id="nav-genome">Genome</a><a class="toc-link" href="#function" id="nav-function">Function</a><a class="toc-link" href="#geneburden" id="nav-geneburden">Gene burden</a><a class="toc-link" href="#hotspots" id="nav-hot">Variable genes</a></div></div>
-<div class="toc-group"><div class="toc-gh">Evolution<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#temporal" id="nav-temporal">Temporal</a><a class="toc-link" href="#pnps" id="nav-pnps">pN/pS</a><a class="toc-link" href="#adna" id="nav-adna">aDNA</a></div></div>
-<div class="toc-group"><div class="toc-gh">Variants over time<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#dynamics" id="nav-dyn">SNP dynamics</a><a class="toc-link" href="#epistasis" id="nav-epi">Epistasis</a><a class="toc-link" href="#snpmatrix" id="nav-snpmx">SNP matrix</a><a class="toc-link" href="#drug" id="nav-drug">Drug resistance</a></div></div>
-<div class="toc-group"><div class="toc-gh">Quality<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#flagged">Flagged</a></div></div>
+<div class="toc-group"><div class="toc-gh">Overview<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#gstats">Stats</a><a class="toc-link" href="#linsum" id="nav-lin">Lineages</a><a class="toc-link" href="#dist">Distributions</a></div></div>
+<div class="toc-group"><div class="toc-gh">Correlation &amp; structure<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#corr">Correlations</a><a class="toc-link" href="#corrmatrix">Corr matrix</a><a class="toc-link" href="#qcpca" id="nav-pca">QC space</a><a class="toc-link" href="#divcomp" id="nav-divcomp">Divergence</a></div></div>
+<div class="toc-group"><div class="toc-gh">Genome &amp; genes<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#cons">Consensus</a><a class="toc-link" href="#genome" id="nav-genome">Genome</a><a class="toc-link" href="#function" id="nav-function">Function</a><a class="toc-link" href="#geneburden" id="nav-geneburden">Gene burden</a><a class="toc-link" href="#hotspots" id="nav-hot">Variable genes</a></div></div>
+<div class="toc-group"><div class="toc-gh">Evolution<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#temporal" id="nav-temporal">Temporal</a><a class="toc-link" href="#pnps" id="nav-pnps">pN/pS</a><a class="toc-link" href="#adna" id="nav-adna">aDNA</a></div></div>
+<div class="toc-group"><div class="toc-gh">Variants over time<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#dynamics" id="nav-dyn">SNP dynamics</a><a class="toc-link" href="#epistasis" id="nav-epi">Epistasis</a><a class="toc-link" href="#snpmatrix" id="nav-snpmx">SNP matrix</a><a class="toc-link" href="#drug" id="nav-drug">Drug resistance</a></div></div>
+<div class="toc-group"><div class="toc-gh">Quality<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#flagged">Flagged</a></div></div>
 </nav>
-<header><span class="logo"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</span><span class="meta" id="meta"></span><button id="themeToggle" title="Toggle dark / light theme" aria-label="Toggle dark / light theme" style="margin-left:auto">🌙</button></header>
+<header><span class="logo"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</span><span class="meta" id="meta"></span><button id="themeToggle" title="Toggle dark / light theme" aria-label="Toggle dark / light theme" style="margin-left:auto"></button></header>
 <div class="wrap">
 <section class="hero"><div class="summary" id="summary"></div><div class="chips" id="chips"></div></section>
-<div class="provbar"><div class="prov" id="prov"></div><button class="btn" id="printBtn" title="expand + print / save as PDF">⎙ print</button></div>
-<section><details class="dd" style="display:inline-block"><summary>⚙ Live thresholds &amp; presets - adjust and everything re-flags</summary>
+<div class="provbar"><div class="prov" id="prov"></div><button class="btn" id="printBtn" title="expand + print / save as PDF"><span data-ic="printer"></span> print</button></div>
+<section><details class="dd" style="display:inline-block"><summary><span data-ic="sliders"></span> Live thresholds &amp; presets - adjust and everything re-flags</summary>
 <div class="menu" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;min-width:min(520px,calc(100vw - 28px))">
   <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;flex-basis:100%" id="thbox"></div>
   <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;flex-basis:100%" id="athbox"></div>
 </div></details></section>
 <section id="linsum"><h2>Per-lineage summary <span class="c">- medians per lineage; # MIXED = samples with &gt;1 lineage above the mixture cut-off; click a row to filter</span></h2>
 <div class="panel"><div id="lincomp"></div><div class="gtable"><table id="linsumtable"></table></div></div></section>
-<section id="gstats"><h2>General statistics <span class="c">- tick a box to basket a sample for exclusion; click a sample name for its full profile; a header to sort</span><button class="exp-h" data-panel="gstatsPanel" data-render="table" style="margin-left:auto">⤢ full</button></h2>
+<section id="gstats"><h2>General statistics <span class="c">- tick a box to basket a sample for exclusion; click a sample name for its full profile; a header to sort</span><button class="exp-h" data-panel="gstatsPanel" data-render="table" style="margin-left:auto"><span data-ic="maximize"></span>full</button></h2>
 <div class="controls">
   <input id="q" type="search" placeholder="filter samples…">
   <label><input id="of" type="checkbox"> only flagged</label>
   <label id="groupui"><input id="glin" type="checkbox"> group by lineage</label>
   <label title="show a search / filter box under every column header"><input id="colf" type="checkbox"> column filters</label>
   <span id="ancfilter"></span>
-  <details class="dd"><summary>columns ▾</summary><div class="menu" id="colmenu"></div></details>
-  <details class="dd"><summary>? metric help</summary><div class="menu" id="helpmenu"></div></details>
-  <button class="btn" id="csv">↓ export TSV</button>
+  <details class="dd"><summary>columns <span data-ic="chevronDown" data-ic-cls="sort"></span></summary><div class="menu" id="colmenu"></div></details>
+  <details class="dd"><summary><span data-ic="help"></span> metric help</summary><div class="menu" id="helpmenu"></div></details>
+  <button class="btn" id="csv"><span data-ic="download"></span> export TSV</button>
   <a class="hint" id="nbasket" href="#curation" title="samples in the exclusion basket - click to jump to it" style="text-decoration:none;color:var(--accent);cursor:pointer"></a>
   <span class="hint"><span id="nshown"></span></span>
 </div>
@@ -2883,28 +2917,28 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <section id="dist"><h2>Distributions <span class="c">- one mark per sample; shaded band = acceptable range (modern gate); hover for detail</span>
 <span class="seg" id="colorby" style="margin-left:auto"><button class="on" data-cb="qc">colour: QC</button><button data-cb="lineage">lineage</button></span>
 <span class="seg" id="ptype"><button class="on" data-t="beeswarm">beeswarm</button><button data-t="bar">bar</button><button data-t="histogram">histogram</button></span>
-<button class="exp-h" data-panel="plotsPanel" data-render="plots">⤢ full</button></h2>
+<button class="exp-h" data-panel="plotsPanel" data-render="plots"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="plotsPanel"><div id="plots" class="pad" style="padding-top:6px;padding-bottom:6px"></div>
 <div class="legend" id="leg-qc"><span><i style="background:#94a3b8"></i>PASS</span><span><i style="background:#d97706"></i>WARN</span><span><i style="background:#dc2626"></i>FAIL</span><span style="margin-left:auto">beeswarm dashed line = median</span></div>
 <div class="legend" id="leg-lin" style="display:none"></div></div></section>
 <section id="corr"><h2>Correlations <span class="c">- pick two metrics, coloured by QC; drag a box to basket the enclosed samples</span>
 <span id="scbrushinfo" style="margin-left:auto;font-size:11px;color:var(--accent)"></span>
 <select class="msel" id="sx"></select><span style="color:#94a3b8">vs</span><select class="msel" id="sy"></select>
-<button class="exp-h" data-panel="scatter" data-render="scatter">⤢ full</button></h2>
+<button class="exp-h" data-panel="scatter" data-render="scatter"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel pad" id="scatter"></div></section>
 <section id="corrmatrix"><h2>Metric correlation <span class="c">- Spearman rank correlation across the core metrics, over the samples in view; click a cell to load that pair into the scatter above</span>
-<button class="exp-h" data-panel="corrmatrix" data-render="corr" style="margin-left:auto">⤢ full</button></h2>
+<button class="exp-h" data-panel="corrmatrix" data-render="corr" style="margin-left:auto"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel pad" id="corr_body"></div></section>
 <section id="qcpca"><h2>QC-metric space <span class="c">- samples ordinated in standardized QC-metric space (PCA on robust z-scores); a descriptive map of how quality profiles co-vary, not phylogeny and not a test</span>
 <span class="seg" id="pcacb" style="margin-left:auto"><button class="on" data-cb="qc">colour: QC</button><button data-cb="lineage">lineage</button></span>
-<button class="exp-h" data-panel="qcpcaPanel" data-render="pca">⤢ full</button></h2>
+<button class="exp-h" data-panel="qcpcaPanel" data-render="pca"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="qcpcaPanel"><div id="qcpca_body" class="pad"></div>
 <div class="hot-note" id="qcpca_caption"></div>
 <div class="dsub" style="margin:14px 16px 4px">Most unusual samples <span style="font-weight:400;color:#94a3b8">(robust Mahalanobis rank + top deviating metrics)</span></div>
 <div class="gtable" style="max-height:34vh"><table id="pca_outtable"></table></div></div></section>
 <section id="divcomp"><h2>Divergence vs completeness <span class="c">- separates reference-bias suspects (low divergence at low missingness) from honest low-coverage (low divergence explained by high missingness); a screen to inspect, not an automatic flag</span>
 <span class="seg" id="divx" style="margin-left:auto"><button class="on" data-x="missing_pct">x: missing %</button><button data-x="callable_inv">100 - callable %</button></span>
-<button class="exp-h" data-panel="divcompPanel" data-render="divcomp">⤢ full</button></h2>
+<button class="exp-h" data-panel="divcompPanel" data-render="divcomp"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="divcompPanel"><div id="divcomp_body" class="pad"></div>
 <div class="legend" id="divcomp_quadn"></div>
 <div class="hot-note" id="divcomp_caption"></div></div></section>
@@ -2912,12 +2946,12 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="panel"><div id="stacks" style="max-height:60vh;overflow:auto"></div>
 <div class="legend"><span><i style="background:#22a06b"></i>callable</span><span><i style="background:#e6b25a"></i>IUPAC</span><span><i style="background:#cbd5e1"></i>missing (- / N)</span></div></div></section>
 <section id="genome"><h2>Genome landscape <span class="c">- a signal along the reference; rows = samples (grouped by lineage). A contiguous block = a localised feature (e.g. an RD deletion, a variant cluster). Missing = consensus callability (coverage proxy); SNPs/Het/Indels = VCF variant density</span>
-<input class="gsearch" id="genegoto" type="search" placeholder="go to gene" style="margin-left:auto"><span id="gselreadout" style="font-size:11px;color:var(--accent)"></span><button class="btn" id="maskbtn">⛆ mask regions</button><span class="seg" id="gtrack"></span>
-<button class="exp-h" data-panel="genomePanel" data-render="genome">⤢ full</button></h2>
+<input class="gsearch" id="genegoto" type="search" placeholder="go to gene" style="margin-left:auto"><span id="gselreadout" style="font-size:11px;color:var(--accent)"></span><button class="btn" id="maskbtn"><span data-ic="ban"></span>mask regions</button><span class="seg" id="gtrack"></span>
+<button class="exp-h" data-panel="genomePanel" data-render="genome"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="genomePanel"><div class="genome-scroll"><div id="genome_body" class="pad"></div></div>
 <div class="legend"><span><i style="background:rgb(238,244,240)"></i>none / callable</span><span><i style="background:rgb(160,120,150)"></i>&#8594;</span><span><i style="background:rgb(120,70,90)"></i>high</span><span style="margin-left:auto">top strip = cohort mean; hover a cell for the position + value</span></div></div></section>
 <section id="function"><h2>Functional annotation <span class="c">- snpEff impact + effect classes per sample; the missense/silent ratio is a pN/pS PROXY, not a selection test</span>
-<button class="exp-h" data-panel="functionPanel" data-render="function" style="margin-left:auto">⤢ full</button></h2>
+<button class="exp-h" data-panel="functionPanel" data-render="function" style="margin-left:auto"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="functionPanel">
   <div class="provbar" style="margin:12px 16px 4px"><div class="prov" id="fn_cohort"></div></div>
   <div id="fn_stacks" style="max-height:56vh;overflow:auto"></div>
@@ -2925,10 +2959,10 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
   <div class="hot-note" id="fn_caption"></div>
 </div></section>
 <section id="geneburden"><h2>Functional gene burden <span class="c">- genes carrying the most HIGH+MODERATE variants across the cohort, with the dominant effect class; a functional companion to Variable genes below, not a selection test</span>
-<input class="gsearch" id="gbq" type="search" placeholder="search gene" style="margin-left:auto"><button class="exp-h" data-panel="geneburdenPanel" data-render="geneburden">⤢ full</button></h2>
+<input class="gsearch" id="gbq" type="search" placeholder="search gene" style="margin-left:auto"><button class="exp-h" data-panel="geneburdenPanel" data-render="geneburden"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="geneburdenPanel"><div id="gb_body"><div class="hot-note" id="gb_note"></div><div class="gtable" style="max-height:44vh"><table id="gbtable"></table></div></div></div></section>
 <section id="hotspots"><h2>Variable genes <span class="c">- genes/regions with the most SNPs across the cohort; click a row to mark it on the SNP track</span>
-<input class="gsearch" id="hotq" type="search" placeholder="search gene" style="margin-left:auto"><button class="exp-h" data-panel="hotspotsPanel" data-render="hotspots">⤢ full</button></h2>
+<input class="gsearch" id="hotq" type="search" placeholder="search gene" style="margin-left:auto"><button class="exp-h" data-panel="hotspotsPanel" data-render="hotspots"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="hotspotsPanel"><div id="hot_body"><div class="hot-note" id="hot_note"></div><div class="gtable" style="max-height:44vh"><table id="hottable"></table></div></div></div></section>
 <section id="dynamics"><h2>SNP dynamics <span class="c">- search &amp; select genes to see the allele-frequency trajectories of their variants over time; events flag emergence / fixation / loss / non-synonymous</span></h2>
 <div class="panel pad" id="dyn_body"></div></section>
@@ -2945,15 +2979,15 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="legend"><span><i style="background:var(--accent)"></i>sample year</span><span>bar = sampling span</span><span style="margin-left:auto">informative-site proxy = median SNPs</span></div>
 <div class="hot-note" id="temporal_caption"></div></div></section>
 <section id="pnps"><h2>Selection: pN/pS and dN/dS <span class="c">- alignment-based per-gene dN/dS from eskaks; a cohort selection screen, not a per-sample QC metric</span>
-<input class="gsearch" id="pnpsq" type="search" placeholder="search gene" style="margin-left:auto"><button class="exp-h" data-panel="pnpsPanel" data-render="pnps">⤢ full</button></h2>
+<input class="gsearch" id="pnpsq" type="search" placeholder="search gene" style="margin-left:auto"><button class="exp-h" data-panel="pnpsPanel" data-render="pnps"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="pnpsPanel"><div id="pnps_body"><div class="hot-note" id="pnps_note"></div><div class="gtable" style="max-height:48vh"><table id="pnpstable"></table></div></div></div></section>
 <section id="flagged"><h2>Flagged samples <span class="c">- <span id="nflag"></span> to review; click a flag to filter, hover for the margin</span>
-<button class="btn" id="basketFlagged" style="margin-left:auto">↧ basket all flagged</button></h2>
+<button class="btn" id="basketFlagged" style="margin-left:auto"><span data-ic="basket"></span> basket all flagged</button></h2>
 <div class="panel gtable" style="max-height:50vh"><table id="flagtable"></table></div></section>
 <div class="footer" id="foot"></div>
 </div>
-<button id="expClose" class="exp-close" aria-label="exit fullscreen">✕ close (Esc)</button>
-<div id="modal" class="modal"><div class="modalcard" role="dialog" aria-modal="true" aria-label="Sample detail"><button class="modalx" id="modalx" aria-label="close">×</button><div id="modalbody"></div></div></div>
+<button id="expClose" class="exp-close" aria-label="exit fullscreen"><span data-ic="x"></span>close (Esc)</button>
+<div id="modal" class="modal"><div class="modalcard" role="dialog" aria-modal="true" aria-label="Sample detail"><button class="modalx" id="modalx" aria-label="close"><span data-ic="x"></span></button><div id="modalbody"></div></div></div>
 <div id="tt"></div><div id="toast"></div>
 <div id="infopop"></div>
 <script>var REPORT=__JSON__;</script>
