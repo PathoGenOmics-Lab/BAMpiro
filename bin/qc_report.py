@@ -1482,7 +1482,7 @@ function renderTable(){
   var af=anyFilterActive(), cntTxt=capped?('first '+TBL_CAP+' of '+total):(total+' / '+R.samples.length);
   el('nshown').innerHTML=cntTxt+' shown'+(af?' <a href="#" id="clrfilt" style="color:var(--accent);cursor:pointer;margin-left:7px;text-decoration:none">clear filters &#10005;</a>':'');
   var cf=el('clrfilt'); if(cf)cf.onclick=function(e){e.preventDefault();clearAllFilters();};
-  Array.prototype.forEach.call(t.querySelectorAll('th[data-k]'),function(th){function srt(){var k=th.getAttribute('data-k');if(st.sortKey==k)st.asc=!st.asc;else{st.sortKey=k;st.asc=(k=='s');}renderTable();}
+  Array.prototype.forEach.call(t.querySelectorAll('th[data-k]'),function(th){function srt(){var k=th.getAttribute('data-k');if(st.sortKey==k)st.asc=!st.asc;else{st.sortKey=k;st.asc=(k=='s');}renderTable();saveState();}
     th.onclick=srt; th.onkeydown=function(e){if(e.key=='Enter'||e.key==' '||e.key=='Spacebar'){e.preventDefault();srt();}};});
   Array.prototype.forEach.call(t.querySelectorAll('.cfx'),function(inp){
     inp.onclick=function(e){e.stopPropagation();};
@@ -2467,10 +2467,10 @@ el('meta').textContent=R.samples.length+' samples · '+R.generated;
 el('foot').innerHTML='Generated '+R.generated+' · thresholds are adjustable live above; the pipeline gate uses the defaults ('+
   Object.keys(R.thresholds).map(function(k){return k+'='+R.thresholds[k];}).join(', ')+'). Values scale within each column; NA = not reported.';
 el('colmenu').innerHTML='<div style="display:flex;gap:12px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--line);font-size:12px"><a href="#" id="colall" style="color:var(--accent)">show all</a><a href="#" id="colnone" style="color:var(--accent)">hide all</a></div>'+R.metrics.map(function(m){return '<label><input type="checkbox" data-k="'+m.key+'"'+(st.hidden[m.key]?'':' checked')+'> '+esc(m.label)+'</label>';}).join('');
-Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.onchange=function(){if(cb.checked)delete st.hidden[cb.getAttribute('data-k')];else st.hidden[cb.getAttribute('data-k')]=1;renderTable();};});
+Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.onchange=function(){if(cb.checked)delete st.hidden[cb.getAttribute('data-k')];else st.hidden[cb.getAttribute('data-k')]=1;renderTable();saveState();};});
 (function(){var ca=el('colall'),cn=el('colnone');
-  if(ca)ca.onclick=function(e){e.preventDefault();st.hidden={};Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.checked=true;});renderTable();};
-  if(cn)cn.onclick=function(e){e.preventDefault();Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.checked=false;st.hidden[cb.getAttribute('data-k')]=1;});renderTable();};})();
+  if(ca)ca.onclick=function(e){e.preventDefault();st.hidden={};Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.checked=true;});renderTable();saveState();};
+  if(cn)cn.onclick=function(e){e.preventDefault();Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.checked=false;st.hidden[cb.getAttribute('data-k')]=1;});renderTable();saveState();};})();
 el('q').oninput=function(e){st.q=e.target.value.toLowerCase().trim();renderTable();clearTimeout(_qdb);_qdb=setTimeout(function(){renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderTemporal();},160);};
 // per-panel gene search (Functional gene burden / Variable genes / pN-pS): filter each gene table by gene name
 [['gbq','gbq',renderGeneBurden],['hotq','hotq',renderHotspots],['pnpsq','pnpsq',renderPnps]].forEach(function(w){var inp=el(w[0]);if(inp)inp.oninput=function(e){st[w[1]]=e.target.value.trim();w[2]();};});
@@ -2680,12 +2680,14 @@ if(R.n_ancient){el('ancfilter').innerHTML='<span class="seg" id="ancseg"><button
 var pbtn=el('printBtn'); if(pbtn)pbtn.onclick=function(){window.print();};
 // ---- persistence of the curated view (basket + thresholds), namespaced per sample-set so two reports don't bleed ----
 var SKEY='bampiro_qc_v2:'+R.samples.length+':'+(R.samples[0]?R.samples[0].s:'')+':'+(R.samples.length?R.samples[R.samples.length-1].s:'');
-function saveState(){try{localStorage.setItem(SKEY,JSON.stringify({excl:st.excl,thr:thr,athr:athr}));}catch(e){}}
+function saveState(){try{localStorage.setItem(SKEY,JSON.stringify({excl:st.excl,thr:thr,athr:athr,hidden:st.hidden,sortKey:st.sortKey,asc:st.asc}));}catch(e){}}
 function loadState(){try{var s=JSON.parse(localStorage.getItem(SKEY)||'null');if(!s)return false;
   if(s.thr)Object.keys(s.thr).forEach(function(k){if(k in thr)thr[k]=s.thr[k];});
   if(s.athr)Object.keys(s.athr).forEach(function(k){if(k in athr)athr[k]=s.athr[k];});
   if(s.excl&&typeof s.excl=='object'){var have={};R.samples.forEach(function(x){have[x.s]=1;});
     st.excl={};Object.keys(s.excl).forEach(function(k){if(have[k])st.excl[k]=1;});}  // drop unknown sample ids
+  if(s.hidden&&typeof s.hidden=='object')st.hidden=s.hidden;        // restore the chosen visible columns
+  if(s.sortKey){st.sortKey=s.sortKey;st.asc=!!s.asc;}              // and the sort order (SKEY is per-cohort)
   return true;}catch(e){return false;}}
 // ---- expand-to-fill (fullscreen within the window) for the big panels ----
 function collapseExpanded(){var ex=document.querySelector('.panel.expanded');if(!ex)return;ex.classList.remove('expanded');document.body.classList.remove('has-expanded');
@@ -2706,6 +2708,7 @@ document.addEventListener('keydown',function(e){if(e.key=='Escape'&&st.detail)cl
 var hadSaved=loadState();
 Array.prototype.forEach.call(document.querySelectorAll('#thbox input'),function(inp){var k=inp.getAttribute('data-t');if(k in thr)inp.value=thr[k];});
 if(R.n_ancient)Array.prototype.forEach.call(document.querySelectorAll('#athbox input'),function(inp){var k=inp.getAttribute('data-t');if(k in athr)inp.value=athr[k];});
+Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.checked=!st.hidden[cb.getAttribute('data-k')];});  // sync the column checkboxes to any restored/hidden set
 recompute();
 if(!(hadSaved&&Object.keys(st.excl).length))R.samples.forEach(function(s){if(s.v=='FAIL')st.excl[s.s]=1;});  // preselect FAILs unless a saved basket exists
 renderAll();
