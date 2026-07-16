@@ -46,28 +46,37 @@ def SAMPLE_PUBLISH_DIR = { sid -> "${final_outdir}/${sid}" }
 /* ----------------------------- TSV Parsing ----------------------------- */
 
 def tsvFile = new File(params.tsv as String)
-if (!tsvFile.exists()) throw new RuntimeException("TSV not found: ${params.tsv}")
+if (!tsvFile.exists()) throw new RuntimeException("Samplesheet not found: ${params.tsv}")
 
 def lines = tsvFile.readLines()
-if (lines.size() < 2) throw new RuntimeException("TSV has no data rows: ${params.tsv}")
+if (lines.size() < 2) throw new RuntimeException("Samplesheet has a header but no data rows: ${params.tsv}")
 
 def header = lines[0].replace('\r','').split('\t')*.trim()
 def col = [:]
 header.eachWithIndex { h,i -> col[h]=i }
 
+// Validate the WHOLE samplesheet before running anything, collecting every problem so the
+// user can fix them all in one pass instead of rerunning after each first error.
+def errors = []
+
 ['sampleId','r1','refId','refFasta','refGff'].each { req ->
-    if (!col.containsKey(req)) throw new RuntimeException("TSV missing required column: ${req}")
+    if (!col.containsKey(req)) errors << "header is missing the required column '${req}'"
+}
+if (errors) {
+    log.error "Samplesheet ${params.tsv} is unusable:\n" + errors.collect{ "  - ${it}" }.join('\n')
+    throw new RuntimeException("Samplesheet header invalid (${errors.size()} problem(s)); see the list above.")
 }
 
 def refMap    = [:]
-def refGffMap = [:] 
+def refGffMap = [:]
 def expectedMap = [:].withDefault{0}
 def seenRuns = [:].withDefault{0}
 def peList = []
 def seList = []
 def hasTax = false
 
-lines.drop(1).each { raw ->
+lines.drop(1).eachWithIndex { raw, idx ->
+    def rowNum = idx + 2   // header is line 1, so the first data row is line 2
     def line = raw.replace('\r','')
     if (!line.trim()) return
     if (line.startsWith('#')) return
@@ -83,11 +92,14 @@ lines.drop(1).each { raw ->
     def taxId    = col.containsKey('taxId') ? cleanStr(p[col.taxId]) : null
     def runId    = col.containsKey('runId') ? cleanStr(p[col.runId]) : null
 
-    if (!sampleId) throw new RuntimeException("Empty sampleId in TSV line: ${raw}")
-    if (!r1Str)    throw new RuntimeException("Empty r1 for sampleId=${sampleId}")
-    if (!refId)    throw new RuntimeException("Empty refId for sampleId=${sampleId}")
-    if (!refFasta) throw new RuntimeException("Empty refFasta for sampleId=${sampleId}")
-    if (!refGff)   throw new RuntimeException("Empty refGff for sampleId=${sampleId}")
+    // Required fields: record every missing one for this row, then skip the row.
+    def missingCols = []
+    if (!sampleId) missingCols << 'sampleId'
+    if (!r1Str)    missingCols << 'r1'
+    if (!refId)    missingCols << 'refId'
+    if (!refFasta) missingCols << 'refFasta'
+    if (!refGff)   missingCols << 'refGff'
+    if (missingCols) { errors << "row ${rowNum}: empty required field(s): ${missingCols.join(', ')}"; return }
 
     if (nullish(r2Str)) r2Str = null
     def mode = (r2Str ? "PE" : "SE")
@@ -105,16 +117,20 @@ lines.drop(1).each { raw ->
     def runN = (seenRuns[runKey] = seenRuns[runKey] + 1)
     if (runN > 1) runId = "${runId}_${runN}"
 
-    if (!new File(r1Str).exists()) throw new RuntimeException("R1 not found: ${r1Str}")
-    if (mode == "PE" && !new File(r2Str).exists()) throw new RuntimeException("R2 not found: ${r2Str}")
-    if (!new File(refFasta).exists()) throw new RuntimeException("refFasta not found: ${refFasta}")
-    if (!new File(refGff).exists())   throw new RuntimeException("refGff not found: ${refGff}")
+    // Input files: record every missing path for this row, then skip the row.
+    def missingFiles = []
+    if (!new File(r1Str).exists()) missingFiles << "r1=${r1Str}"
+    if (mode == "PE" && !new File(r2Str).exists()) missingFiles << "r2=${r2Str}"
+    if (!new File(refFasta).exists()) missingFiles << "refFasta=${refFasta}"
+    if (!new File(refGff).exists())   missingFiles << "refGff=${refGff}"
+    if (missingFiles) { errors << "row ${rowNum} (sample ${sampleId}): file(s) not found: ${missingFiles.join('; ')}"; return }
 
     if (!refMap.containsKey(refId)) {
         refMap[refId] = refFasta
         refGffMap[refId] = refGff
-    } else {
-        if (refMap[refId] != refFasta) throw new RuntimeException("refId ${refId} has multiple refFasta paths")
+    } else if (refMap[refId] != refFasta) {
+        errors << "row ${rowNum}: refId '${refId}' points to a different refFasta than an earlier row (${refMap[refId]} vs ${refFasta})"
+        return
     }
 
     def key = "${sampleId}||${refId}"
@@ -125,6 +141,14 @@ lines.drop(1).each { raw ->
     } else {
         seList << [sampleId, runId, file(r1Str), refId, taxId]
     }
+}
+
+if (errors) {
+    log.error "Samplesheet ${params.tsv} has ${errors.size()} problem(s):\n" + errors.collect{ "  - ${it}" }.join('\n')
+    throw new RuntimeException("Samplesheet validation failed with ${errors.size()} problem(s); fix the rows listed above and rerun.")
+}
+if (peList.isEmpty() && seList.isEmpty()) {
+    throw new RuntimeException("Samplesheet ${params.tsv} produced no usable samples (every data row was blank or commented out).")
 }
 
 // Check if Kraken DB exists
