@@ -3874,7 +3874,7 @@ renderAll();
     if(window.__dynSetAll) window.__dynSetAll(on);                                    // trajectories
     if(window.__epiSetAll) window.__epiSetAll(on);                                    // epistasis pairs
     if(R.snp_matrix&&R.snp_matrix.rows){ snpmxAll=on; var w=el('snpmxwrap'); if(w)w.scrollTop=0; if(window.__snpmxDraw)window.__snpmxDraw(); }   // matrix sites
-    if(on){ var s=el('dynamics')||el('snpmatrix'); if(s)s.scrollIntoView({behavior:'smooth',block:'start'}); }
+    // deliberately no scroll: the header switch just flips the state, it doesn't navigate anywhere
   };
 })();
 (function(){  // left contents sidebar: collapse toggle, collapsible groups, scroll-spy highlight
