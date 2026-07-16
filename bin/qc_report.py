@@ -832,6 +832,8 @@ tr.colfilt .cfx::placeholder{color:#aeb8c6}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
 .footer{color:var(--mut);font-size:11.5px;margin-top:30px;border-top:1px solid var(--line);padding-top:14px;line-height:1.8}
 #tt{position:fixed;pointer-events:none;background:#0f2431;color:#fff;font-size:12px;line-height:1.5;padding:7px 11px;border-radius:9px;opacity:0;transition:opacity .08s;z-index:80;white-space:nowrap;box-shadow:0 8px 24px rgba(15,36,49,.32)}
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(8px);background:#0f2431;color:#fff;font-size:12.5px;padding:10px 16px;border-radius:10px;box-shadow:0 12px 34px rgba(15,36,49,.4);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:120}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 #infopop{position:fixed;display:none;max-width:320px;background:#0f2431;color:#fff;font-size:13px;line-height:1.55;padding:11px 14px;border-radius:11px;z-index:200;box-shadow:0 12px 34px rgba(15,36,49,.42)}
 /* curation basket */
 .cbx{vertical-align:middle;margin-right:7px;accent-color:var(--accent);cursor:pointer;width:14px;height:14px}
@@ -1451,9 +1453,9 @@ function renderTable(){
     mets.map(function(m){var d=(R.defs[m.key]||[''])[0];return '<th data-k="'+m.key+'"'+hsa(m.key)+' title="'+esc(d)+'">'+esc(m.label)+(d?'<span class="infoi" title="'+esc(d)+'">i</span>':'')+(st.sortKey==m.key?(st.asc?' ▲':' ▼'):'')+'</th>';}).join('')+
     '<th data-k="lineage"'+hsa('lineage')+' style="text-align:left">Lineage</th></tr>';
   // optional per-column filter row: one input per column (numeric ops on metric columns, substring otherwise)
-  function cfIn(k,ph){return '<input class="cfx" data-fk="'+k+'" value="'+esc(st.colf[k]||'')+'" placeholder="'+esc(ph)+'">';}
-  var filtRow = st.showColF ? ('<tr class="colfilt"><th class="s">'+cfIn('s','name…')+'</th><th>'+cfIn('v','PASS/WARN…')+'</th>'+
-    mets.map(function(m){return '<th>'+cfIn(m.key,'>50  5-9…')+'</th>';}).join('')+'<th>'+cfIn('lineage','L4…')+'</th></tr>') : '';
+  function cfIn(k,ph,lab,num){return '<input class="cfx" type="search" data-fk="'+k+'" value="'+esc(st.colf[k]||'')+'" placeholder="'+esc(ph)+'" aria-label="Filter '+esc(lab||k)+'"'+(num?' title="operators: &gt; &gt;= &lt; &lt;= = , a range 5-9 or 5..9; otherwise matches the text"':'')+'>';}
+  var filtRow = st.showColF ? ('<tr class="colfilt"><th class="s">'+cfIn('s','name…','Sample')+'</th><th>'+cfIn('v','PASS/WARN…','QC status')+'</th>'+
+    mets.map(function(m){return '<th>'+cfIn(m.key,'>50  5-9…',m.label,1)+'</th>';}).join('')+'<th>'+cfIn('lineage','L4…','Lineage')+'</th></tr>') : '';
   var linRank={}; (R.lineages||[]).forEach(function(l,i){linRank[l]=i;});
   function lr(s){return (s.lineage&&linRank[s.lineage]!=null)?linRank[s.lineage]:9999;}
   var shown=visible().filter(colMatch);
@@ -1670,7 +1672,9 @@ function exportExcl(){var lines=['sample\tverdict\tancient\tflags\treason'];
   dl(lines.join('\n')+'\n','exclusion.tsv','text/tab-separated-values');}
 function exportKeep(){var lines=R.samples.filter(function(s){return !st.excl[s.s];}).map(function(s){return s.s;}).sort();
   dl(lines.join('\n')+'\n','keep_list.txt','text/plain');}
-function dl(txt,name,type){var blob=new Blob([txt],{type:type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href);}
+function dl(txt,name,type){var blob=new Blob([txt],{type:type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href);toast('Saved '+name);}
+var _toastT;
+function toast(msg){var e0=el('toast'); if(!e0)return; e0.textContent=msg; e0.className='show'; clearTimeout(_toastT); _toastT=setTimeout(function(){e0.className='';},2200);}
 
 // ---- per-sample detail modal ----
 function pctRank(key,val){if(val==null)return null;var vs=R.samples.map(function(s){return s.m[key];}).filter(function(v){return v!=null;});if(!vs.length)return null;var b=0;vs.forEach(function(v){if(v<val)b++;});return Math.round(100*b/vs.length);}
@@ -2462,8 +2466,11 @@ el('meta').textContent=R.samples.length+' samples · '+R.generated;
 })();
 el('foot').innerHTML='Generated '+R.generated+' · thresholds are adjustable live above; the pipeline gate uses the defaults ('+
   Object.keys(R.thresholds).map(function(k){return k+'='+R.thresholds[k];}).join(', ')+'). Values scale within each column; NA = not reported.';
-el('colmenu').innerHTML=R.metrics.map(function(m){return '<label><input type="checkbox" data-k="'+m.key+'"'+(st.hidden[m.key]?'':' checked')+'> '+esc(m.label)+'</label>';}).join('');
+el('colmenu').innerHTML='<div style="display:flex;gap:12px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--line);font-size:12px"><a href="#" id="colall" style="color:var(--accent)">show all</a><a href="#" id="colnone" style="color:var(--accent)">hide all</a></div>'+R.metrics.map(function(m){return '<label><input type="checkbox" data-k="'+m.key+'"'+(st.hidden[m.key]?'':' checked')+'> '+esc(m.label)+'</label>';}).join('');
 Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.onchange=function(){if(cb.checked)delete st.hidden[cb.getAttribute('data-k')];else st.hidden[cb.getAttribute('data-k')]=1;renderTable();};});
+(function(){var ca=el('colall'),cn=el('colnone');
+  if(ca)ca.onclick=function(e){e.preventDefault();st.hidden={};Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.checked=true;});renderTable();};
+  if(cn)cn.onclick=function(e){e.preventDefault();Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.checked=false;st.hidden[cb.getAttribute('data-k')]=1;});renderTable();};})();
 el('q').oninput=function(e){st.q=e.target.value.toLowerCase().trim();renderTable();clearTimeout(_qdb);_qdb=setTimeout(function(){renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderTemporal();},160);};
 // per-panel gene search (Functional gene burden / Variable genes / pN-pS): filter each gene table by gene name
 [['gbq','gbq',renderGeneBurden],['hotq','hotq',renderHotspots],['pnpsq','pnpsq',renderPnps]].forEach(function(w){var inp=el(w[0]);if(inp)inp.oninput=function(e){st[w[1]]=e.target.value.trim();w[2]();};});
@@ -2504,7 +2511,7 @@ el('csv').onclick=function(){var mets=R.metrics.filter(function(m){return !st.hi
   var head=['sample','verdict'].concat(mets.map(function(m){return m.key;})).concat(['lineage','flags']);
   var lines=[head.join('\t')]; visible().filter(colMatch).forEach(function(s){lines.push([s.s,s.v].concat(mets.map(function(m){return s.m[m.key]==null?'':s.m[m.key];})).concat([s.lineage||'',s.f.join(';')]).join('\t'));});
   var blob=new Blob([lines.join('\n')],{type:'text/tab-separated-values'}),a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);a.download='qc_table.tsv';a.click();URL.revokeObjectURL(a.href);};
+  a.href=URL.createObjectURL(blob);a.download='qc_table.tsv';a.click();URL.revokeObjectURL(a.href);toast('Saved qc_table.tsv ('+visible().filter(colMatch).length+' rows)');};
 // tooltips + click on plots/scatter
 function bandTip(pk,val){var b=bandFor(pk,thr);if(!b)return'';var mk=(MET[pk]||{}).kind,inb=val>=b[0]&&val<=b[1];
   var lab=(b[0]==-Infinity)?('≤ '+shortv(b[1],mk)):(b[1]==Infinity)?('≥ '+shortv(b[0],mk)):(shortv(b[0],mk)+' to '+shortv(b[1],mk));
@@ -2857,7 +2864,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 </div>
 <button id="expClose" class="exp-close" aria-label="exit fullscreen">✕ close (Esc)</button>
 <div id="modal" class="modal"><div class="modalcard" role="dialog" aria-modal="true" aria-label="Sample detail"><button class="modalx" id="modalx" aria-label="close">×</button><div id="modalbody"></div></div></div>
-<div id="tt"></div>
+<div id="tt"></div><div id="toast"></div>
 <div id="infopop"></div>
 <script>var REPORT=__JSON__;</script>
 <script>__JS__</script>
