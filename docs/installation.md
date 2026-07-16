@@ -48,6 +48,6 @@ The image also bundles, under `/opt/pathotypr/`, Pathotypr's marker panels +
 pre-trained RF model (Zenodo v1.0.0, DOI
 [10.5281/zenodo.19210044](https://doi.org/10.5281/zenodo.19210044)) and the
 MTBC-ancestor reference, plus the pre-downloaded **H37Rv snpEff database**
-(`Mycobacterium_tuberculosis_h37rv`) — so [lineage/DR typing](pathotypr.md) and
+(`Mycobacterium_tuberculosis_h37rv`) - so [lineage/DR typing](pathotypr.md) and
 [dual amino-acid annotation](pathotypr.md#dual-amino-acid-numbering-h37rv--mycobrowser)
 run offline and reproducibly.

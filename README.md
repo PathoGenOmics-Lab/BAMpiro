@@ -27,14 +27,14 @@ __and Mireia Coscolla<sup>1</sup>__
 ## What is BAMpiro?
 
 > [!TIP]
-> **New here?** Start with the [Quick Start](docs/quickstart.md) — a run command, the
+> **New here?** Start with the [Quick Start](docs/quickstart.md) - a run command, the
 > samplesheet format, and where to find the report. Every parameter is listed in the
 > [configuration reference](docs/configuration.md).
 
 **BAMpiro** is a modular, containerized **Nextflow (DSL2)** pipeline that takes raw
 bacterial short reads all the way to annotated variants, consensus sequences, and a
 single **interactive QC report**. It is tuned by default for *Mycobacterium
-tuberculosis* but is **organism-agnostic** — point it at any reference genome + GFF.
+tuberculosis* but is **organism-agnostic** - point it at any reference genome + GFF.
 
 **Main features:**
 
@@ -60,7 +60,7 @@ tuberculosis* but is **organism-agnostic** — point it at any reference genome 
 ## Installation
 
 Requires **Nextflow ≥ 24.04.2** and **Docker** or **Singularity**. The pipeline
-pulls a pinned `paururo/bambard` image with every tool built in — nothing else to
+pulls a pinned `paururo/bambard` image with every tool built in - nothing else to
 install.
 
 ```bash
@@ -72,7 +72,7 @@ Full requirements and the bundled software versions: [Installation](docs/install
 ## Quick Start
 
 BAMpiro assumes *M. tuberculosis* settings by default (ploidy = 2 for mixed
-infections). Lineage/DR typing is **off** by default — enable it (and dual
+infections). Lineage/DR typing is **off** by default - enable it (and dual
 amino-acid numbering) with:
 
 ```bash
@@ -89,9 +89,9 @@ merging, and [Outputs](docs/outputs.md) for the result layout.
 
 Every run writes a single self-contained `<samplesheet>_qc_report.html` (no internet,
 no CDN) that folds the whole cohort into one dashboard: **live-adjustable QC
-thresholds**, a collapsible sidebar, and **20 linked panels** — general statistics,
+thresholds**, a collapsible sidebar, and **20 linked panels** - general statistics,
 per-lineage summary, QC-space PCA, genome landscape, SNP dynamics, epistasis, a full
-SNP matrix, and drug resistance — plus a machine-readable per-sample
+SNP matrix, and drug resistance - plus a machine-readable per-sample
 `qc_flags.tsv`. It is organism-agnostic and works offline on an HPC login node.
 
 Full panel list and interactive features: [Interactive QC Report](docs/qc-report.md).
@@ -116,13 +116,13 @@ Browse the whole set under [`docs/`](docs/), or build the searchable docs site w
 
 The name is a play on words combining bioinformatics and folklore:
 
-- **BAM** — Binary Alignment Map, the standard format for reads aligned to a
+- **BAM** - Binary Alignment Map, the standard format for reads aligned to a
   reference genome; the "heart" of this pipeline (mapping → variant calling).
-- **Piro** — combined with "BAM" it sounds like *Vampiro* (Spanish/Portuguese for
+- **Piro** - combined with "BAM" it sounds like *Vampiro* (Spanish/Portuguese for
   vampire).
 
 Just as a vampire seeks blood, BAMpiro seeks BAM files (and FASTQ data) to extract
-vital information — variants, lineages, and stats. A creature that lives in your
+vital information - variants, lineages, and stats. A creature that lives in your
 cluster and processes bacterial genomes.
 
 ## Citation

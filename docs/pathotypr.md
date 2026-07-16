@@ -1,8 +1,8 @@
 # Lineage & Drug-Resistance Typing (Pathotypr)
 
 `--run_pathotypr true` runs
-[**Pathotypr**](https://github.com/PathoGenOmics-Lab/pathotypr) — alignment-free
-(k-mer) MTBC lineage + WHO drug-resistance genotyping — **directly from the
+[**Pathotypr**](https://github.com/PathoGenOmics-Lab/pathotypr) - alignment-free
+(k-mer) MTBC lineage + WHO drug-resistance genotyping - **directly from the
 container** (a bioconda build; the old hard-coded cluster binary is gone). Because
 it types straight from the reads using diagnostic k-mers, it is
 **reference-agnostic**: lineage and DR calls are correct even when your samples were
@@ -10,11 +10,11 @@ mapped to a non-H37Rv reference.
 
 Each sample gets two `split-fastq` passes:
 
-1. **Lineage** — nested sub-lineage classification against the bundled lineage
+1. **Lineage** - nested sub-lineage classification against the bundled lineage
    markers → `<sample>.pathotypr.lineage_summary.tsv` (feeds the per-lineage panel
    and the lineage colours).
-2. **Drug resistance** — WHO-catalogue markers, gated by `--pathotypr_min_alt`
-   (default `95` = near-fixed only; lower to ~10–25 to also catch heteroresistant /
+2. **Drug resistance** - WHO-catalogue markers, gated by `--pathotypr_min_alt`
+   (default `95` = near-fixed only; lower to ~10-25 to also catch heteroresistant /
    minority alleles) → per-sample DR mutations, aggregated into
    `<samplesheet>_dr.tsv` and shown in the **Drug resistance** panel of the
    [QC report](qc-report.md) (a sample × drug matrix with the worst WHO grade per

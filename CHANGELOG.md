@@ -12,46 +12,46 @@ drug-resistance typing**, and a restructured documentation set. Rebranded to
 
 ### Added
 
-- **Consolidated interactive QC report** (`bin/qc_report.py`) — a single
+- **Consolidated interactive QC report** (`bin/qc_report.py`) - a single
   self-contained HTML dashboard (no internet / CDN) built from the whole cohort,
   plus a machine-readable per-sample `qc_flags.tsv` (PASS/WARN/FAIL). Enabled with
   `--make_qc_report` (on by default). It bundles:
-  - **SNP dynamics** — per-variant allele-frequency trajectories over time, gene-
+ - **SNP dynamics** - per-variant allele-frequency trajectories over time, gene-
     centric, with per-timepoint depth bars, a zoom control, and a series filter by
     samplesheet metadata.
-  - **Epistasis** — pairs of variants with concordant / discordant dynamics,
+ - **Epistasis** - pairs of variants with concordant / discordant dynamics,
     scored with a permutation *p*-value and Benjamini-Hochberg FDR, in card, matrix
     and table views.
-  - **SNP matrix** — an explorable, downloadable site × sample matrix with the
+ - **SNP matrix** - an explorable, downloadable site × sample matrix with the
     depth in each cell, samplesheet metadata as column-header levels, and column
     filtering by metadata (also written as a standalone TSV, `--make_snp_matrix`).
-  - **Drug resistance** — a sample × drug matrix (worst WHO grade per drug) and a
+ - **Drug resistance** - a sample × drug matrix (worst WHO grade per drug) and a
     per-mutation table, driven by the Pathotypr WHO-catalogue calls.
-  - Live-adjustable QC thresholds with presets, a collapsible left contents
+ - Live-adjustable QC thresholds with presets, a collapsible left contents
     sidebar, per-section **(i)** info popovers, a sample exclusion basket, and
     panels for lineage summary, distributions, correlations, a metric-correlation
     heatmap, QC-space PCA, genome landscape, functional annotation, gene burden,
     variable genes, and aDNA damage.
 - **Alignment-free lineage & drug-resistance typing with Pathotypr**
-  (`--run_pathotypr`) — now run **from the container** (bioconda build), replacing
+  (`--run_pathotypr`) - now run **from the container** (bioconda build), replacing
   the external cluster binary. It types straight from the reads with diagnostic
   k-mers, so calls are **reference-agnostic**. Two `split-fastq` passes per sample
   (nested sub-lineage + WHO drug-resistance). The Zenodo marker panels + RF model
   (v1.0.0) and the MTBC-ancestor reference are bundled in the image under
   `/opt/pathotypr/`. `--pathotypr_min_alt` tunes the alt-allele cut-off for
   heteroresistant / minority DR alleles.
-- **Dual amino-acid numbering** — an optional canonical re-annotation pass
+- **Dual amino-acid numbering** - an optional canonical re-annotation pass
   (`--annotate_canonical`, `--canonical_snpeff_db`, `--canonical_label`, default
   H37Rv) so the report shows every protein change in both the used-reference and
   the H37Rv / Mycobrowser numbering, with a link to each gene's Mycobrowser locus.
-- **Length-aware read masking** — a per-reference `genmap` mappability track
+- **Length-aware read masking** - a per-reference `genmap` mappability track
   (cached and reused across runs) that drops reads too short to be uniquely placed;
   a repeat BED is emitted alongside.
 - **Virgin (unmasked) consensus** output in parallel with the masked consensus.
 - **CRAM output** for published alignments (`--output_cram`), a selectable
   **publish mode** (`copy` / `link`), and a trimmed default output footprint.
 - **Optional region-parallel FreeBayes** for faster calling on deep samples.
-- **Documentation** — an [mdBook](https://rust-lang.github.io/mdBook/) under `docs/`
+- **Documentation** - an [mdBook](https://rust-lang.github.io/mdBook/) under `docs/`
   (introduction, installation, quick start, configuration, QC report, Pathotypr,
   outputs) with the README slimmed to a landing page.
 

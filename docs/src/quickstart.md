@@ -1,7 +1,7 @@
 # Quick Start
 
 By default BAMpiro assumes *M. tuberculosis* settings (ploidy = 2 to detect mixed
-infections). Lineage/DR typing is **off** by default — enable it with
+infections). Lineage/DR typing is **off** by default - enable it with
 `--run_pathotypr true`.
 
 ```bash
@@ -19,7 +19,7 @@ nextflow run main.nf \
     --run_pathotypr true --annotate_canonical true
 ```
 
-When it finishes, open `results_bampiro/<samplesheet>_qc_report.html` — the
+When it finishes, open `results_bampiro/<samplesheet>_qc_report.html` - the
 consolidated [interactive QC report](qc-report.md). See [Outputs](outputs.md) for
 the full result layout and [Configuration](configuration.md) for every parameter.
 

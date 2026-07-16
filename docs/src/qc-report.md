@@ -1,21 +1,21 @@
 # Interactive QC Report
 
 Every run produces a **single self-contained HTML file**
-(`<samplesheet>_qc_report.html` — no internet or CDN needed) that folds the whole
+(`<samplesheet>_qc_report.html` - no internet or CDN needed) that folds the whole
 cohort into one interactive dashboard, plus a machine-readable
 `<samplesheet>_qc_flags.tsv` of per-sample **PASS/WARN/FAIL** verdicts. It is built
 by `bin/qc_report.py` and controlled by `--make_qc_report` (default `true`).
 
 ## Live & interactive
 
-- **Live thresholds & presets** — edit any QC cut-off (depth, breadth, missing,
+- **Live thresholds & presets** - edit any QC cut-off (depth, breadth, missing,
   duplication, mapping, IUPAC, Ti/Tv, SNP-z, heteroplasmy, mixed-lineage) and the
   whole report re-flags instantly. Presets: *gate defaults*, *strict (modern WGS)*,
   *lenient (aDNA / low-cov)*.
 - **Collapsible table-of-contents sidebar** with scroll-spy; panels with no data
   hide themselves (and their nav link).
 - **Per-section (i) info popovers** explaining each analysis and its caveats.
-- **Exclusion basket** — tick samples (via the table, a drag-box in the scatter, or
+- **Exclusion basket** - tick samples (via the table, a drag-box in the scatter, or
   *basket all flagged*) and export `exclusion.tsv` / `keep_list.txt` for downstream
   phylogeny.
 - Most panels have a fullscreen (⤢) view; the whole report prints / saves to PDF.

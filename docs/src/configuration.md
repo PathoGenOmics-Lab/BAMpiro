@@ -11,14 +11,14 @@ Customize execution by passing parameters on the command line (e.g.
 | | `--container` | *(pinned digest)* | Container image. Defaults to a pinned `paururo/bambard` digest for reproducibility. |
 | | `--nested_output` | `true` | Nest per-sample folders (e.g. `MP001` → `MP/00/1`). |
 | | `--publish_mode` | `copy` | `copy` duplicates outputs into `outdir`; `link` hardlinks them to the work dir. |
-| | `--output_cram` | `false` | Publish the alignment as CRAM (~40–50% smaller) instead of BAM. |
+| | `--output_cram` | `false` | Publish the alignment as CRAM (~40-50% smaller) instead of BAM. |
 | **Lineage & DR (Pathotypr)** | `--run_pathotypr` | `false` | Enable alignment-free MTBC lineage + WHO drug-resistance typing. |
 | | `--pathotypr_bin` | `pathotypr` | Executable name (on `PATH` inside the container). |
 | | `--pathotypr_ref` | `/opt/pathotypr/reference.fasta` | MTBC-ancestor FASTA the markers are defined on (bundled). |
 | | `--pathotypr_markers` | `/opt/pathotypr/lineage_markers.tsv` | Zenodo lineage markers (bundled). |
 | | `--pathotypr_dr_markers` | `/opt/pathotypr/dr_markers.tsv` | Zenodo WHO drug-resistance markers (bundled). |
 | | `--pathotypr_rf_model` | `/opt/pathotypr/rf_model.pathotypr` | Zenodo pre-trained RF lineage model (bundled). |
-| | `--pathotypr_min_alt` | `95` | Min alt-allele % for a DR call. Lower it (10–25) to catch heteroresistant / minority alleles. |
+| | `--pathotypr_min_alt` | `95` | Min alt-allele % for a DR call. Lower it (10-25) to catch heteroresistant / minority alleles. |
 | **Dual AA numbering** | `--annotate_canonical` | `false` | Re-annotate variants against a canonical snpEff DB for dual (H37Rv) numbering. |
 | | `--canonical_snpeff_db` | `Mycobacterium_tuberculosis_h37rv` | Canonical snpEff genome for the second annotation. |
 | | `--canonical_label` | `H37Rv` | How that numbering is labelled in the report. |
