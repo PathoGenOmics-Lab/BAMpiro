@@ -827,6 +827,10 @@ html.dark table.snpmx td.snpmx-empty{background:repeating-linear-gradient(45deg,
 html.dark .gtable::-webkit-scrollbar-thumb{background:#3a485a;border-color:#18232f}
 #themeToggle,#ghlink{background:none;border:1px solid var(--line);border-radius:9px;width:32px;height:32px;cursor:pointer;color:var(--mut);font-size:15px;display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:var(--sh);text-decoration:none;flex:none}
 #themeToggle:hover,#ghlink:hover{color:var(--accent);border-color:var(--accent)}
+#insightToggle{background:none;border:1px solid var(--line);border-radius:9px;height:32px;padding:0 12px;cursor:pointer;color:var(--mut);font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;line-height:1;box-shadow:var(--sh);flex:none;text-transform:lowercase}
+#insightToggle svg{width:15px;height:15px}
+#insightToggle:hover{color:var(--accent);border-color:var(--accent)}
+#insightToggle.on{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
 .ver{font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:20px;padding:2px 9px;letter-spacing:.2px}
 html.dark .ver{background:var(--accent-soft);color:var(--accent)}
 *{box-sizing:border-box} html{scroll-behavior:smooth}
@@ -1096,6 +1100,22 @@ th .infoi,.dyn-legend .infoi{background:#dde5f0}
 .dyn-chip b{font-weight:700;color:#98a6b8}
 .dyn-chip.sel{background:var(--accent);border-color:var(--accent);color:#fff} .dyn-chip.sel:hover{color:#fff} .dyn-chip.sel b{color:#d7e6ff}
 .dyn-dot{width:8px;height:8px;border-radius:50%;background:#d1495b;display:inline-block}
+/* analytical read-out blocks (one per panel); the header 'insights' toggle hides them all via html.no-insight */
+.insight{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:12px;background:var(--panel);padding:12px 16px;margin:0 0 14px}
+.ins-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:5px}
+.ins-title{font-size:12.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);display:inline-flex;align-items:center;gap:6px}
+.ins-title svg{width:14px;height:14px;stroke:var(--accent)}
+.ins-sub{font-size:11.5px;color:var(--label)}
+.ins-narr{font-size:13px;line-height:1.55;color:var(--ink)} .ins-narr b{font-weight:700}
+.ins-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.ins-chip{font-size:11px;font-weight:600;border-radius:20px;padding:3px 11px;background:var(--soft);border:1px solid var(--line);color:var(--ink);cursor:default}
+.ins-chip.warn{background:#fbf0dd;border-color:#e0a11f;color:#8a5a00}
+.ins-chip.bad{background:#fbe6e4;border-color:#e0544f;color:#9c231c}
+.ins-chip.good{background:#e6f5ee;border-color:#2ea36b;color:#1a7048}
+html.dark .ins-chip.warn{background:#332912;border-color:#7a5b1e;color:#f0c674}
+html.dark .ins-chip.bad{background:#331d1b;border-color:#7a2f2a;color:#f0a9a3}
+html.dark .ins-chip.good{background:#12291f;border-color:#215c40;color:#8fd6b0}
+html.no-insight .insight{display:none}
 .dyn-insight{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:12px;background:var(--panel);padding:13px 16px;margin-bottom:14px}
 .dyn-ins-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:7px}
 .dyn-ins-title{font-size:12.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--accent)}
@@ -1121,11 +1141,6 @@ th .infoi,.dyn-legend .infoi{background:#dde5f0}
 .dyn-drtag.r{background:#b3261e}
 .dyn-ins-caveat{font-size:11px;color:var(--label);margin-top:10px;line-height:1.45;font-style:italic}
 .dyn-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--dyncw,250px),1fr));gap:14px;align-items:start}
-.dyn-grid.flow{grid-template-columns:1fr;gap:16px}
-.dyn-scard{border:1px solid var(--line);border-radius:13px;padding:12px 15px 8px;background:var(--soft)}
-.dyn-scard-h{display:flex;align-items:baseline;gap:10px;margin-bottom:4px;flex-wrap:wrap}
-.dyn-scard-h b{font-size:14px;color:var(--ink)}
-.dyn-scard-sub{font-size:11.5px;color:var(--label)}
 .dyn-card{border:1px solid var(--line);border-radius:13px;padding:11px 13px;background:var(--soft);display:flex;flex-direction:column}
 .dyn-card.flagged{border-color:#cdd9ea;box-shadow:0 1px 0 rgba(31,120,180,.04)}
 .dyn-cardgene-dot{width:7px;height:7px;border-radius:50%;background:#d1495b;display:inline-block;margin-left:5px;vertical-align:1px}
@@ -1568,6 +1583,7 @@ function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;
 // ---- Icon set (Lucide, MIT): one homogeneous stroke family; currentColor -> auto light/dark ----
 var IC={
   printer:'<path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>',
+  spark:'<path d="M12 2.5l2.1 5.9 5.9 2.1-5.9 2.1L12 18.5l-2.1-6L4 10.5l5.9-2.1z"/><path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>',
   sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.3 17.7-1.4 1.4"/><path d="m19.1 4.9-1.4 1.4"/>',
   moon:'<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
   panel:'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>',
@@ -1657,6 +1673,13 @@ function donut(c){var t=(c.PASS+c.WARN+c.FAIL)||1,R0=38,C=2*Math.PI*R0,off=0,seg
 
 // ---- Executive summary: cohort KPIs, quality profile and headline findings (for the PI receiving the file)
 function _median(vals){var a=vals.filter(function(v){return v!=null;}).sort(function(x,y){return x-y;}); if(!a.length)return null; var m=Math.floor(a.length/2); return a.length%2?a[m]:(a[m-1]+a[m])/2;}
+var INS_ICON='<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M12 2.5l2.1 5.9 5.9 2.1-5.9 2.1L12 18.5l-2.1-6L4 10.5l5.9-2.1z"/></svg>';
+// Generic analytical read-out block. title=short caps label; narrHTML=the computed verdict sentence(s);
+// chips=optional array of {t,cls,title} rendered as pills (cls: ''|good|warn|bad). Hidden en masse by the header toggle.
+function insBox(title, narrHTML, chips){
+  var ch=(chips&&chips.length)?('<div class="ins-chips">'+chips.map(function(c){return '<span class="ins-chip'+(c.cls?(' '+c.cls):'')+'"'+(c.title?(' title="'+esc(c.title)+'"'):'')+'>'+c.t+'</span>';}).join('')+'</div>'):'';
+  return '<div class="insight"><div class="ins-h"><span class="ins-title">'+INS_ICON+esc(title)+'</span></div><div class="ins-narr">'+narrHTML+'</div>'+ch+'</div>';
+}
 function _range(vals){var a=vals.filter(function(v){return v!=null;}); return a.length?[Math.min.apply(null,a),Math.max.apply(null,a)]:null;}
 function renderExec(){
   var host=el('exec_body'); if(!host)return;
@@ -2278,9 +2301,8 @@ function renderADNA(){
 }
 
 var DYNCOL={fixation:'#2f6fed',emergence:'#1f9d6b',loss:'#e6893a',nonsyn:'#d1495b',high_impact:'#7c3aed'};
-var DYNSTREAM_PAL=['#3b7dd8','#e0544f','#2ea36b','#e0a11f','#8a63c9','#26a0a0','#d06fae','#c98a3b','#6b8fb5','#b5687a','#5aa9d6','#9c8b3f'];   // categorical, to tell individual variant bands apart in the evolution stream
 var DYNHELP={emergence:'Emergence: the variant is (near-)absent at the first timepoint, then rises above the emergence threshold - a new allele appearing in this series.',fixation:'Fixation: the allele frequency reaches near 1.0 by the last timepoint - the variant has (almost) taken over.',loss:'Loss: the variant is present early then falls back toward 0 - an allele being lost from the series.',nonsyn:'Non-synonymous: the variant changes the protein (missense / stop / frameshift / splice / inframe indel), per snpEff - potentially functional.',high_impact:'High impact: snpEff predicts a HIGH-impact effect (frameshift, stop gained/lost...) - likely to disrupt the gene.'};
-var dynState={sel:null,q:'',view:'cards'};   // 'cards' = per-variant trajectory grid; 'flow' = per-series evolution streamgraph
+var dynState={sel:null,q:''};
 var dynFilter={};
 var dynZoom=250;   // trajectory-card width in px (zoom slider); smaller -> more charts per row
 var dynShowDP=true;   // draw the per-timepoint read-depth (DP) bars behind each trajectory
@@ -2322,46 +2344,6 @@ function dynMiniChart(v,th,showDP){
   v.traj.forEach(function(a,i){ svg+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(a).toFixed(1)+'" r="6" fill="transparent"><title>t='+esc(v.times[i]==null?i:v.times[i])+'  AF='+a.toFixed(3)+(hasDP&&dps[i]!=null?('  DP='+dps[i]):'')+'</title></circle>'; });
   if(hasDP){ dps.forEach(function(d,i){ if(d==null)return; svg+='<text x="'+X(i).toFixed(1)+'" y="'+(YD(d)-3).toFixed(1)+'" text-anchor="middle" font-size="8.5" font-weight="600" fill="'+TH.ink+'" stroke="'+TH.panel+'" stroke-width="2.6" paint-order="stroke" style="paint-order:stroke">'+d+'</text>'; }); }   // DP value on top of each bar
   v.times.forEach(function(t,i){ svg+='<text x="'+X(i).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10.5" fill="'+TH.mut+'">'+esc(t==null?i:t)+'</text>'; });
-  svg+='</svg>';
-  return svg;
-}
-function dynTrajMean(t){ var s=0,c=0,i; for(i=0;i<t.length;i++){ if(t[i]!=null){s+=t[i];c++;} } return c?s/c:0; }
-// Per-series "evolution stream" (ThemeRiver / Muller-style): every variant in a connected series is a band
-// whose thickness at each timepoint = its allele frequency, stacked on a centred baseline. Co-rising bands
-// read as co-selected; a band swelling while another shrinks reads as replacement. Bands are NOT clone
-// frequencies (they don't partition the population) - thickness is simply allele frequency.
-function dynStreamChart(grpName, vs, th){
-  var times=(vs[0]&&vs[0].times)||[], n=times.length, i, j, b;
-  if(n<2){ return '<div class="dyn-empty">series '+esc(grpName)+' has a single timepoint - no trajectory to flow.</div>'; }
-  var W=760,H=210,ml=10,mr=44,mt=18,mb=28,pw=W-ml-mr,ph=H-mt-mb;
-  function X(i){ return ml+(i/(n-1))*pw; }
-  var totals=[]; for(i=0;i<n;i++){ var s=0; for(j=0;j<vs.length;j++){ s+=(vs[j].traj[i]||0); } totals.push(s); }
-  var maxTotal=Math.max.apply(null,totals)||1;
-  var yscale=(ph*0.90)/maxTotal, cyc=mt+ph/2;
-  // inside-out stacking: biggest bands settle near the centre, small ones to the edges (classic streamgraph)
-  var ord=vs.slice().sort(function(a,c){ return dynTrajMean(c.traj)-dynTrajMean(a.traj); });
-  var top=[],bot=[]; for(i=0;i<ord.length;i++){ (i%2===0?bot:top).push(ord[i]); }
-  var stack=bot.reverse().concat(top);
-  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block"><title>Evolution stream for series '+esc(grpName)+': each band is a variant, thickness = allele frequency over time. Co-rising bands = co-selected; a band swelling as another shrinks = replacement.</title>';
-  for(i=0;i<n;i++){ svg+='<line x1="'+X(i).toFixed(1)+'" y1="'+mt+'" x2="'+X(i).toFixed(1)+'" y2="'+(mt+ph).toFixed(1)+'" stroke="'+TH.grid+'" stroke-width="1" opacity="0.5"/>'; }
-  var baseLower=[]; for(i=0;i<n;i++){ baseLower.push(cyc+totals[i]*yscale/2); }
-  var cum=[]; for(i=0;i<n;i++){ cum.push(0); }
-  for(b=0;b<stack.length;b++){ var v=stack[b], upper=[], lower=[];
-    for(i=0;i<n;i++){ var af=(v.traj[i]||0), lo=baseLower[i]-cum[i]*yscale, up=lo-af*yscale; lower.push(X(i).toFixed(1)+','+lo.toFixed(1)); upper.push(X(i).toFixed(1)+','+up.toFixed(1)); cum[i]+=af; }
-    var d='M'+upper.join(' L')+' L'+lower.reverse().join(' L')+' Z';
-    var col=DYNSTREAM_PAL[b%DYNSTREAM_PAL.length], nonsyn=v.flags&&v.flags.indexOf('nonsyn')>=0;
-    var mut=v.aa?String(v.aa):(v.alt?('→'+v.alt):(v.eff||''));
-    var evtxt=(v.flags&&v.flags.length)?v.flags.join(', '):'no event';
-    var tip=(v.gene||'(intergenic)')+' '+String(v.pos).split(':').pop()+(mut?(' '+mut):'')+'  ['+evtxt+']  |  AF '+v.traj.map(function(a){return (a==null?'-':a.toFixed(2));}).join(' → ');
-    svg+='<path d="'+d+'" fill="'+col+'" fill-opacity="0.85" stroke="'+TH.panel+'" stroke-width="0.9"'+(nonsyn?' stroke-dasharray="3 2"':'')+'><title>'+esc(tip)+'</title></path>';
-    var bi=0,bth=-1; for(i=0;i<n;i++){ if((v.traj[i]||0)>bth){bth=(v.traj[i]||0);bi=i;} }
-    if(bth*yscale>=13){ var ly=baseLower[bi]-(cum[bi]-bth/2)*yscale, edge=(bi===n-1); svg+='<text x="'+(edge?X(bi)-4:X(bi)).toFixed(1)+'" y="'+(ly+3).toFixed(1)+'" text-anchor="'+(edge?'end':'middle')+'" font-size="9.5" font-weight="600" fill="#ffffff" stroke="rgba(0,0,0,0.42)" stroke-width="2.2" paint-order="stroke" style="paint-order:stroke">'+esc(v.gene||'')+'</text>'; }
-  }
-  var sbx=W-mr+16, sby0=mt+4, sby1=sby0+yscale*1.0;   // scale bar: what a full AF=1.0 band looks like
-  svg+='<line x1="'+sbx+'" y1="'+sby0.toFixed(1)+'" x2="'+sbx+'" y2="'+sby1.toFixed(1)+'" stroke="'+TH.mut+'" stroke-width="2"/>';
-  svg+='<line x1="'+(sbx-3)+'" y1="'+sby0.toFixed(1)+'" x2="'+(sbx+3)+'" y2="'+sby0.toFixed(1)+'" stroke="'+TH.mut+'" stroke-width="1"/><line x1="'+(sbx-3)+'" y1="'+sby1.toFixed(1)+'" x2="'+(sbx+3)+'" y2="'+sby1.toFixed(1)+'" stroke="'+TH.mut+'" stroke-width="1"/>';
-  svg+='<text x="'+(sbx+5)+'" y="'+((sby0+sby1)/2+3).toFixed(1)+'" font-size="8.5" fill="'+TH.mut+'">AF 1.0</text>';
-  for(i=0;i<n;i++){ svg+='<text x="'+X(i).toFixed(1)+'" y="'+(H-9)+'" text-anchor="middle" font-size="10.5" fill="'+TH.mut+'">'+esc(times[i]==null?i:times[i])+'</text>'; }
   svg+='</svg>';
   return svg;
 }
@@ -2439,13 +2421,12 @@ function renderDynamics(){
       dynFieldVals[f].map(function(v){return '<option value="'+esc(v)+'"'+(dynFilter[f]===v?' selected':'')+'>'+esc(v)+'</option>';}).join('')+'</select></label>'; }).join('')+
     '<button class="dyn-btn" id="dynfclear">clear</button></div>'):'';
   host.innerHTML=
-    '<div class="dyn-insight" id="dyn_insight"></div>'+
+    '<div class="insight dyn-insight" id="dyn_insight"></div>'+
     '<div class="dyn-controls">'+
       '<input id="dynsearch" class="dyn-search" type="search" title="Type a gene name to filter the gene chips and the grid below" placeholder="search gene..." value="'+esc(dynState.q)+'">'+
       '<button class="dyn-btn" id="dynFlag" title="Show only genes that have at least one flagged variant">flagged genes</button>'+
       '<button class="dyn-btn" id="dynAll" title="Select every gene that has a moving variant">all</button>'+
       '<button class="dyn-btn" id="dynNone" title="Deselect all genes">clear</button>'+
-      '<span class="seg dyn-viewseg" id="dynview" title="cards = one trajectory chart per variant; flow = one evolution stream per connected series (all its variants stacked)"><button data-v="cards"'+(dynState.view=='cards'?' class="on"':'')+'>cards</button><button data-v="flow"'+(dynState.view=='flow'?' class="on"':'')+'>flow</button></span>'+
       '<label class="dyn-toggle" title="Show a per-timepoint read-depth (DP) bar behind each trajectory"><input type="checkbox" id="dynDP"'+(dynShowDP?' checked':'')+'> depth bars</label>'+
       '<label class="dyn-zoom" title="Resize the trajectory cards - drag left to fit more charts per row"><span>'+icon('search','sort')+'&#8211;/+</span><input type="range" id="dynzoom" min="165" max="360" step="5" value="'+dynZoom+'"></label>'+
       '<span class="dyn-count" id="dynCount"></span></div>'+
@@ -2469,17 +2450,7 @@ function renderDynamics(){
     el('dynCount').innerHTML=sel.length+' of '+geneList.length+' genes'+(sel.length?(' &#183; '+nvar+' trajectories'):'')+(singleGroup&&visGroupName?(' &#183; series <b>'+esc(visGroupName)+'</b>'):'')+(filterActive()?' (filtered)':'');
     var grid=el('dyngrid');
     grid.style.setProperty('--dyncw', dynZoom+'px');
-    if(!sel.length){ grid.classList.remove('flow'); grid.innerHTML='<div class="dyn-empty" style="grid-column:1/-1">&#128204; '+(geneList.length?(dynState.q?('no selected gene matches &quot;'+esc(dynState.q)+'&quot;'):'Search and select one or more genes above to see the allele-frequency trajectories of their variants.'):'no variant trajectory matches the current series filter.')+'</div>'; return; }
-    if(dynState.view==='flow'){   // per-series evolution streamgraph: group the selected variants by their connected series
-      grid.classList.add('flow');
-      var byG={}, gOrder=[]; sel.forEach(function(g){ genes[g].forEach(function(v){ if(!byG[v.group]){byG[v.group]=[];gOrder.push(v.group);} byG[v.group].push(v); }); });
-      gOrder.sort();
-      grid.innerHTML=gOrder.map(function(gn){ var vs=byG[gn];
-        return '<div class="dyn-scard"><div class="dyn-scard-h"><b>'+esc(gn)+'</b><span class="dyn-scard-sub">'+vs.length+' variant'+(vs.length==1?'':'s')+' &#183; band thickness = allele frequency (not clone frequency) &#183; colour = variant &#183; co-rising bands = co-selected &#183; dashed edge = non-synonymous</span></div>'+dynStreamChart(gn,vs,th)+'</div>';
-      }).join('');
-      return;
-    }
-    grid.classList.remove('flow');
+    if(!sel.length){ grid.innerHTML='<div class="dyn-empty" style="grid-column:1/-1">&#128204; '+(geneList.length?(dynState.q?('no selected gene matches &quot;'+esc(dynState.q)+'&quot;'):'Search and select one or more genes above to see the allele-frequency trajectories of their variants.'):'no variant trajectory matches the current series filter.')+'</div>'; return; }
     var cards=[];
     sel.forEach(function(g){
       genes[g].slice().sort(function(a,b){ return ((dynHasFlag(b)?1:0)-(dynHasFlag(a)?1:0)) || (String(a.pos)>String(b.pos)?1:-1); }).forEach(function(v){
@@ -2534,7 +2505,6 @@ function renderDynamics(){
   el('dynNone').onclick=function(){ dynState.sel={}; paintChips(); paintGrid(); };
   el('dynzoom').oninput=function(){ dynZoom=+this.value; el('dyngrid').style.setProperty('--dyncw', dynZoom+'px'); };
   el('dynDP').onchange=function(){ dynShowDP=this.checked; paintGrid(); };
-  Array.prototype.forEach.call(host.querySelectorAll('#dynview button'),function(b){ b.onclick=function(){ dynState.view=b.getAttribute('data-v'); Array.prototype.forEach.call(host.querySelectorAll('#dynview button'),function(x){x.classList.toggle('on',x===b);}); paintGrid(); }; });
   if(dynFields.length){
     Array.prototype.forEach.call(host.querySelectorAll('.dyn-filters select'),function(sel){ sel.onchange=function(){ var f=sel.getAttribute('data-df'); if(sel.value)dynFilter[f]=sel.value; else delete dynFilter[f]; recompute(); paintInsight(); paintChips(); paintGrid(); }; });
     el('dynfclear').onclick=function(){ dynFilter={}; Array.prototype.forEach.call(host.querySelectorAll('.dyn-filters select'),function(s){s.value='';}); recompute(); paintInsight(); paintChips(); paintGrid(); };
@@ -3178,6 +3148,14 @@ renderAll();
     try{localStorage.setItem('bampiro_theme',d?'dark':'light');}catch(e){}
     TH=d?TH_DARK:TH_LIGHT; setIcon(); renderAll();};
 })();
+(function(){  // analytical read-outs: one show/hide toggle for every .insight block across the report
+  var b=el('insightToggle'); if(!b)return;
+  var saved; try{ saved=localStorage.getItem('bampiro_insights'); }catch(e){}
+  var on=(saved==null)?true:(saved!=='off');
+  function apply(){ document.documentElement.classList.toggle('no-insight',!on); b.classList.toggle('on',on); b.setAttribute('aria-pressed',on?'true':'false'); }
+  apply();
+  b.onclick=function(){ on=!on; try{localStorage.setItem('bampiro_insights',on?'on':'off');}catch(e){} apply(); };
+})();
 (function(){  // left contents sidebar: collapse toggle, collapsible groups, scroll-spy highlight
   var toc=el('toc'), tg=el('toc-toggle'); if(!toc||!tg)return;
   tg.onclick=function(){ document.body.classList.toggle('toc-collapsed'); };
@@ -3237,7 +3215,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="toc-group"><div class="toc-gh">Evolution<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#temporal" id="nav-temporal">Temporal</a><a class="toc-link" href="#pnps" id="nav-pnps">pN/pS</a><a class="toc-link" href="#adna" id="nav-adna">aDNA</a></div></div>
 <div class="toc-group"><div class="toc-gh">Variants over time<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#dynamics" id="nav-dyn">SNP dynamics</a><a class="toc-link" href="#epistasis" id="nav-epi">Epistasis</a><a class="toc-link" href="#snpmatrix" id="nav-snpmx">SNP matrix</a><a class="toc-link" href="#drug" id="nav-drug">Drug resistance</a></div></div>
 </nav>
-<header><span class="logo"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</span><span class="ver" id="hver"></span><span class="meta" id="meta"></span><a id="ghlink" class="hbtn" href="__REPO__" target="_blank" rel="noopener noreferrer" title="BAMpiro source on GitHub" aria-label="BAMpiro source on GitHub" style="margin-left:auto"><span data-ic="github"></span></a><button id="themeToggle" class="hbtn" title="Toggle dark / light theme" aria-label="Toggle dark / light theme"></button></header>
+<header><span class="logo"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</span><span class="ver" id="hver"></span><span class="meta" id="meta"></span><a id="ghlink" class="hbtn" href="__REPO__" target="_blank" rel="noopener noreferrer" title="BAMpiro source on GitHub" aria-label="BAMpiro source on GitHub" style="margin-left:auto"><span data-ic="github"></span></a><button id="insightToggle" class="hbtn hbtn-lbl" title="Show / hide the analytical read-out at the top of each panel" aria-label="Toggle analytical read-outs" aria-pressed="true"><span data-ic="spark"></span> insights</button><button id="themeToggle" class="hbtn" title="Toggle dark / light theme" aria-label="Toggle dark / light theme"></button></header>
 <div class="wrap">
 <p class="lede">Short-read bacterial / MTBC cohort QC. Review <a href="#flagged">flagged samples</a>, tick any to drop, then export <b>keep_list.txt</b> / <b>exclusion.tsv</b>. Thresholds below are live; the pipeline gate itself is unchanged.</p>
 <section class="hero"><div class="summary" id="summary"></div><div class="chips" id="chips"></div></section>
