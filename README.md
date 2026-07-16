@@ -89,10 +89,12 @@ merging, and [Outputs](docs/outputs.md) for the result layout.
 
 Every run writes a single self-contained `<samplesheet>_qc_report.html` (no internet,
 no CDN) that folds the whole cohort into one dashboard: **live-adjustable QC
-thresholds**, a collapsible sidebar, and **20 linked panels** - general statistics,
-per-lineage summary, QC-space PCA, genome landscape, SNP dynamics, epistasis, a full
-SNP matrix, and drug resistance - plus a machine-readable per-sample
-`qc_flags.tsv`. It is organism-agnostic and works offline on an HPC login node.
+thresholds**, a **dark / light theme**, a collapsible sidebar, and **20 linked
+panels** - general statistics, flagged samples, per-lineage summary (canonical
+*mycolorsTB* palette), QC-space PCA, genome landscape, SNP dynamics, epistasis, a
+full SNP matrix, and drug resistance - plus a machine-readable per-sample
+`qc_flags.tsv`. It is organism-agnostic, mobile-responsive, and works offline on an
+HPC login node.
 
 Full panel list and interactive features: [Interactive QC Report](docs/qc-report.md).
 

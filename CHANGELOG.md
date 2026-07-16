@@ -32,6 +32,13 @@ drug-resistance typing**, and a restructured documentation set. Rebranded to
     panels for lineage summary, distributions, correlations, a metric-correlation
     heatmap, QC-space PCA, genome landscape, functional annotation, gene burden,
     variable genes, and aDNA damage.
+ - **Report presentation & UX** - a **dark / light theme** (header toggle, follows
+    the OS preference, persisted per viewer); a single homogeneous inline icon set;
+    a **mobile-responsive** layout (capped frozen column, scrollable matrices, a
+    dismissable contents drawer); a **triage-first** ordering (table sorted worst-QC
+    first, the Flagged panel directly under the statistics with each failing margin
+    shown inline); per-lineage colours from the canonical **mycolorsTB** palette;
+    and the pipeline **version** + a **GitHub** link in the header and footer.
 - **Alignment-free lineage & drug-resistance typing with Pathotypr**
   (`--run_pathotypr`) - now run **from the container** (bioconda build), replacing
   the external cluster binary. It types straight from the reads with diagnostic

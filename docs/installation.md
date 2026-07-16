@@ -4,7 +4,7 @@
 
 - **Nextflow** (`>=24.04.2`)
 - **Singularity** or **Docker**
-- **Java** (version 11 or later)
+- **Java** (version 17 or later, as required by Nextflow >= 24.04.2)
 
 The pipeline automatically pulls the container `docker://paururo/bambard:latest`,
 which contains every tool it needs (BWA-MEM2, Samtools, FreeBayes, SnpEff,
@@ -26,7 +26,7 @@ The Docker container (`paururo/bambard:latest`) bundles the following tools:
 | :--- | :--- | :--- |
 | **Nextflow** | `25.10.2` | Workflow management engine |
 | **Python** | `3.14.2` | Scripting and orchestration |
-| **Java (OpenJDK)** | `23.0.2` | Runtime for Nextflow, SnpEff & FastQC |
+| **Java (OpenJDK)** | `23.0.2` | Runtime for Nextflow & SnpEff |
 | **BWA-MEM2** | `2.3` | High-performance read alignment |
 | **Samtools** | `1.23` | BAM/SAM processing and stats |
 | **BCFtools** | `1.23` | Variant manipulation and filtering |

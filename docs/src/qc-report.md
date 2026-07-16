@@ -16,9 +16,19 @@ by `bin/qc_report.py` and controlled by `--make_qc_report` (default `true`).
   hide themselves (and their nav link).
 - **Per-section (i) info popovers** explaining each analysis and its caveats.
 - **Exclusion basket** - tick samples (via the table, a drag-box in the scatter, or
-  *basket all flagged*) and export `exclusion.tsv` / `keep_list.txt` for downstream
-  phylogeny.
-- Most panels have a fullscreen (⤢) view; the whole report prints / saves to PDF.
+  *basket all flagged*); FAIL samples start pre-selected, and you export
+  `exclusion.tsv` / `keep_list.txt` for downstream phylogeny. The margin behind every
+  flag is shown inline in the Flagged panel (no hover needed).
+- **Triage-first layout** - the sample table opens sorted worst-QC first, and the
+  **Flagged** panel sits directly under the general statistics (and at the top of
+  the sidebar) so the failing samples are the first thing you reach.
+- **Dark / light theme** - a header toggle that follows your OS preference and is
+  remembered per viewer.
+- **Responsive** - reflows to a phone: the frozen sample column is capped, wide
+  tables and matrices scroll horizontally, and the contents sidebar becomes a
+  dismissable drawer.
+- The header shows the **pipeline version** and links to the **source on GitHub**;
+  most panels have a fullscreen (expand) view; the whole report prints / saves to PDF.
 
 ## Panels
 
@@ -26,12 +36,11 @@ Grouped as in the sidebar:
 
 | Group | Panels |
 | :--- | :--- |
-| **Overview** | General statistics (value-coloured, sortable, filterable, TSV export) · Per-lineage summary · Distributions (beeswarm / bar / histogram) |
+| **Overview** | General statistics (value-coloured, sortable, filterable, TSV export) · **Flagged samples** (worst-first, each failing margin shown inline) · Per-lineage summary (canonical *mycolorsTB* palette) · Distributions (beeswarm / bar / histogram) |
 | **Correlation & structure** | Metric-pair scatter (box-select to basket) · Metric correlation heatmap · QC-space PCA (+ most-unusual-samples table) · Divergence vs completeness |
 | **Genome & genes** | Consensus completeness · Genome landscape (per-position callability / variant heatmap, gene search, mask-region toggle) · Functional annotation (snpEff classes) · Functional gene burden · Variable genes (SNP-density hotspots) |
 | **Evolution** | Temporal sampling overview · Selection pN/pS (dN/dS, eskaks) · aDNA damage authentication (mapDamage) |
-| **Variants over time** | **SNP dynamics** (allele-frequency trajectories over time, per-timepoint DP bars, zoom, series filter) · **Epistasis** (co-varying variant pairs, permutation *p* + BH-FDR *q*, cards / matrix / table views) · **SNP matrix** (site × sample AF matrix, metadata column filter, TSV export) · **Drug resistance** |
-| **Quality** | Flagged samples (with the exact failing margin) |
+| **Variants over time** | **SNP dynamics** (allele-frequency trajectories over time, per-timepoint DP bars, zoom, series filter) · **Epistasis** (co-varying variant pairs, permutation *p* + BH-FDR *q*, cards / matrix / table views) · **SNP matrix** (site × sample AF matrix, metadata column filter, TSV export) · **Drug resistance** (sample × drug WHO-grade matrix) |
 
 Optional panels appear only when their input is present: SNP dynamics / epistasis /
 SNP matrix need `--metadata` + the per-sample VCFs; gene burden needs the cohort
