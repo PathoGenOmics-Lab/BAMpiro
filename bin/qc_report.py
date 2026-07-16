@@ -767,7 +767,7 @@ section[id]{scroll-margin-top:64px}
 .wrap{max-width:1180px;margin:0 auto;padding:24px 22px 90px}
 section{margin-top:34px} section:first-of-type{margin-top:24px}
 h2{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);font-weight:600;margin:0 0 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-h2 .c{text-transform:none;letter-spacing:0;font-weight:400;font-size:13.5px;color:#8a99ab}
+h2 .c{text-transform:none;letter-spacing:0;font-weight:400;font-size:13.5px;color:#5f6f81}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden}
 .pad{padding:16px 18px}
 /* hero */
@@ -786,7 +786,7 @@ h2 .c{text-transform:none;letter-spacing:0;font-weight:400;font-size:13.5px;colo
 .controls input[type=search]{padding:7px 12px;border:1px solid var(--line);border-radius:9px;font-size:13px;min-width:200px;background:#fff;box-shadow:var(--sh)}
 .controls input[type=search]:focus{border-color:var(--accent)}
 .gsearch{padding:4px 10px;border:1px solid var(--line);border-radius:8px;font-size:12px;min-width:110px;max-width:170px;background:#fff;box-shadow:var(--sh)}
-.gsearch:focus{border-color:var(--accent);outline:none}
+.gsearch:focus{border-color:var(--accent)} .gsearch:focus:not(:focus-visible){outline:none}
 .panel.expanded .gtable{max-height:82vh}
 .controls label{font-size:12.5px;color:var(--mut);display:flex;align-items:center;gap:6px;cursor:pointer}
 .btn{font-size:12.5px;color:#33465c;border:1px solid var(--line);border-radius:9px;padding:7px 13px;background:#fff;cursor:pointer;box-shadow:var(--sh)}
@@ -818,7 +818,7 @@ th.s{z-index:6;background:#f7f9fc} tr.hl td.s{background:#fff3ce!important}
 tr.colfilt th{position:sticky;top:33px;background:#fbfcfe;cursor:auto;text-transform:none;letter-spacing:0;padding:4px 7px;z-index:4;box-shadow:0 1px 0 var(--line)}
 tr.colfilt th.s{left:0;z-index:6;background:#fbfcfe}
 tr.colfilt .cfx{width:100%;min-width:56px;box-sizing:border-box;padding:3px 6px;border:1px solid var(--line);border-radius:6px;font-size:11.5px;font-weight:400;text-transform:none;background:#fff;color:var(--ink)}
-tr.colfilt .cfx:focus{border-color:var(--accent);outline:none}
+tr.colfilt .cfx:focus{border-color:var(--accent)} tr.colfilt .cfx:focus:not(:focus-visible){outline:none}
 tr.colfilt .cfx::placeholder{color:#aeb8c6}
 /* plots */
 .bee{display:flex;align-items:center;border-bottom:1px solid #f2f5f9;height:40px} .bee:last-child{border:0}
@@ -902,8 +902,11 @@ tr.lingrp td{background:#f0f5f9;color:#33465c;font-weight:600;font-size:11px;let
 /* modal 'why' block */
 .dwhy{font-size:11.5px;color:#516074;background:var(--soft);border:1px solid var(--line);border-radius:9px;padding:8px 11px;margin-bottom:6px;line-height:1.55} .dwhy b{color:#a01f2d}
 @media print{
+  *,*::before,*::after{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
   header,nav,#toc,#toc-toggle,.controls,.provbar #printBtn,#thbox,#athbox,.dd,.chips{display:none!important}
-  body{background:#fff;padding-left:0} .wrap{max-width:none;padding:0} .gtable{max-height:none!important;overflow:visible!important}
+  #modal{display:none!important}   /* never capture an open detail dialog over the printed page */
+  body{background:#fff;padding-left:0} .wrap{max-width:none;padding:0}
+  .gtable,.snpmx-wrap,.epimx-wrap,.dr-mxwrap,.epitbl-wrap,#stacks,#fn_stacks{max-height:none!important;overflow:visible!important}
   section{break-inside:avoid} .panel{box-shadow:none}
 }
 @media (max-width:760px){
@@ -916,7 +919,7 @@ tr.lingrp td{background:#f0f5f9;color:#33465c;font-weight:600;font-size:11px;let
   .cur-btns{margin-left:0} .curation{gap:10px} .modalcard{padding:18px 15px} .dk{flex-basis:84px} .dv{flex-basis:58px} .dp{flex-basis:28px}
   details.dd .menu{min-width:0;max-width:calc(100vw - 28px);box-sizing:border-box} #thbox{min-width:0!important}
 }
-@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important;animation:none!important}}
 /* visible info icon signalling a hover tooltip */
 .infoi{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:#d5deea;color:#54637a;font-size:10px;font-weight:700;font-style:italic;font-family:Georgia,'Times New Roman',serif;text-transform:none;margin-left:5px;cursor:help;vertical-align:middle;line-height:1;transition:.12s;user-select:none}
 .infoi:hover{background:var(--accent);color:#fff}
@@ -1395,6 +1398,14 @@ function colMatch(s){if(!st.showColF)return true;   // filters apply only while 
   for(var k in st.colf){var raw=st.colf[k]; if(!raw||!raw.trim())continue;
   var pv=colFilterVal(s,k); if(!colMatchOne(raw,pv[0],pv[1]))return false;} return true;}
 function colAnyActive(){if(!st.showColF)return false; for(var k in st.colf){if(st.colf[k]&&st.colf[k].trim())return true;} return false;}
+// any row filter active (used to surface a "clear filters" affordance so users never lose track of why rows vanished)
+function anyFilterActive(){return !!(st.q||st.onlyFlagged||st.flagFilter||st.linFilter||st.ancOnly||colAnyActive());}
+function clearAllFilters(){
+  st.q=''; st.onlyFlagged=false; st.flagFilter=null; st.linFilter=null; st.ancOnly=null; st.colf={};
+  var q=el('q'); if(q)q.value=''; var of=el('of'); if(of)of.checked=false;
+  Array.prototype.forEach.call(document.querySelectorAll('#ancseg button'),function(x){x.classList.toggle('on',(x.getAttribute('data-a')||'')=='');});
+  renderAll();
+}
 function dotColor(s){return st.colorBy=='lineage'?linColor(s.lineage):VCOL[s.v];}
 // shared colour key for every dot plot (adapts to the QC/lineage colour toggle)
 function colorLegend(){
@@ -1448,7 +1459,8 @@ function renderTable(){
     var k=st.sortKey,x=(k=='s')?a.s:(k=='v'?a.v:a.m[k]),y=(k=='s')?b.s:(k=='v'?b.v:b.m[k]),c;
     if(typeof x=='number'&&typeof y=='number')c=x-y;else c=String(x==null?'':x).localeCompare(String(y==null?'':y));return st.asc?c:-c;});
   var lastLin=null, ncol=mets.length+3;
-  var body=rows.map(function(s){
+  var TBL_CAP=400, total=rows.length, capped=total>TBL_CAP, draw=capped?rows.slice(0,TBL_CAP):rows;
+  var body=draw.map(function(s){
     var pre='';
     if(st.groupLin){var lk=s.lineage||'NA'; if(lk!==lastLin){lastLin=lk;
       pre='<tr class="lingrp"><td class="s" colspan="'+ncol+'" style="text-align:left"><span class="ldot" style="background:'+linColor(s.lineage)+'"></span>'+esc(lk)+'</td></tr>';}}
@@ -1460,8 +1472,11 @@ function renderTable(){
       tds+='<td data-v="'+v+'" style="background:linear-gradient(90deg,'+BAR[m.dir]+'2b 0 '+p+'%,#0000 '+p+'%)">'+fmt(v,m.kind)+'</td>';});
     tds+='<td data-v="'+esc(s.lineage||'')+'" style="text-align:left">'+(s.lineage?'<span class="ldot" style="background:'+linColor(s.lineage)+'"></span>':'')+esc(s.lineage||'NA')+'</td>';
     return pre+'<tr class="'+(st.hi==s.s?'hl':'')+'" data-s="'+esc(s.s)+'">'+tds+'</tr>';}).join('');
-  var t=el('gstable'); t.innerHTML='<thead>'+head+filtRow+'</thead><tbody>'+body+'</tbody>';
-  el('nshown').textContent=rows.length+' / '+R.samples.length+' shown'+(colAnyActive()?' (filtered)':'');
+  var bodyOut=draw.length?body:'<tr><td colspan="'+ncol+'" style="text-align:left;color:#5f6f81;padding:14px 12px">No samples match the current filters.</td></tr>';
+  var t=el('gstable'); t.innerHTML='<thead>'+head+filtRow+'</thead><tbody>'+bodyOut+'</tbody>';
+  var af=anyFilterActive(), cntTxt=capped?('first '+TBL_CAP+' of '+total):(total+' / '+R.samples.length);
+  el('nshown').innerHTML=cntTxt+' shown'+(af?' <a href="#" id="clrfilt" style="color:var(--accent);cursor:pointer;margin-left:7px;text-decoration:none">clear filters &#10005;</a>':'');
+  var cf=el('clrfilt'); if(cf)cf.onclick=function(e){e.preventDefault();clearAllFilters();};
   Array.prototype.forEach.call(t.querySelectorAll('th[data-k]'),function(th){th.onclick=function(){var k=th.getAttribute('data-k');if(st.sortKey==k)st.asc=!st.asc;else{st.sortKey=k;st.asc=(k=='s');}renderTable();};});
   Array.prototype.forEach.call(t.querySelectorAll('.cfx'),function(inp){
     inp.onclick=function(e){e.stopPropagation();};
