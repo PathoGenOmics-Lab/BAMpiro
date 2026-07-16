@@ -802,6 +802,7 @@ header .meta{color:var(--mut);font-size:12px}
 /* Left table-of-contents sidebar (collapsible, grouped, scroll-spy) */
 #toc-toggle{position:fixed;top:11px;left:11px;z-index:70;width:34px;height:34px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--label);font-size:16px;cursor:pointer;box-shadow:var(--sh);display:flex;align-items:center;justify-content:center;line-height:1}
 #toc-toggle:hover{color:var(--accent);border-color:var(--accent)}
+#tocscrim{display:none;position:fixed;inset:0;z-index:55;background:rgba(8,12,18,.44);-webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px)}
 #toc{position:fixed;left:0;top:0;bottom:0;width:var(--tocw);overflow-y:auto;background:rgba(255,255,255,.97);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-right:1px solid var(--line);z-index:60;padding:54px 12px 26px;transition:transform .2s ease}
 body.toc-collapsed #toc{transform:translateX(-100%)}
 body.toc-collapsed header{padding-left:56px}
@@ -976,7 +977,19 @@ tr.lingrp td{background:#f0f5f9;color:var(--label);font-weight:600;font-size:11p
   .hint{margin-left:0;flex-basis:100%}
   .cur-btns{margin-left:0} .curation{gap:10px} .modalcard{padding:18px 15px} .dk{flex-basis:84px} .dv{flex-basis:58px} .dp{flex-basis:28px}
   details.dd .menu{min-width:0;max-width:calc(100vw - 28px);box-sizing:border-box} #thbox{min-width:0!important}
+  header{flex-wrap:wrap;row-gap:6px}
+  /* larger touch targets on phones */
+  .controls label{padding:4px 2px} .controls input[type=checkbox],tr.colfilt input[type=checkbox]{width:17px;height:17px}
+  .chip{padding:8px 13px} .seg button{padding:8px 13px} .exp-h{padding:7px 11px}
+  .modalx{width:38px;height:38px;font-size:22px} .btn{padding:8px 13px}
+  #themeToggle{width:44px;height:44px} #toc-toggle{width:44px;height:44px}
+  /* the frozen (sticky left:0) sample column is opaque and covers the viewport; long sample
+     names would otherwise push the metric columns off-screen and out of reach, so cap it */
+  td.s .sname,th.s .hlab{display:inline-block;max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
+  #flagtable td.s{white-space:normal;overflow-wrap:anywhere;word-break:break-word;max-width:48vw}
+  .dr-row{max-width:150px;overflow:hidden;text-overflow:ellipsis}
 }
+@media (max-width:860px){ body:not(.toc-collapsed) #tocscrim{display:block} }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important;animation:none!important}}
 /* visible info icon signalling a hover tooltip */
 .infoi{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:#d5deea;color:var(--txt2);font-size:10px;font-weight:700;font-style:italic;font-family:Georgia,'Times New Roman',serif;text-transform:none;margin-left:5px;cursor:help;vertical-align:middle;line-height:1;transition:.12s;user-select:none}
@@ -1564,7 +1577,7 @@ function renderTable(){
 
 function renderPlots(){
   var host=el('plots'); host.innerHTML='';
-  var W=host.clientWidth||900, labelW=156, svgW=Math.max(240,W-labelW-4), padL=8, rightPad=64, pw=svgW-padL-rightPad, H=30, cy=H/2;
+  var W=host.clientWidth||900, narrow=W<520, labelW=narrow?96:156, svgW=Math.max(narrow?190:240,W-labelW-4), padL=8, rightPad=64, pw=svgW-padL-rightPad, H=30, cy=H/2;
   var vis={}; visible().forEach(function(s){vis[s.s]=1;});
   DIST.forEach(function(pk){
     var mt=MET[pk]||{label:pk,kind:'float'};
@@ -1605,7 +1618,7 @@ function renderPlots(){
 }
 
 function renderScatter(){
-  var host=el('scatter'); var W=Math.min(host.classList.contains('expanded')?880:700,(host.clientWidth||560)); var S=Math.max(300,W); var pad=42, plot=S-pad-14, H=(host.classList.contains('expanded')?Math.min(660,S):340), ph=H-pad-14;
+  var host=el('scatter'); var cs=getComputedStyle(host); var avail=(host.clientWidth||560)-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0); if(!(avail>0))avail=520; var cap=host.classList.contains('expanded')?880:700; var S=Math.max(240,Math.min(cap,avail)); var pad=42, plot=S-pad-14, H=(host.classList.contains('expanded')?Math.min(660,S):340), ph=H-pad-14;
   var xk=st.sx,yk=st.sy,xm=MET[xk],ym=MET[yk];
   var rows=R.samples.filter(function(s){return s.m[xk]!=null&&s.m[yk]!=null;});
   if(!rows.length){host.innerHTML='<div class="pad nd">no data for these axes</div>';return;}
@@ -1619,7 +1632,7 @@ function renderScatter(){
     ticks+='<line x1="'+gx+'" y1="'+pad+'" x2="'+gx+'" y2="'+(H-pad)+'" stroke="'+TH.grid+'"/><line x1="'+pad+'" y1="'+gy+'" x2="'+(pad+plot)+'" y2="'+gy+'" stroke="'+TH.grid+'"/>'+
     '<text x="'+gx+'" y="'+(H-pad+13)+'" font-size="9" fill="#94a3b8" text-anchor="middle">'+shortv(xr[0]+t*(xr[1]-xr[0]),xm.kind)+'</text>'+
     '<text x="'+(pad-6)+'" y="'+(gy+3)+'" font-size="9" fill="#94a3b8" text-anchor="end">'+shortv(yr[0]+t*(yr[1]-yr[0]),ym.kind)+'</text>';});
-  host.innerHTML='<svg width="'+S+'" height="'+H+'" id="scsvg" style="display:block;margin:0 auto">'+
+  host.innerHTML='<svg width="'+S+'" height="'+H+'" id="scsvg" style="display:block;max-width:100%;margin:0 auto">'+
     '<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(pad+plot)+'" y2="'+(H-pad)+'" stroke="'+TH.axis+'"/><line x1="'+pad+'" y1="'+pad+'" x2="'+pad+'" y2="'+(H-pad)+'" stroke="'+TH.axis+'"/>'+
     ticks+dots+
     '<text x="'+(pad+plot/2)+'" y="'+(H-6)+'" font-size="11" fill="'+TH.mut+'" text-anchor="middle">'+esc(xm.label)+'</text>'+
@@ -1653,7 +1666,7 @@ function renderCorr(){
   var vals={}; keys.forEach(function(k){vals[k]=pool.map(function(s){return s.m[k];});});
   var n=keys.length, cell=Math.max(16,Math.min(34,Math.floor((Math.min(host.clientWidth||560,host.classList.contains('expanded')?1100:940)-110)/n)));
   var padL=96,padT=8, W=padL+n*cell+8, H=padT+n*cell+128;
-  var svg='<svg width="'+W+'" height="'+H+'" id="corrsvg" style="max-width:100%;display:block;margin:0 auto">';
+  var svg='<svg width="'+W+'" height="'+H+'" id="corrsvg" style="display:block">';   // no max-width: let #corr_body{overflow-x:auto} scroll instead of clipping the right columns
   keys.forEach(function(k,j){var cx=padL+j*cell+cell/2;
     svg+='<text x="'+cx+'" y="'+(padT+n*cell+12)+'" font-size="8.5" fill="'+TH.mut+'" text-anchor="end" transform="rotate(-55 '+cx+' '+(padT+n*cell+12)+')">'+esc(MET[k].label)+'</text>';});
   keys.forEach(function(k,i){var cy=padT+i*cell+cell/2;
@@ -2543,7 +2556,7 @@ Array.prototype.forEach.call(document.querySelectorAll('#ptype button'),function
 ['sx','sy'].forEach(function(ax){var sel=el(ax);sel.innerHTML=R.metrics.map(function(m){return '<option value="'+m.key+'"'+(st[ax]==m.key?' selected':'')+'>'+esc(m.label)+'</option>';}).join('');
   sel.onchange=function(){st[ax]=sel.value;renderScatter();};});
 // live thresholds + presets
-var TH=[['depth_min','Depth min'],['breadth_min','Breadth min %'],['missing_max','Missing max %'],['mapping_min','Mapped min %'],['dup_max','Dup max %'],['iupac_max','IUPAC max %'],['titv_min','Ti/Tv min'],['snp_z','SNP z'],['het_max_frac','Het % max'],['mixed_min_frac','Mixed lin % min']];
+var THL=[['depth_min','Depth min'],['breadth_min','Breadth min %'],['missing_max','Missing max %'],['mapping_min','Mapped min %'],['dup_max','Dup max %'],['iupac_max','IUPAC max %'],['titv_min','Ti/Tv min'],['snp_z','SNP z'],['het_max_frac','Het % max'],['mixed_min_frac','Mixed lin % min']];
 var PRESETS=[
   {id:'gate',label:'gate defaults',th:assign({},R.thresholds),note:'The cut-offs the Snakemake qc_gate uses (config report_* keys).'},
   {id:'strict',label:'strict (modern WGS)',th:{depth_min:20,breadth_min:95,missing_max:5,mapping_min:90,dup_max:30,iupac_max:2,titv_min:1.5,snp_z:3,het_max_frac:1.5,mixed_min_frac:2},note:'Confident modern Illumina isolate: 20x, 95% breadth, <5% missing, Ti/Tv >=1.5.'},
@@ -2555,7 +2568,7 @@ function applyThr(next){Object.keys(next).forEach(function(k){if(k in thr)thr[k]
 el('thbox').innerHTML='<label style="display:inline-flex;flex-direction:column;font-size:10px;color:#64748b;gap:2px">preset<select id="thpreset" class="msel" style="padding:4px 6px"><option value="">custom…</option>'+
   PRESETS.map(function(p){return '<option value="'+p.id+'">'+esc(p.label)+'</option>';}).join('')+'</select></label>'+
   '<span id="thnote" style="flex-basis:100%;font-size:10.5px;color:#8895a6;margin-top:-2px"></span>'+
-  TH.map(function(t){return '<label style="display:inline-flex;flex-direction:column;font-size:10px;color:#64748b;gap:2px">'+t[1]+
+  THL.map(function(t){return '<label style="display:inline-flex;flex-direction:column;font-size:10px;color:#64748b;gap:2px">'+t[1]+
   '<input type="number" step="any" data-t="'+t[0]+'" value="'+thr[t[0]]+'" style="width:78px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:12px"></label>';}).join('')+
   '<button class="btn" id="threset" style="align-self:flex-end">reset</button>';
 var thpre=el('thpreset'),thnote=el('thnote');
@@ -2785,6 +2798,7 @@ renderAll();
 (function(){  // left contents sidebar: collapse toggle, collapsible groups, scroll-spy highlight
   var toc=el('toc'), tg=el('toc-toggle'); if(!toc||!tg)return;
   tg.onclick=function(){ document.body.classList.toggle('toc-collapsed'); };
+  var scrim=el('tocscrim'); if(scrim)scrim.onclick=function(){ document.body.classList.add('toc-collapsed'); };  // tap outside the drawer to dismiss (mobile)
   if(window.innerWidth&&window.innerWidth<860) document.body.classList.add('toc-collapsed');   // start collapsed on small screens
   Array.prototype.forEach.call(toc.querySelectorAll('.toc-gh'),function(gh){ gh.onclick=function(){ gh.parentNode.classList.toggle('closed'); }; });
   Array.prototype.forEach.call(toc.querySelectorAll('.toc-group'),function(g){   // hide a whole group if every section in it was self-hidden
@@ -2830,6 +2844,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <script>(function(){try{var t=localStorage.getItem('bampiro_theme');if(t=='dark'||(!t&&window.matchMedia&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.className+=' dark';}catch(e){}})();</script>
 <style>__CSS__</style></head><body>
 <button id="toc-toggle" title="Show / hide the contents sidebar" aria-label="Toggle contents">&#9776;</button>
+<div id="tocscrim" aria-hidden="true"></div>
 <nav id="toc" aria-label="Contents">
 <div class="toc-brand"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</div>
 <div class="toc-group"><div class="toc-gh">Overview<span class="toc-chev">&#9660;</span></div><div class="toc-items"><a class="toc-link" href="#gstats">Stats</a><a class="toc-link" href="#linsum" id="nav-lin">Lineages</a><a class="toc-link" href="#dist">Distributions</a></div></div>
@@ -2844,7 +2859,7 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <section class="hero"><div class="summary" id="summary"></div><div class="chips" id="chips"></div></section>
 <div class="provbar"><div class="prov" id="prov"></div><button class="btn" id="printBtn" title="expand + print / save as PDF">⎙ print</button></div>
 <section><details class="dd" style="display:inline-block"><summary>⚙ Live thresholds &amp; presets - adjust and everything re-flags</summary>
-<div class="menu" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;min-width:520px">
+<div class="menu" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;min-width:min(520px,calc(100vw - 28px))">
   <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;flex-basis:100%" id="thbox"></div>
   <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;flex-basis:100%" id="athbox"></div>
 </div></details></section>
