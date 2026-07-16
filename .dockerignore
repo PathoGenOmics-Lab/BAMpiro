@@ -1,0 +1,31 @@
+# Trims what the Dockerfile's `COPY . .` bakes into the image (and the build context sent
+# to the daemon). The Dockerfile is read via `-f` and is NOT affected by these rules.
+# The pipeline scripts Nextflow actually needs (bin/, modules/, main.nf, nextflow.config,
+# assets/) are staged by Nextflow at runtime; the image mainly provides the tool environment.
+
+# Version control & CI (the big one: .git can be many MB of history)
+.git
+.gitignore
+.gitattributes
+.github
+
+# Docs & images (not needed at runtime)
+docs
+*.png
+*.svg
+
+# Local Nextflow / run artefacts
+work
+results_*
+.nextflow
+.nextflow.log*
+timeline*.html
+report*.html
+trace*.txt
+dag*.svg
+
+# Editor / OS cruft
+.DS_Store
+.idea
+.vscode
+*.swp
