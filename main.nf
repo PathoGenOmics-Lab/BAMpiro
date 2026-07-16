@@ -19,6 +19,7 @@ include { CALL_BACKBONE as CALL_BACKBONE_RAW; MERGE_VCFS as MERGE_VCFS_RAW } fro
 include { CONSENSUS_FASTA as CONSENSUS_FASTA_RAW } from './modules/consensus'
 include { ANNOTATE_LEGACY_VCF; ANNOTATE_MAIN_VCF; ANNOTATE_CANONICAL; GENERATE_LEGACY_STATS } from './modules/annotation'
 include { COLLECT_SUMMARY; COLLECT_DR; QC_REPORT; SNP_MATRIX } from './modules/report'
+include { cleanStr; nullish; sanitizeId } from './modules/utils'
 
 /* ----------------------------- Configuration Logic ----------------------------- */
 
@@ -30,25 +31,7 @@ def tsv_name = file(params.tsv).simpleName
 def multiqc_report_filename = "${tsv_name}_multiqc_report"
 
 /* ----------------------------- Helpers ----------------------------- */
-
-def cleanStr = { v ->
-    if (v == null) return null
-    v.toString().replace('\r','').trim()
-}
-
-def nullish = { v ->
-    if (v == null) return true
-    def s = cleanStr(v)
-    if (!s) return true
-    def sl = s.toLowerCase()
-    return (s == "." || sl == "na" || sl == "n/a" || sl == "null")
-}
-
-def sanitizeId = { v ->
-    def s = cleanStr(v)
-    if (!s) return s
-    s.replaceAll(/[^A-Za-z0-9_.-]+/, "_")
-}
+// cleanStr / nullish / sanitizeId are shared with the modules; imported from modules/utils.nf above.
 
 def inferRunId = { r1 ->
     def name = new File(r1).getName()
@@ -152,14 +135,9 @@ if (params.kraken2_db && hasTax) {
     else log.warn "Kraken DB not found at: ${params.kraken2_db} -> Kraken disabled"
 }
 
-// Check consensus script
-if (params.make_consensus) {
-    // Note: Script is now looked for in 'bin/', handled by Nextflow automatically
-}
-
 log.info """
 ================================================================
- BAMpiro Pipeline ðŸ§›â€â™‚ï¸
+ BAMpiro Pipeline 🧛‍♂️🧬
 ================================================================
 TSV              : ${params.tsv}
 Output Absolute  : ${final_outdir}
