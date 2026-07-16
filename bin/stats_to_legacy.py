@@ -138,6 +138,24 @@ def get_genome_size(fai_file):
         sys.stderr.write(f"[stats_to_legacy] WARN get_genome_size({fai_file}): {e}\n")
     return total   # 0 signals unknown; every consumer guards g_size > 0 and emits NA (no organism-specific fallback)
 
+
+def get_contig_offsets(fai_file):
+    """Cumulative genome-wide start offset of each contig (VCF POS is 1-based PER contig).
+    offsets[first]=0, offsets[second]=len(first), ... so per-contig positions can be placed on a
+    single whole-genome axis for the density profiles. Empty on any error -> offset 0 (single-contig safe)."""
+    offsets = {}
+    running = 0
+    try:
+        with open(fai_file, 'r') as f:
+            for line in f:
+                parts = line.split('\t')
+                if len(parts) >= 2:
+                    offsets[parts[0]] = running
+                    running += int(parts[1])
+    except Exception as e:
+        sys.stderr.write(f"[stats_to_legacy] WARN get_contig_offsets({fai_file}): {e}\n")
+    return offsets
+
 def get_bam_stats(stats_file):
     """Parse samtools stats output for mapping metrics."""
     result = {
@@ -291,7 +309,8 @@ def cov_histogram_stats(stats_file, genome_size):
 
 BIN_N = 200  # bins along the reference for the per-position variant-density profiles (must match qc_report.NBINS)
 
-def analyze_vcf(vcf_file, g_size=0, nbins=BIN_N):
+def analyze_vcf(vcf_file, g_size=0, nbins=BIN_N, contig_offsets=None):
+    contig_offsets = contig_offsets or {}
     stats = {'snps': 0, 'indels': 0, 'homo_total': 0, 'het_total': 0, 'homo_indels': 0,
              'ti': 0, 'tv': 0,
              'snp_prof': [0] * nbins, 'het_prof': [0] * nbins, 'indel_prof': [0] * nbins,
@@ -343,16 +362,18 @@ def analyze_vcf(vcf_file, g_size=0, nbins=BIN_N):
                         g[2][cls] = g[2].get(cls, 0) + 1
 
                 is_snp = (len(ref) == 1 and len(alt) == 1)
-                is_homo = False
-                alleles = gt.replace('|', '/').split('/')
-                if len(alleles) == 2 and alleles[0] == alleles[1]:
-                    is_homo = True
+                # homozygous = every present allele is identical: covers diploid '1/1' AND haploid '1'
+                # (freebayes_ploidy=1). The old 'len==2 and equal' test miscounted every haploid call as het.
+                alleles = [a for a in gt.replace('|', '/').split('/') if a != '.']
+                is_homo = bool(alleles) and len(set(alleles)) == 1
 
-                # positional bin (POS over the reference) for the genome-landscape variant tracks
+                # positional bin for the genome-landscape variant tracks. POS restarts per contig, so add the
+                # contig's cumulative offset to get a global coordinate before binning over the whole genome.
                 b = None
                 if g_size > 0:
                     try:
-                        b = min(nbins - 1, (int(parts[1]) * nbins) // g_size)
+                        gpos = contig_offsets.get(parts[0], 0) + int(parts[1])
+                        b = min(nbins - 1, (gpos * nbins) // g_size)
                     except ValueError:
                         b = None
 
@@ -518,7 +539,7 @@ def main():
         data['ERR_RATE'] = f"{bam['error_rate']*100:.3f}"   # emit as a percent
 
     # 3. Variants
-    v = analyze_vcf(args.vcf, g_size, BIN_N)
+    v = analyze_vcf(args.vcf, g_size, BIN_N, get_contig_offsets(args.ref_fai))
     if g_size > 0:
         data['SNP_PROFILE'] = ','.join(map(str, v['snp_prof']))       # homozygous SNP counts per reference bin
         data['HET_PROFILE'] = ','.join(map(str, v['het_prof']))       # heterozygous variant counts per bin

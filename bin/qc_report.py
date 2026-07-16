@@ -157,11 +157,16 @@ def parse_summary(path):
     with open(path) as f:
         header = f.readline().rstrip("\n").split("\t")
         for line in f:
+            if not line.strip():
+                continue
             parts = line.rstrip("\n").split("\t")
             if len(parts) < len(header):
                 parts += [""] * (len(header) - len(parts))
             d = dict(zip(header, parts))
-            rows[d.get("sample_id") or parts[0]] = d
+            sid = (d.get("sample_id") or parts[0]).strip()
+            if not sid:
+                continue
+            rows[sid] = d
     return rows
 
 
@@ -2799,9 +2804,11 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 
 def build_html(title, payload):
     data = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
-    return (SHELL.replace("__TITLE__", html.escape(title)).replace("__CSS__", CSS)
-                 .replace("__LOGO__", LOGO_DATA_URI)
-                 .replace("__JS__", JS).replace("__JSON__", data))
+    # Inject content first, then substitute __TITLE__ LAST so a user --title that happens to
+    # contain a placeholder token (e.g. "__JS__") can never pull in the CSS/JS/logo/JSON blob.
+    return (SHELL.replace("__CSS__", CSS).replace("__LOGO__", LOGO_DATA_URI)
+                 .replace("__JS__", JS).replace("__JSON__", data)
+                 .replace("__TITLE__", html.escape(title)))
 
 
 # ============================================================================
