@@ -2266,16 +2266,30 @@ function dynMiniChart(v,th,showDP){
   function YD(d){ return mt+ph-(d/maxDP)*ph; }          // read depth (right axis)
   var col=dynColor(v.flags), nonsyn=v.flags&&v.flags.indexOf('nonsyn')>=0;
   var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block"><title>Allele frequency (0-1, left axis, line) across timepoints'+(hasDP?'; read depth DP as bars with the value on top':'')+'. Hover for exact values.</title>';
-  [0,0.5,1].forEach(function(a){ svg+='<line x1="'+ml+'" y1="'+Y(a).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(a).toFixed(1)+'" stroke="'+TH.grid+'"/><text x="'+(ml-5)+'" y="'+(Y(a)+3.5).toFixed(1)+'" text-anchor="end" font-size="10.5" fill="'+TH.mut+'">'+a.toFixed(1)+'</text>'; });
+  [0,0.5,1].forEach(function(a){ svg+='<line x1="'+ml+'" y1="'+Y(a).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(a).toFixed(1)+'" stroke="'+TH.grid+'" stroke-width="1"/><text x="'+(ml-6)+'" y="'+(Y(a)+3.5).toFixed(1)+'" text-anchor="end" font-size="10" fill="'+TH.mut+'">'+a.toFixed(1)+'</text>'; });
+  svg+='<line x1="'+ml+'" y1="'+mt+'" x2="'+ml+'" y2="'+(mt+ph).toFixed(1)+'" stroke="'+TH.axis+'" stroke-width="1"/>';   // left value axis + ticks = a real-figure cue
+  [0,0.5,1].forEach(function(a){ svg+='<line x1="'+(ml-3)+'" y1="'+Y(a).toFixed(1)+'" x2="'+ml+'" y2="'+Y(a).toFixed(1)+'" stroke="'+TH.axis+'" stroke-width="1"/>'; });
   if(hasDP){   // depth bars behind the AF line; each bar carries its DP value on top (see the pass after the line)
     var bw=Math.min(n<=1?18:(pw/n)*0.5, 16);
     dps.forEach(function(d,i){ if(d==null)return; var x=X(i), y=YD(d), h=(mt+ph)-y; svg+='<rect x="'+(x-bw/2).toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(0,h).toFixed(1)+'" fill="#7ea8d6" opacity="0.45" rx="1.5"><title>t='+esc(v.times[i]==null?i:v.times[i])+'  DP='+d+'</title></rect>'; });
   }
   if(th){ [[th.emerge,DYNCOL.emergence],[th.fix,DYNCOL.fixation]].forEach(function(t){ svg+='<line x1="'+ml+'" y1="'+Y(t[0]).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(t[0]).toFixed(1)+'" stroke="'+t[1]+'" stroke-dasharray="3 3" opacity="0.3"/>'; }); }
+  var uid=(window.__qcAF=(window.__qcAF||0)+1), gid='afg'+uid;
   var ptsA=v.traj.map(function(a,i){return X(i).toFixed(1)+','+Y(a).toFixed(1);}), pts=ptsA.join(' '), y0=Y(0).toFixed(1), lastI=v.traj.length-1;
-  svg+='<path d="M'+X(0).toFixed(1)+','+y0+' L'+ptsA.join(' L')+' L'+X(lastI).toFixed(1)+','+y0+' Z" fill="'+col+'" opacity="0.13"/>';   // soft area fill under the trajectory
-  svg+='<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>';
-  v.traj.forEach(function(a,i){ var last=(i===lastI); svg+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(a).toFixed(1)+'" r="'+(last?4.4:3.4)+'" fill="'+col+'" stroke="'+(nonsyn?DYNCOL.nonsyn:TH.panel)+'" stroke-width="'+(nonsyn?1.8:(last?1.7:1))+'"><title>t='+esc(v.times[i]==null?i:v.times[i])+'  AF='+a.toFixed(3)+(hasDP&&dps[i]!=null?('  DP='+dps[i]):'')+'</title></circle>'; });
+  // vertical gradient wash: event colour strong at the line, dissolving to the baseline (per-chart unique id)
+  svg+='<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+col+'" stop-opacity="0.32"/><stop offset="0.55" stop-color="'+col+'" stop-opacity="0.10"/><stop offset="1" stop-color="'+col+'" stop-opacity="0"/></linearGradient></defs>';
+  svg+='<path d="M'+X(0).toFixed(1)+','+y0+' L'+ptsA.join(' L')+' L'+X(lastI).toFixed(1)+','+y0+' Z" fill="url(#'+gid+')"/>';
+  svg+='<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>';
+  // intermediate points: a panel halo lifts each bead above the line, then the solid dot (nonsyn keeps its ring)
+  v.traj.forEach(function(a,i){ if(i===lastI)return; var cx=X(i).toFixed(1), cy=Y(a).toFixed(1); svg+='<circle cx="'+cx+'" cy="'+cy+'" r="3.4" fill="'+TH.panel+'"/><circle cx="'+cx+'" cy="'+cy+'" r="2.4" fill="'+col+'"'+(nonsyn?' stroke="'+DYNCOL.nonsyn+'" stroke-width="1"':'')+'/>'; });
+  // endpoint: bold hollow "last value" ring + core + tabular AF label (the finished-figure signature)
+  var ex=X(lastI), ey=Y(v.traj[lastI]), ev=v.traj[lastI];
+  svg+='<circle cx="'+ex.toFixed(1)+'" cy="'+ey.toFixed(1)+'" r="4.4" fill="'+TH.panel+'" stroke="'+col+'" stroke-width="2.4"/>';
+  svg+='<circle cx="'+ex.toFixed(1)+'" cy="'+ey.toFixed(1)+'" r="1.5" fill="'+(nonsyn?DYNCOL.nonsyn:col)+'"/>';
+  var labX=ex+7, anchor='start'; if(ex>W-mr-22){ labX=ex-7; anchor='end'; }
+  svg+='<text x="'+labX.toFixed(1)+'" y="'+(ey+3.4).toFixed(1)+'" text-anchor="'+anchor+'" font-size="9.5" font-weight="600" fill="'+TH.ink+'" style="font-variant-numeric:tabular-nums">'+ev.toFixed(2)+'</text>';
+  // invisible hit targets keep the full per-point AF/DP tooltip on every point despite the thinner beads
+  v.traj.forEach(function(a,i){ svg+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(a).toFixed(1)+'" r="6" fill="transparent"><title>t='+esc(v.times[i]==null?i:v.times[i])+'  AF='+a.toFixed(3)+(hasDP&&dps[i]!=null?('  DP='+dps[i]):'')+'</title></circle>'; });
   if(hasDP){ dps.forEach(function(d,i){ if(d==null)return; svg+='<text x="'+X(i).toFixed(1)+'" y="'+(YD(d)-3).toFixed(1)+'" text-anchor="middle" font-size="8.5" font-weight="600" fill="'+TH.ink+'" stroke="'+TH.panel+'" stroke-width="2.6" paint-order="stroke" style="paint-order:stroke">'+d+'</text>'; }); }   // DP value on top of each bar
   v.times.forEach(function(t,i){ svg+='<text x="'+X(i).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10.5" fill="'+TH.mut+'">'+esc(t==null?i:t)+'</text>'; });
   svg+='</svg>';
@@ -2392,8 +2406,17 @@ function epiMiniChart(p){
   function X(i){ return ml+(n<=1?pw/2:(i/(n-1))*pw); }
   function Y(a){ return mt+(1-a)*ph; }
   var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block"><title>Two allele-frequency trajectories over time; parallel lines = concordant, mirrored = discordant. Hover a point for its value.</title>';
-  [0,0.5,1].forEach(function(a){ svg+='<line x1="'+ml+'" y1="'+Y(a).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(a).toFixed(1)+'" stroke="'+TH.grid+'"/><text x="'+(ml-5)+'" y="'+(Y(a)+3.5).toFixed(1)+'" text-anchor="end" font-size="10.5" fill="'+TH.mut+'">'+a.toFixed(1)+'</text>'; });
-  [[A,EPICOL.A],[B,EPICOL.B]].forEach(function(pr){ var t=pr[0],c=pr[1],lastI=t.length-1; var pts=t.map(function(a,i){return X(i).toFixed(1)+','+Y(a).toFixed(1);}).join(' '); svg+='<polyline points="'+pts+'" fill="none" stroke="'+c+'" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>'; t.forEach(function(a,i){ var last=(i===lastI); svg+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(a).toFixed(1)+'" r="'+(last?4.2:3)+'" fill="'+c+'" stroke="'+TH.panel+'" stroke-width="'+(last?1.4:0)+'"><title>t='+esc(times[i]==null?i:times[i])+'  AF='+a.toFixed(3)+'</title></circle>'; }); });
+  [0,0.5,1].forEach(function(a){ svg+='<line x1="'+ml+'" y1="'+Y(a).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(a).toFixed(1)+'" stroke="'+TH.grid+'" stroke-width="1"/><text x="'+(ml-6)+'" y="'+(Y(a)+3.5).toFixed(1)+'" text-anchor="end" font-size="10" fill="'+TH.mut+'">'+a.toFixed(1)+'</text>'; });
+  svg+='<line x1="'+ml+'" y1="'+mt+'" x2="'+ml+'" y2="'+(mt+ph).toFixed(1)+'" stroke="'+TH.axis+'" stroke-width="1"/>';   // left value axis + ticks (matches the dynamics cards)
+  [0,0.5,1].forEach(function(a){ svg+='<line x1="'+(ml-3)+'" y1="'+Y(a).toFixed(1)+'" x2="'+ml+'" y2="'+Y(a).toFixed(1)+'" stroke="'+TH.axis+'" stroke-width="1"/>'; });
+  [[A,EPICOL.A],[B,EPICOL.B]].forEach(function(pr){ var t=pr[0],c=pr[1],lastI=t.length-1;
+    var pts=t.map(function(a,i){return X(i).toFixed(1)+','+Y(a).toFixed(1);}).join(' ');
+    svg+='<polyline points="'+pts+'" fill="none" stroke="'+c+'" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>';
+    t.forEach(function(a,i){ if(i===lastI)return; var cx=X(i).toFixed(1), cy=Y(a).toFixed(1); svg+='<circle cx="'+cx+'" cy="'+cy+'" r="3" fill="'+TH.panel+'"/><circle cx="'+cx+'" cy="'+cy+'" r="2.1" fill="'+c+'"/>'; });   // panel-haloed beads
+    var ex=X(lastI).toFixed(1), ey=Y(t[lastI]).toFixed(1);
+    svg+='<circle cx="'+ex+'" cy="'+ey+'" r="4" fill="'+TH.panel+'" stroke="'+c+'" stroke-width="2.2"/><circle cx="'+ex+'" cy="'+ey+'" r="1.4" fill="'+c+'"/>';   // hollow last-value ring
+    t.forEach(function(a,i){ svg+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(a).toFixed(1)+'" r="6" fill="transparent"><title>t='+esc(times[i]==null?i:times[i])+'  AF='+a.toFixed(3)+'</title></circle>'; });   // invisible hit targets keep tooltips
+  });
   times.forEach(function(t,i){ svg+='<text x="'+X(i).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10.5" fill="'+TH.mut+'">'+esc(t==null?i:t)+'</text>'; });
   svg+='</svg>';
   return svg;
