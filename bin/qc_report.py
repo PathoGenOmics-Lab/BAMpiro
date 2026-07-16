@@ -3174,6 +3174,7 @@ function renderDynamics(){
 
 var EPICOL={A:'#2f6fed',B:'#e6893a'};
 var epiState={dir:'all',q:'',minr:null,conf:'all',view:'cards',tsort:{k:'q',asc:true},showAll:false};
+var epiZoom=250;   // epistasis pair-card width in px (zoom slider), mirrors the dynamics cards
 function epiMiniChart(p){
   var times=p.times||[], A=p.trajA||[], B=p.trajB||[], n=times.length;
   var W=250,H=150,ml=30,mr=12,mt=10,mb=26,pw=W-ml-mr,ph=H-mt-mb;
@@ -3221,6 +3222,7 @@ function renderEpistasis(){
       '<span class="epi-flabel">confidence</span>'+
       CONF.map(function(c){return '<button class="dyn-btn epi-confbtn'+(epiState.conf===c[0]?' on':'')+'" data-c="'+c[0]+'" title="'+c[1]+'">'+c[0]+'</button>';}).join('')+
       '<label class="dyn-zoom" title="Minimum |Pearson r| for a pair to be shown (cards / table)"><span>|r| &#8805;</span><input type="range" id="epir" min="'+(E.min_r||0.8)+'" max="0.99" step="0.01" value="'+epiState.minr+'"><b id="epirv">'+epiState.minr.toFixed(2)+'</b></label>'+
+      '<label class="dyn-zoom" title="Resize the pair cards - drag left to fit more per row"><span>'+icon('search','sort')+'&#8211;/+</span><input type="range" id="epizoom" min="200" max="440" step="10" value="'+epiZoom+'"></label>'+
       '<button class="dyn-btn showall-btn" id="epiShowAll" title="Show every reported pair (clear the direction / confidence / |r| filters)">show all</button>'+
       '<span class="dyn-count" id="epicount"></span></div>'+
     '<div class="epi-legend">'+
@@ -3247,6 +3249,7 @@ function renderEpistasis(){
   }
   function epiCards(list){
     var grid=el('epi-cards');
+    grid.style.setProperty('--dyncw', epiZoom+'px');
     if(!list.length){ grid.innerHTML='<div class="dyn-empty" style="grid-column:1/-1">&#128204; no variant pair matches the current filter.</div>'; return; }
     var show=epiState.showAll?list:list.slice(0,12);   // collapsed shows the top pairs; 'show all' switch reveals them all
     grid.innerHTML=show.map(function(p){
@@ -3330,6 +3333,7 @@ function renderEpistasis(){
   Array.prototype.forEach.call(host.querySelectorAll('.epi-dirbtn'),function(b){ b.onclick=function(){ epiState.dir=b.getAttribute('data-d'); Array.prototype.forEach.call(host.querySelectorAll('.epi-dirbtn'),function(x){x.className='dyn-btn epi-dirbtn'+(x.getAttribute('data-d')===epiState.dir?' on':'');}); draw(); }; });
   Array.prototype.forEach.call(host.querySelectorAll('.epi-confbtn'),function(b){ b.onclick=function(){ epiState.conf=b.getAttribute('data-c'); Array.prototype.forEach.call(host.querySelectorAll('.epi-confbtn'),function(x){x.className='dyn-btn epi-confbtn'+(x.getAttribute('data-c')===epiState.conf?' on':'');}); draw(); }; });
   el('epir').oninput=function(){ epiState.minr=+this.value; el('epirv').textContent=epiState.minr.toFixed(2); draw(); };
+  el('epizoom').oninput=function(){ epiZoom=+this.value; el('epi-cards').style.setProperty('--dyncw', epiZoom+'px'); };
   function epiSetAll(on){ epiState.showAll=on; var eb=el('epiShowAll'); if(eb){ eb.textContent=on?'show less':'show all'; eb.classList.toggle('on',on); } draw(); }
   el('epiShowAll').onclick=function(){ epiSetAll(!epiState.showAll); };   // toggle: every reported pair <-> the top 12
   window.__epiSetAll=epiSetAll;
@@ -4085,7 +4089,7 @@ def build_html(title, payload):
 # ============================================================================
 _DYN_SAMPLE_RE = re.compile(r'^(sample_?id|sampleid|sample|name|gid|strain|isolate)$', re.I)
 _DYN_TIME_RE   = re.compile(r'(passage|pase|timepoint|time_?point|^time$|^day$|date|week|month|hour|generation|^tp$|visit|^t\d*$)', re.I)
-_DYN_GROUP_RE  = re.compile(r'(group|series|patient|host|subject|cluster|experiment|^line$|replicate|chain|pair|lineage_?id|donor|case|animal)', re.I)
+_DYN_GROUP_RE  = re.compile(r'(group|series|patient|host|subject|cluster|experiment|^line$|replicate|chain|pair|lineage_?id|donor|case|animal|^samples$)', re.I)
 _DYN_NONSYN    = re.compile(r'missense|stop_gained|stop_lost|start_lost|frameshift|inframe|splice|initiator', re.I)
 
 
