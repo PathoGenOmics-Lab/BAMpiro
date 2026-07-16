@@ -1,0 +1,8 @@
+[book]
+title = "BAMpiro Documentation"
+authors = ["Paula Ruiz-Rodriguez", "Mireia Coscolla"]
+language = "en"
+
+[output.html]
+default-theme = "light"
+git-repository-url = "https://github.com/PathoGenOmics-Lab/BAMpiro"
