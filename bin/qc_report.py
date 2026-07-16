@@ -1231,8 +1231,9 @@ table.drmx th{position:sticky;background:var(--soft);z-index:2}
 .snpmx-fsel select{font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:4px 9px;background:var(--panel);color:var(--label);cursor:pointer}
 .snpmx-wrap{overflow:auto;max-height:74vh;border:1px solid var(--line);border-radius:12px}
 table.snpmx tr.snpmx-spacer td{padding:0!important;border:0!important;background:transparent!important}
-.snpmx-morelink{color:var(--accent);cursor:pointer;text-decoration:none;font-weight:600;margin-left:5px}
-.snpmx-morelink:hover{text-decoration:underline}
+.snpmx-allbtn{border-color:var(--accent);color:var(--accent);font-weight:600}
+.snpmx-allbtn:hover{background:var(--accent-soft)}
+.snpmx-allbtn.on{background:var(--accent-soft)}
 table.snpmx{border-collapse:separate;border-spacing:0;font-size:12px;width:auto;margin:0 auto}
 table.snpmx th,table.snpmx td{border-bottom:1px solid #eef2f6}
 table.snpmx thead th{position:sticky;background:var(--soft);z-index:5}   /* top offset set inline per header row */
@@ -3356,6 +3357,7 @@ function renderSnpMatrix(){
       '<input id="snpmxq" class="dyn-search" type="search" placeholder="filter by gene / position / amino acid...">'+
       '<label class="snpmx-toggle"><input type="checkbox" id="snpmxdp" checked> show depth</label>'+
       '<button class="dyn-btn" id="snpmxdl" title="Download the full matrix (all samples) as a wide TSV">'+icon('download')+'download matrix (TSV)</button>'+
+      '<button class="dyn-btn snpmx-allbtn" id="snpmxallbtn" style="display:none" title="Toggle between the top most-shared sites and a scrollable view of every site"></button>'+
       '<span class="dyn-count" id="snpmxcount"></span></div>'+
     filterUI+
     (meta?('<div class="snpmx-metanote">column levels from the samplesheet: '+meta.fields.map(function(f){return '<b>'+esc(f)+'</b>';}).join(' &#183; ')+' &#183; hover a header cell for its value</div>'):'')+
@@ -3369,11 +3371,13 @@ function renderSnpMatrix(){
     });
     var nfilt=0; for(var kf in snpmxFilter){ if(snpmxFilter[kf]) nfilt++; }
     var total=rows.length, capped=total>MAXR, ncol=1+vi.length;
-    var ctl='';   // let the user page from the top-MAXR default to a virtualized scroll over everything, and back
-    if(capped){ ctl = snpmxAll
-      ? (' &#183; showing <b>all '+total+'</b> (scroll) <a href="#" id="snpmxall" class="snpmx-morelink">show top '+MAXR+'</a>')
-      : (' &#183; showing <b>'+MAXR+'</b> of '+total+' <a href="#" id="snpmxall" class="snpmx-morelink">show all '+total+' &#8595;</a>'); }
-    el('snpmxcount').innerHTML=total+' SNP site(s) &#215; '+vi.length+' sample(s)'+(nfilt?' (filtered)':'')+ctl+(M.truncated?' &#183; full matrix in the TSV':'');
+    el('snpmxcount').innerHTML=total+' SNP site(s) &#215; '+vi.length+' sample(s)'+(nfilt?' (filtered)':'')+
+      (capped?(' &#183; showing <b>'+(snpmxAll?('all '+total):(MAXR+' of '+total))+'</b>'):'')+(M.truncated?' &#183; full matrix in the TSV':'');
+    var allbtn=el('snpmxallbtn');   // a real button toggles between the top sites and the full virtualized scroll
+    if(allbtn){ if(capped){ allbtn.style.display=''; allbtn.classList.toggle('on',snpmxAll);
+        allbtn.innerHTML=snpmxAll?('show top '+MAXR):('show all '+total+' &#8595;');
+        allbtn.onclick=function(){ snpmxAll=!snpmxAll; el('snpmxwrap').scrollTop=0; draw(); }; }
+      else { allbtn.style.display='none'; } }
     var mh=22, nf=meta?meta.fields.length:0;
     var metaRows=meta?meta.fields.map(function(f,k){
       return '<tr>'+'<th class="snpmx-info snpmx-metalabel" style="top:'+(k*mh)+'px">'+esc(f)+'</th>'+
@@ -3415,7 +3419,6 @@ function renderSnpMatrix(){
     } else {
       tbl.innerHTML=thead+'<tbody>'+rows.slice(0,MAXR).map(rowHTML).join('')+'</tbody>';
     }
-    var al=el('snpmxall'); if(al) al.onclick=function(e){ e.preventDefault(); snpmxAll=!snpmxAll; wrap.scrollTop=0; draw(); };
   }
   el('snpmxq').oninput=function(){clearTimeout(_mxdb);_mxdb=setTimeout(draw,160);};
   el('snpmxdp').onchange=draw;
