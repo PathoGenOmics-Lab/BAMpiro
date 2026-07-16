@@ -17,6 +17,7 @@ Pure standard library (no numpy / matplotlib / CDN). Study-specific signatures l
 from __future__ import annotations
 
 import argparse
+import base64
 import gzip
 import html
 import json
@@ -3956,17 +3957,37 @@ SHELL = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div id="modal" class="modal"><div class="modalcard" role="dialog" aria-modal="true" aria-label="Sample detail"><button class="modalx" id="modalx" aria-label="close"><span data-ic="x"></span></button><div id="modalbody"></div></div></div>
 <div id="tt"></div><div id="toast" role="status" aria-live="polite"></div>
 <div id="infopop"></div>
-<script>var REPORT=__JSON__;</script>
-<script>__JS__</script>
+<script>var REPORT_GZ="__JSON_GZ__";</script>
+<script>function __qcmain__(){
+__JS__
+}</script>
+<script>(function(){
+  // The report payload is embedded gzip-compressed (so the whole cohort fits in a light HTML) and
+  // inflated natively in the browser. Everything is present - nothing is dropped to save weight.
+  function b2b(b64){var s=atob(b64),n=s.length,a=new Uint8Array(n);for(var i=0;i<n;i++)a[i]=s.charCodeAt(i);return a;}
+  function fail(m){try{document.body.innerHTML='<div style="max-width:640px;margin:64px auto;padding:28px;font:15px/1.6 system-ui,-apple-system,sans-serif;color:#334;border:1px solid #dde;border-radius:12px">This QC report stores its data compressed to stay small, and needs a browser with built-in gzip support (Chrome / Edge / Firefox, or Safari 16.4+). It could not be decompressed here: '+m+'.</div>';}catch(e){}}
+  try{
+    if(typeof DecompressionStream==="undefined"){fail("DecompressionStream unavailable");return;}
+    var stream=new Blob([b2b(REPORT_GZ)]).stream().pipeThrough(new DecompressionStream("gzip"));
+    new Response(stream).text().then(function(t){window.REPORT=JSON.parse(t);__qcmain__();}).catch(function(e){fail(""+e);});
+  }catch(e){fail(""+e);}
+})();</script>
 </body></html>"""
 
 
 def build_html(title, payload):
-    data = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
+    # Embed the payload gzip-compressed + base64 so the whole cohort travels in a light, self-contained
+    # HTML (JSON deflates ~5-10x); the browser inflates it natively at load. base64 has no "</" so it
+    # cannot break out of the <script>. Nothing is dropped for size - compression is what lets us keep it all.
+    raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    data_gz = base64.b64encode(gzip.compress(raw, 9)).decode("ascii")
+    sys.stderr.write("[qc_report] payload %.2f MB JSON -> %.2f MB embedded (gzip+base64, %.0f%% smaller)\n"
+                     % (len(raw) / 1048576.0, len(data_gz) / 1048576.0,
+                        100.0 * (1.0 - len(data_gz) / max(1, len(raw)))))
     # Inject content first, then substitute __TITLE__ LAST so a user --title that happens to
     # contain a placeholder token (e.g. "__JS__") can never pull in the CSS/JS/logo/JSON blob.
     return (SHELL.replace("__CSS__", CSS).replace("__LOGO__", LOGO_DATA_URI)
-                 .replace("__JS__", JS).replace("__JSON__", data)
+                 .replace("__JS__", JS).replace("__JSON_GZ__", data_gz)
                  .replace("__REPO__", html.escape(REPO_URL))
                  .replace("__TITLE__", html.escape(title)))
 
@@ -4370,10 +4391,11 @@ def build_epistasis(dynamics, min_r=0.8, min_points=3, top=300, perm=2000):
             'n_strong': sum(1 for p in out if p['tier'] == 'strong')}
 
 
-def build_snp_matrix(variants, reference='', max_sites=8000):
+def build_snp_matrix(variants, reference='', max_sites=50000):
     """Sparse SNP matrix for the report: samples + one row per SNP site with its ref/alt/annotation
-    and only the cells (sample index -> [af, dp]) actually called. Capped to the most-shared sites to
-    bound the embedded HTML size; the pipeline writes the complete matrix TSV separately."""
+    and only the cells (sample index -> [af, dp]) actually called. The payload is gzip-compressed in the
+    HTML, so this cap is a high safety backstop (most-shared sites kept) rather than a size limit; the
+    pipeline also writes the complete matrix TSV separately."""
     if not variants:
         return None
     samples = list(variants.keys())
