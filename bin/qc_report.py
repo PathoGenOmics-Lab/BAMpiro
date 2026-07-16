@@ -1231,9 +1231,10 @@ table.drmx th{position:sticky;background:var(--soft);z-index:2}
 .snpmx-fsel select{font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:4px 9px;background:var(--panel);color:var(--label);cursor:pointer}
 .snpmx-wrap{overflow:auto;max-height:74vh;border:1px solid var(--line);border-radius:12px}
 table.snpmx tr.snpmx-spacer td{padding:0!important;border:0!important;background:transparent!important}
-.snpmx-allbtn{border-color:var(--accent);color:var(--accent);font-weight:600}
-.snpmx-allbtn:hover{background:var(--accent-soft)}
-.snpmx-allbtn.on{background:var(--accent-soft)}
+.snpmx-allbtn{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.snpmx-allbtn:hover{background:var(--accent);filter:brightness(1.08);color:#fff}
+.snpmx-allbtn.on{background:var(--panel);color:var(--accent)}   /* showing-all state ('show top') is the quieter one */
+.snpmx-allbtn.on:hover{background:var(--accent-soft);filter:none}
 table.snpmx{border-collapse:separate;border-spacing:0;font-size:12px;width:auto;margin:0 auto}
 table.snpmx th,table.snpmx td{border-bottom:1px solid #eef2f6}
 table.snpmx thead th{position:sticky;background:var(--soft);z-index:5}   /* top offset set inline per header row */
