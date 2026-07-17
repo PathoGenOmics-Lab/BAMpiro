@@ -129,13 +129,16 @@ process GENERATE_LEGACY_STATS {
     tuple val(sampleId), val(refId), path(fastp_json), path(bam_stats), path(vcf), path(ref_fai), path(pathotypr_report)
 
     output:
-    path("${sampleId}.log"), emit: legacy_log
+    // refId in the name so a sample mapped to >1 reference does not emit two identically-named logs
+    // that collide when COLLECT_SUMMARY .collect()s them (the sample_id lives INSIDE the log content,
+    // which collect_summary.py parses, so renaming the file is safe).
+    path("${sampleId}.${refId}.log"), emit: legacy_log
 
     script:
     // Logic to handle optional Pathotypr report
     // "NO_FILE" is a placeholder passed by main.nf if pathotypr didn't run
     def patho_arg = (pathotypr_report.name != "NO_FILE") ? "--pathotypr-report ${pathotypr_report}" : ""
-    
+
     """
     # Run the Python script (located in the bin/ directory)
     python3 ${projectDir}/bin/stats_to_legacy.py \\
@@ -145,5 +148,6 @@ process GENERATE_LEGACY_STATS {
         --vcf ${vcf} \\
         --ref-fai ${ref_fai} \\
         ${patho_arg}
+    mv "${sampleId}.log" "${sampleId}.${refId}.log"
     """
 }

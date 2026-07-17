@@ -103,7 +103,7 @@ process BUILD_MAPPABILITY {
     // storeDir persists the track and SKIPS this (expensive) step if it already exists -> computed
     // once per reference across runs. Keyed by refId + the genmap params; clear the dir if the
     // reference sequence changes for a given refId.
-    storeDir "${params.mappability_dir}/${refId}_k${params.genmap_min_k}-${params.genmap_max_k}_s${params.genmap_step}_E${params.genmap_errors}r${params.genmap_error_rate}"
+    storeDir "${params.mappability_dir}/${refId}_k${params.genmap_min_k}-${params.genmap_max_k}_s${params.genmap_step}_E${params.genmap_errors}r${params.genmap_error_rate}_tp${params.genmap_tail_policy}_inf${params.genmap_infinity}"
 
     cpus 8
     memory '16 GB'
