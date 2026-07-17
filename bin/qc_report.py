@@ -778,9 +778,21 @@ def _asset(name):
         return fh.read()
 
 
-CSS = _asset("report.css")
+# CSS split into ordered modules under report_assets/css/ (base tokens -> layout -> components ->
+# panels); concatenated in cascade order, so the result is identical to a single stylesheet.
+_CSS_MODULES = ["css/01_base.css", "css/02_layout.css", "css/03_components.css", "css/04_panels.css"]
+CSS = "".join(_asset(m) for m in _CSS_MODULES)
 
-JS = _asset("report.js")
+# The report front-end is one ES5 IIFE split into ordered modules under report_assets/js/ (one per
+# area) purely for editability; they are concatenated verbatim here, so the running code is identical
+# to a single file. Order matters: 01 opens the IIFE and sets up shared state; 14 wires events + closes it.
+_JS_MODULES = [
+    "js/01_prelude.js", "js/02_qcspace.js", "js/03_state.js", "js/04_helpers.js",
+    "js/05_insights_qc.js", "js/06_insights_genome.js", "js/07_render_core.js", "js/08_curation.js",
+    "js/09_genome_genes.js", "js/10_dynamics.js", "js/11_epistasis.js", "js/12_snpmatrix.js",
+    "js/13_drug_kraken.js", "js/14_boot.js",
+]
+JS = "".join(_asset(m) for m in _JS_MODULES)
 
 # BAMpiro header logo (bampiro2.png resized to ~90x100 and embedded so the report stays
 # self-contained - no external image request). Regenerate from .github/bampiro2.png if the logo changes.
