@@ -103,7 +103,9 @@ process PREPARE_REFERENCE {
             # so the mask is correct without assuming shared coordinates. offset=1 is the fixed 0->1-based
             # convention (pathotypr generate_kmers is 0-based); classify writes its main output as the -o name.
             python3 !{projectDir}/bin/pathotypr_liftover.py markers "!{params.blindspot_bed}" "!{params.canonical_ref}" -o bs_markers.tsv
-            !{params.pathotypr_bin} classify --tsv_pos bs_markers.tsv --ref_fasta "!{params.canonical_ref}" --fasta_genomes reference.fa -o bs_classify --kmer_size 21
+            # genome input via --tsv_genomes (--fasta-genomes alone trips a required-args bug in pathotypr 0.1.0)
+            printf 'genome\tpath\nrun_ref\treference.fa\n' > bs_genomes.tsv
+            !{params.pathotypr_bin} classify --tsv_pos bs_markers.tsv --ref_fasta "!{params.canonical_ref}" --tsv_genomes bs_genomes.tsv --output bs_classify --kmer-size 21
             python3 !{projectDir}/bin/pathotypr_liftover.py apply bs_classify --out-bed bs_lifted.bed --contig "$CONTIG" --offset 1
             awk 'BEGIN{OFS="\t"} $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {print $1, $2+1, $3, "blindspot", ""}' bs_lifted.bed >> "$out"
         else

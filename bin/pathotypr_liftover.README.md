@@ -10,10 +10,16 @@ Two halves, with `pathotypr classify` (in the container) in between:
 ```bash
 # A -> B liftover of the positions in POS (BED or 1-based list), context built on reference A:
 python3 pathotypr_liftover.py markers POS  A.fasta  -o markers.tsv
-pathotypr classify --tsv_pos markers.tsv --ref_fasta A.fasta --fasta_genomes B.fasta -o classify_out
-python3 pathotypr_liftover.py apply classify_out.tsv --out-map map.tsv \
-        --out-bed lifted.bed --contig <B_contig> --offset 1
+printf 'genome\tpath\nB\tB.fasta\n' > genomes.tsv          # --tsv_genomes: --fasta-genomes alone trips a
+pathotypr classify --tsv_pos markers.tsv --ref_fasta A.fasta \
+        --tsv_genomes genomes.tsv --output classify_out --kmer-size 21   # required-args bug in pathotypr 0.1.0
+python3 pathotypr_liftover.py apply classify_out --out-map map.tsv \
+        --out-bed lifted.bed --contig B --offset 1
 ```
+
+Flag style is mixed in pathotypr 0.1.0: `--tsv_pos` / `--ref_fasta` / `--tsv_genomes` keep underscores,
+but `--kmer-size` / `--fasta-genomes` use dashes. The classify main output is written to the `--output`
+name exactly (no extension); its columns are `genome  k-mer  k-merPOS  SNPgenome  SNPreference  lineage`.
 
 `map.tsv` = `src_pos <TAB> tgt_pos`; `lifted.bed` = the positions collapsed into intervals in B's coords.
 

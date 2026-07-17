@@ -79,8 +79,11 @@ process LIFT_VARIANTS {
     zcat -f ${vcfs} | awk '!/^#/ && \$2 ~ /^[0-9]+\$/ {print \$2}' | sort -un > positions.txt
     if [ -s positions.txt ]; then
         python3 ${projectDir}/bin/pathotypr_liftover.py markers positions.txt ${ref_fa} -o markers.tsv
+        # classify's genome input via --tsv_genomes (name<TAB>path): the --fasta-genomes flag alone trips a
+        # required-args bug in pathotypr 0.1.0. Flags are dash-style (--tsv_pos/--ref_fasta keep underscores).
+        printf 'genome\\tpath\\ncanonical\\t%s\\n' "${params.canonical_ref}" > genomes.tsv
         ${params.pathotypr_bin} classify --tsv_pos markers.tsv --ref_fasta ${ref_fa} \\
-            --fasta_genomes ${params.canonical_ref} -o classify_out --kmer_size 21
+            --tsv_genomes genomes.tsv --output classify_out --kmer-size 21
         python3 ${projectDir}/bin/pathotypr_liftover.py apply classify_out --out-map ${basename}_pos_liftover.tsv --offset 1
     else
         printf 'src_pos\\ttgt_pos\\n' > ${basename}_pos_liftover.tsv
