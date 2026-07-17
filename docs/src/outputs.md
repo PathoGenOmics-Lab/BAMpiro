@@ -68,7 +68,8 @@ BAMpiro/
 │   ├── qc_report.py               # Build the interactive self-contained HTML QC report
 │   ├── WGS_fasta_allpos.py        # Consensus FASTA from the all-positions VCF
 │   ├── build_min_unique_len.py    # Per-reference mappability track (genmap)
-│   └── filter_reads_mappability.py  # Length-aware read filter
+│   ├── filter_reads_mappability.py  # Length-aware read filter
+│   └── extract_kraken_reads.py    # Pull reads of a given taxon from Kraken2 output (decontamination)
 ├── assets/
 │   ├── mycolorsTB_nature.tsv     # Canonical MTBC lineage colour palette (report)
 │   └── H37Rv_blindspots.bed      # H37Rv Illumina blind-spots (Zenodo 3701840; --mask_blindspots)
