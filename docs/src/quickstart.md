@@ -15,8 +15,10 @@ nextflow run main.nf \
 ```
 
 `--tsv` is **required** — there is no usable default samplesheet, so omitting it fails
-with `Samplesheet not found: samples_legio.tsv` (a leftover placeholder). The only
-profile defined is `standard` (which runs on SLURM, the default executor).
+with `Samplesheet not found: samples_legio.tsv` (a leftover placeholder). `-profile
+standard` targets a **SLURM cluster**; on a laptop / VM / non-SLURM host use
+`-profile local` (or `-profile local,docker` for Docker) — see
+[Running without SLURM](installation.md#running-without-slurm).
 
 Enable alignment-free lineage / drug-resistance typing and dual amino-acid numbering:
 

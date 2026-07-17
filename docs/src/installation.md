@@ -19,6 +19,25 @@ nextflow run main.nf --tsv samples.tsv --outdir results_bampiro -profile standar
 See [Quick Start](quickstart.md) for a full example and the
 [samplesheet format](quickstart.md#samplesheet).
 
+## Running without SLURM
+
+The **default** (`-profile standard`) targets the authors' SLURM cluster — it uses the `slurm` executor,
+`module load singularity`, and site-specific Singularity `--bind` paths. On any other machine those fail
+before the pipeline runs, so use the `local` (and, for Docker, `docker`) profiles, which drop all of that:
+
+```bash
+# Singularity/Apptainer on a single machine (no SLURM, no environment-modules):
+nextflow run main.nf --tsv samples.tsv --outdir results -profile local
+
+# Docker on a laptop:
+nextflow run main.nf --tsv samples.tsv --outdir results -profile local,docker
+```
+
+`local` runs every task on the current host with the executor set to `local` and the cluster-only bind
+paths cleared. Point `--kraken2_db` at your own Kraken2 database — if it lives outside the launch directory,
+Singularity may need it bound explicitly, e.g. `-profile local` plus
+`--kraken2_db /data/kraken2` and `export NXF_SINGULARITY_RUN_OPTIONS="--bind /data/kraken2"`.
+
 ## Container contents (software versions)
 
 The Docker container (`paururo/bampiro:1.0.1`) bundles the following tools:
