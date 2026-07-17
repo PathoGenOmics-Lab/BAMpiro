@@ -84,7 +84,8 @@ process LIFT_VARIANTS {
         printf 'genome\\tpath\\ncanonical\\t%s\\n' "${params.canonical_ref}" > genomes.tsv
         ${params.pathotypr_bin} classify --tsv_pos markers.tsv --ref_fasta ${ref_fa} \\
             --tsv_genomes genomes.tsv --output classify_out --kmer-size 21
-        python3 ${projectDir}/bin/pathotypr_liftover.py apply classify_out --out-map ${basename}_pos_liftover.tsv --offset 1
+        python3 ${projectDir}/bin/pathotypr_liftover.py apply classify_out --out-map ${basename}_pos_liftover.tsv \\
+            --offset 1 --source-fasta ${ref_fa} --target-fasta ${params.canonical_ref} --kmer-size 21
     else
         printf 'src_pos\\ttgt_pos\\n' > ${basename}_pos_liftover.tsv
     fi

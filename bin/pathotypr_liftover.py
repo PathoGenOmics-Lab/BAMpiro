@@ -86,21 +86,42 @@ def cmd_markers(args):
 
 
 def cmd_apply(args):
-    # classify output columns: genome  kmer  position  snp_position  ref_position  lineage
-    mapping = {}   # src (ref_position) -> tgt (snp_position + offset)
+    # A k-mer that recurs in the target genome makes the lift AMBIGUOUS: pathotypr's index keeps the last
+    # occurrence, so it would report a WRONG coordinate (seen on real MTBC: a duplicated 51-mer at
+    # H37Rv 2,300,000 also sits at 2,306,069). Guard against it: if --target-fasta is given, drop any marker
+    # whose k-mer is not unique in the target, so we only ever emit a correct coordinate (or none).
+    def _kmer_counts(fasta, k):
+        seq = _read_first_contig(fasta)
+        d = {}
+        for i in range(len(seq) - k + 1):
+            km = seq[i:i + k]
+            d[km] = d.get(km, 0) + 1
+        return d
+    # A k-mer must be UNIQUE in both genomes to give a correct coordinate: non-unique in the target means
+    # pathotypr's index kept the wrong (last) occurrence; non-unique in the source means the marker itself
+    # collapsed onto the wrong source position. Both happen on real MTBC (duplicated segments). Drop either.
+    tgt_counts = _kmer_counts(args.target_fasta, args.kmer_size) if args.target_fasta else None
+    src_counts = _kmer_counts(args.source_fasta, args.kmer_size) if args.source_fasta else None
+    # classify output columns: genome  k-mer  k-merPOS  SNPgenome  SNPreference  lineage
+    mapping = {}   # src (SNPreference) -> tgt (SNPgenome + offset)
+    nonuniq = 0
     with open(args.classify, encoding="utf-8", errors="replace") as fh:
         for line in fh:
             c = line.rstrip("\n").split("\t")
             if len(c) < 5:
                 continue
             try:
-                tgt = int(c[3]) + args.offset              # snp_position in the target genome
-                src = int(c[4])                            # ref_position (the marker's source coordinate)
+                tgt = int(c[3]) + args.offset              # SNPgenome: position in the target genome
+                src = int(c[4])                            # SNPreference: the marker's source coordinate
             except ValueError:
                 continue
-            # keep the first / drop ambiguous multi-hits (a source that maps to >1 target = non-unique k-mer)
+            if (tgt_counts is not None and tgt_counts.get(c[1], 0) != 1) or \
+               (src_counts is not None and src_counts.get(c[1], 0) != 1):
+                nonuniq += 1                               # k-mer recurs in source or target -> ambiguous, drop
+                continue
+            # keep the first / drop ambiguous multi-hits (a source that maps to >1 target)
             if src in mapping and mapping[src] != tgt:
-                mapping[src] = None                        # mark ambiguous
+                mapping[src] = None
             elif src not in mapping:
                 mapping[src] = tgt
     good = {s: t for s, t in mapping.items() if t is not None}
@@ -122,8 +143,8 @@ def cmd_apply(args):
                         start = prev = q
                 w.write("%s\t%d\t%d\t%s\n" % (args.contig, start - 1, prev, args.name))
     amb = sum(1 for t in mapping.values() if t is None)
-    sys.stderr.write("[liftover] apply: %d positions lifted, %d ambiguous (non-unique k-mer)%s\n"
-                     % (len(good), amb, (" -> " + args.out_bed) if args.out_bed else ""))
+    sys.stderr.write("[liftover] apply: %d lifted, %d dropped (k-mer recurs in target), %d ambiguous%s\n"
+                     % (len(good), nonuniq, amb, (" -> " + args.out_bed) if args.out_bed else ""))
 
 
 def main():
@@ -144,6 +165,13 @@ def main():
     a.add_argument("--contig", default="target", help="contig name for --out-bed")
     a.add_argument("--name", default="blindspot", help="BED feature name")
     a.add_argument("--offset", type=int, default=0, help="constant added to snp_position (calibrate with an identity run)")
+    a.add_argument("--target-fasta", default=None,
+                   help="the genome that was searched (classify --tsv_genomes); drop positions whose k-mer is "
+                        "not unique in it, so a lifted coordinate is never wrong (only correct or absent).")
+    a.add_argument("--source-fasta", default=None,
+                   help="the reference the markers were built on (classify --ref_fasta); drop positions whose "
+                        "k-mer is not unique in it (the marker collapsed onto the wrong source position).")
+    a.add_argument("--kmer-size", type=int, default=21, help="k-mer size used in classify (for the uniqueness check)")
     a.set_defaults(func=cmd_apply)
 
     args = ap.parse_args()

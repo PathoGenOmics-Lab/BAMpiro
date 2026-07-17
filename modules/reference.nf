@@ -106,7 +106,8 @@ process PREPARE_REFERENCE {
             # genome input via --tsv_genomes (--fasta-genomes alone trips a required-args bug in pathotypr 0.1.0)
             printf 'genome\tpath\nrun_ref\treference.fa\n' > bs_genomes.tsv
             !{params.pathotypr_bin} classify --tsv_pos bs_markers.tsv --ref_fasta "!{params.canonical_ref}" --tsv_genomes bs_genomes.tsv --output bs_classify --kmer-size 21
-            python3 !{projectDir}/bin/pathotypr_liftover.py apply bs_classify --out-bed bs_lifted.bed --contig "$CONTIG" --offset 1
+            python3 !{projectDir}/bin/pathotypr_liftover.py apply bs_classify --out-bed bs_lifted.bed --contig "$CONTIG" \
+                --offset 1 --source-fasta "!{params.canonical_ref}" --target-fasta reference.fa --kmer-size 21
             awk 'BEGIN{OFS="\t"} $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {print $1, $2+1, $3, "blindspot", ""}' bs_lifted.bed >> "$out"
         else
             # reference already shares H37Rv coordinates: append the blind-spots directly (contig rewrite + 1-based)

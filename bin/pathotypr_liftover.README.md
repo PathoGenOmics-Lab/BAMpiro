@@ -13,9 +13,16 @@ python3 pathotypr_liftover.py markers POS  A.fasta  -o markers.tsv
 printf 'genome\tpath\nB\tB.fasta\n' > genomes.tsv          # --tsv_genomes: --fasta-genomes alone trips a
 pathotypr classify --tsv_pos markers.tsv --ref_fasta A.fasta \
         --tsv_genomes genomes.tsv --output classify_out --kmer-size 21   # required-args bug in pathotypr 0.1.0
-python3 pathotypr_liftover.py apply classify_out --out-map map.tsv \
-        --out-bed lifted.bed --contig B --offset 1
+python3 pathotypr_liftover.py apply classify_out --out-map map.tsv --out-bed lifted.bed --contig B \
+        --offset 1 --source-fasta A.fasta --target-fasta B.fasta --kmer-size 21   # uniqueness guard
 ```
+
+**Always pass `--source-fasta` and `--target-fasta`.** A k-mer that recurs in either genome makes the lift
+ambiguous (pathotypr keeps the last occurrence -> a WRONG coordinate; seen on real MTBC at a duplicated
+segment around H37Rv 2,300,000 and 832,200). The guard drops those, so `apply` only ever emits a coordinate
+that is *correct*. Validated on the real H37Rv vs MTBC-ancestor pair: with the guard, 0 wrong coordinates
+(≈96 % of positions lift; the rest are dropped, not mis-mapped), and the DR sites (rpoB 761155, katG
+2155168, gyrA 7570, rrs 1473246) all map correctly.
 
 Flag style is mixed in pathotypr 0.1.0: `--tsv_pos` / `--ref_fasta` / `--tsv_genomes` keep underscores,
 but `--kmer-size` / `--fasta-genomes` use dashes. The classify main output is written to the `--output`
