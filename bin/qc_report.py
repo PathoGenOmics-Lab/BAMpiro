@@ -980,6 +980,24 @@ def _dyn_ann(info):
     return '', '', '', ''
 
 
+def _dyn_opos(info):
+    """The ORIGINAL (used-reference) coordinate a liftover stamped onto a canonical-reference VCF record,
+    so a used-ref variant can be paired with its reference-of-interest position WITHOUT assuming the two
+    references share coordinates. Reads Picard LiftoverVcf's OriginalContig/OriginalStart, else a plain
+    OPOS=<contig:pos>. Returns 'contig:pos' (used-ref coordinates) or None."""
+    if not info:
+        return None
+    oc = ost = None
+    for field in info.split(';'):
+        if field.startswith('OriginalContig='):
+            oc = field[len('OriginalContig='):]
+        elif field.startswith('OriginalStart='):
+            ost = field[len('OriginalStart='):]
+        elif field.startswith('OPOS='):
+            return field[len('OPOS='):].strip() or None
+    return (oc + ':' + ost) if (oc and ost) else None
+
+
 def parse_vcfs(paths):
     """{sample: {'chrom:pos': {ref,alt,gene,eff,imp,af}}} from annotated per-sample VCFs (SNPs only).
     Sample = the VCF #CHROM last column, so filenames are irrelevant."""
@@ -1013,7 +1031,7 @@ def parse_vcfs(paths):
                     gene, eff, imp, aa = _dyn_ann(c[7])
                     out[sample][f'{chrom}:{pos}'] = {'ref': ref, 'alt': alt.split(',')[0], 'gene': gene,
                                                      'eff': eff, 'imp': imp, 'aa': aa, 'aa_h37rv': '',
-                                                     'af': round(af, 4), 'dp': dp}
+                                                     'af': round(af, 4), 'dp': dp, 'opos': _dyn_opos(c[7])}
         except OSError:
             continue
     return out
@@ -1066,6 +1084,7 @@ def build_dynamics(metadata, variants, sample_meta=None, emerge=0.25, fix=0.90, 
             series.append({'pos': pos, 'gene': (meta or {}).get('gene', ''), 'eff': (meta or {}).get('eff', ''),
                            'imp': (meta or {}).get('imp', ''), 'alt': (meta or {}).get('alt', ''),
                            'aa': (meta or {}).get('aa', ''), 'aa_h37rv': (meta or {}).get('aa_h37rv', ''),
+                           'pos_h37rv': (meta or {}).get('pos_h37rv', ''),
                            'traj': [round(x, 4) for x in traj], 'dp': dps, 'flags': flags})
         if not series:
             continue
@@ -1267,10 +1286,10 @@ def build_snp_matrix(variants, reference='', max_sites=50000):
             except ValueError:
                 continue
             st = sites.setdefault(key, {'contig': contig, 'pos': ipos, 'ref': v.get('ref', ''),
-                                        'alt': set(), 'gene': '', 'eff': '', 'aa': '', 'aa_h37rv': '', 'cells': {}})
+                                        'alt': set(), 'gene': '', 'eff': '', 'aa': '', 'aa_h37rv': '', 'pos_h37rv': '', 'cells': {}})
             if v.get('alt'):
                 st['alt'].add(v['alt'])
-            for k in ('gene', 'eff', 'aa', 'aa_h37rv'):
+            for k in ('gene', 'eff', 'aa', 'aa_h37rv', 'pos_h37rv'):
                 if v.get(k) and not st[k]:
                     st[k] = v[k]
             st['cells'][sidx[s]] = [v['af'], v.get('dp')]
@@ -1280,7 +1299,8 @@ def build_snp_matrix(variants, reference='', max_sites=50000):
         ordered = sorted(sites.values(), key=lambda x: -len(x['cells']))[:max_sites]
         ordered.sort(key=lambda x: (x['contig'], x['pos']))
     rows = [{'contig': x['contig'], 'pos': x['pos'], 'ref': x['ref'], 'alt': ','.join(sorted(x['alt'])),
-             'gene': x['gene'], 'eff': x['eff'], 'aa': x['aa'], 'aa_h37rv': x['aa_h37rv'], 'n': len(x['cells']), 'cells': x['cells']}
+             'gene': x['gene'], 'eff': x['eff'], 'aa': x['aa'], 'aa_h37rv': x['aa_h37rv'],
+             'pos_h37rv': x['pos_h37rv'], 'n': len(x['cells']), 'cells': x['cells']}
             for x in ordered]
     return {'samples': samples, 'reference': reference, 'rows': rows,
             'total_sites': len(sites), 'truncated': truncated}
@@ -1502,17 +1522,25 @@ def main():
             provenance[k.strip()] = v.strip()
 
     _variants = parse_vcfs(args.vcfs)   # parsed once, feeds both the dynamics panel and the SNP matrix
-    if args.vcfs_h37rv:   # attach the H37Rv/Mycobrowser amino-acid change per variant
+    if args.vcfs_h37rv:   # attach the reference-of-interest (H37Rv) amino-acid change AND coordinate per variant
         _h37 = parse_vcfs(args.vcfs_h37rv)
         for _s, _pm in _variants.items():
             _hs = _h37.get(_s, {})
-            # also index by bare position: MTB is single-contig, so a differing contig NAME between the
-            # used-reference and H37Rv VCFs should still match (only the coordinate needs to line up).
-            _hpos = {_k.rpartition(':')[2]: _hv for _k, _hv in _hs.items()}
+            # Pair each used-ref variant with its canonical-reference record. Prefer the ORIGINAL used-ref
+            # coordinate a liftover stamped (OriginalContig/Start or OPOS) so the two references need NOT
+            # share coordinates; else fall back to the bare position (references that DO share H37Rv coords).
+            _by_opos, _by_pos = {}, {}
+            for _ck, _cv in _hs.items():
+                if _cv.get('opos'):
+                    _by_opos[_cv['opos']] = (_ck, _cv)
+                _by_pos.setdefault(_ck.rpartition(':')[2], (_ck, _cv))
             for _key, _v in _pm.items():
-                _hv = _hs.get(_key) or _hpos.get(_key.rpartition(':')[2])
-                if _hv and _hv.get('aa'):
-                    _v['aa_h37rv'] = _hv['aa']
+                _hit = _by_opos.get(_key) or _by_pos.get(_key.rpartition(':')[2])
+                if _hit:
+                    _ck, _cv = _hit
+                    if _cv.get('aa'):
+                        _v['aa_h37rv'] = _cv['aa']
+                    _v['pos_h37rv'] = _ck   # reference-of-interest coordinate (contig:pos), possibly != the mapping one
     _sample_meta = parse_sample_meta(args.metadata)   # shared by the dynamics filter and the SNP matrix header
     _dynamics = build_dynamics(parse_metadata(args.metadata), _variants, _sample_meta)   # feeds dynamics + epistasis
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -1521,6 +1549,7 @@ def main():
                "genome_len": genome_len, "snp_density_ok": snp_density_ok, "defs": DEFS, "nbins": NBINS,
                "genes": parse_gff(args.gff), "lin_colors": parse_lineage_colors(args.lineage_colors),
                "gene_map": build_gene_map(args.gff), "aa2_label": args.aa2_label,
+               "ref_name": provenance.get('reference', ''),   # mapping reference name for the SNP tables' headers
                "section_info": SECTION_INFO,
                "gene_burden": parse_gene_burden(args.gene_burden) or None,
                "dr": parse_dr(args.dr_report),

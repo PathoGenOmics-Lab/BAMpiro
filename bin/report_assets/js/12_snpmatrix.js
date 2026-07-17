@@ -67,10 +67,11 @@ function renderSnpMatrix(){
         vi.map(function(i){var s=samples[i],v=(meta.rows[s]||{})[f]||'',bg=metaColor(f,v); return '<th class="snpmx-metacell" style="top:'+(k*mh)+'px;background:'+bg+';color:'+metaText(bg)+'" title="'+esc(f)+': '+esc(v||'-')+'">'+esc(v)+'</th>';}).join('')+'</tr>';
     }).join(''):'';
     var stop=nf*mh;
-    var nameRow='<tr><th class="snpmx-info snpmx-corner" style="top:'+stop+'px">SNP '+esc(M.reference?('('+M.reference+')'):'')+'</th>'+
+    var refhdr='SNP'+((M.reference||REFNAME)?(' <span class="snpmx-refn" title="reference the samples were mapped against">'+esc(M.reference||REFNAME)+'</span>'):'')+(AA2LBL?(' <span class="snpmx-refn2" title="reference of interest - amino acids (and the position, when the pipeline lifts it) are also shown in this reference&#39;s coordinates in brackets when they differ">&#8596; '+esc(AA2LBL)+'</span>'):'');
+    var nameRow='<tr><th class="snpmx-info snpmx-corner" style="top:'+stop+'px">'+refhdr+'</th>'+
       vi.map(function(i){var s=samples[i];return '<th class="snpmx-hcell" style="top:'+stop+'px" title="'+esc(s)+'"><span class="snpmx-h">'+esc(s)+'</span></th>';}).join('')+'</tr>';
     function rowHTML(r){
-      var lbl='<b>'+esc(r.gene||r.contig)+'</b>'+geneRvTag(r.gene)+' '+r.pos+' '+esc(r.ref)+'&#8594;'+esc(r.alt)+(r.aa?(' <span class="snpmx-aa">'+aaDual(r.aa,r.aa_h37rv)+'</span>'):'');
+      var lbl='<b>'+esc(r.gene||r.contig)+'</b>'+geneRvTag(r.gene)+' '+refPos(r.pos,r.pos_h37rv)+' '+esc(r.ref)+'&#8594;'+esc(r.alt)+(r.aa?(' <span class="snpmx-aa">'+aaDual(r.aa,r.aa_h37rv)+'</span>'):'');
       var cells=vi.map(function(i){var c=r.cells[i], s=samples[i];
         if(!c) return '<td class="snpmx-cell snpmx-empty" title="'+esc(s)+' - not called"></td>';
         var afTxt=c[0].toFixed(2).replace(/^0/,'').replace(/^1\.00$/,'1');
@@ -112,11 +113,11 @@ function renderSnpMatrix(){
     el('snpmxfclear').onclick=function(){ snpmxFilter={}; Array.prototype.forEach.call(host.querySelectorAll('.snpmx-filters select'),function(s){s.value='';}); draw(); };
   }
   el('snpmxdl').onclick=function(){
-    var hdr=['reference','contig','pos','ref_allele','alt_allele','gene','effect','aa_change'];
+    var hdr=['reference','contig','pos','pos_'+AA2LBL,'ref_allele','alt_allele','gene','effect','aa_change'];
     samples.forEach(function(s){hdr.push(s+'|AF');hdr.push(s+'|DP');});
     var lines=[hdr.join('\t')];
     if(meta){ meta.fields.forEach(function(f){ var row=['# '+f,'','','','','','','']; samples.forEach(function(s){row.push((meta.rows[s]||{})[f]||'');row.push('');}); lines.push(row.join('\t')); }); }
-    M.rows.forEach(function(r){var row=[M.reference||r.contig,r.contig,r.pos,r.ref,r.alt,r.gene,r.eff,r.aa];
+    M.rows.forEach(function(r){var row=[M.reference||r.contig,r.contig,r.pos,(r.pos_h37rv?(''+r.pos_h37rv).split(':').pop():''),r.ref,r.alt,r.gene,r.eff,r.aa];
       samples.forEach(function(s,i){var c=r.cells[i]; if(c){row.push(c[0].toFixed(4));row.push(c[1]==null?'':c[1]);}else{row.push('');row.push('');}});
       lines.push(row.join('\t'));});
     dl(lines.join('\n')+'\n','snp_matrix.tsv','text/tab-separated-values');

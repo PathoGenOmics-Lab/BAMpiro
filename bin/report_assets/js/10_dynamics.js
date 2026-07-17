@@ -83,7 +83,7 @@ function renderDynamics(){
   if(sec)sec.style.display='';
   var th=D.thresholds||{emerge:0.25,fix:0.9,loss:0.1};
   var vars=[];
-  D.groups.forEach(function(g){ g.series.forEach(function(s){ vars.push({gene:s.gene||'(intergenic)',pos:s.pos,group:g.group,times:g.times,traj:s.traj,dp:s.dp,flags:s.flags,eff:s.eff,imp:s.imp,alt:s.alt,aa:s.aa,aa_h37rv:s.aa_h37rv}); }); });
+  D.groups.forEach(function(g){ g.series.forEach(function(s){ vars.push({gene:s.gene||'(intergenic)',pos:s.pos,group:g.group,times:g.times,traj:s.traj,dp:s.dp,flags:s.flags,eff:s.eff,imp:s.imp,alt:s.alt,aa:s.aa,aa_h37rv:s.aa_h37rv,pos_h37rv:s.pos_h37rv}); }); });
   // per-series (group) metadata + the fields usable as a series filter: group-invariant (one value per
   // series, so timepoint/date -> the trajectory axis -> excluded) and with >1 value across series.
   var groupMeta={}; D.groups.forEach(function(g){ groupMeta[g.group]=g.meta||{}; });
@@ -157,7 +157,7 @@ function renderDynamics(){
         var chips=(v.flags||[]).map(function(f){return '<span class="dyn-fchip" style="background:'+(DYNCOL[f]||'#8895a6')+'" title="'+(DYNHELP[f]||f)+'">'+f+'</span>';}).join('');
         var posNum=String(v.pos).split(':').pop();
         cards.push('<div class="dyn-card'+(flagged?' flagged':'')+'">'+
-          '<div class="dyn-card-h"><span class="dyn-cardgene" title="Gene (click its chip above to toggle)">'+esc(v.gene||'(intergenic)')+'</span>'+geneRvTag(v.gene)+(singleGroup?'':'<span class="dyn-grp" title="Connected series this variant belongs to (the metadata group column, e.g. patient / passage line)">'+esc(v.group)+'</span>')+'<span class="dyn-pos" title="Genomic position (contig:position) of this SNP: '+esc(v.pos)+'">'+esc(posNum)+'</span></div>'+
+          '<div class="dyn-card-h"><span class="dyn-cardgene" title="Gene (click its chip above to toggle)">'+esc(v.gene||'(intergenic)')+'</span>'+geneRvTag(v.gene)+(singleGroup?'':'<span class="dyn-grp" title="Connected series this variant belongs to (the metadata group column, e.g. patient / passage line)">'+esc(v.group)+'</span>')+'<span class="dyn-pos" title="Genomic position (contig:position) of this SNP: '+esc(v.pos)+(v.pos_h37rv?('  &#183; '+esc(AA2LBL)+': '+esc(v.pos_h37rv)):'')+'">'+refPos(posNum,v.pos_h37rv)+'</span></div>'+
           '<div class="dyn-eff" title="Predicted effect (snpEff) and protein change HGVS.p: ref amino acid, codon position, alt amino acid">'+esc(v.eff||'variant')+(v.aa?(' &#183; <b class="dyn-aa">'+aaDual(v.aa,v.aa_h37rv)+'</b>'):(v.alt?(' &#183; &#8594;'+esc(v.alt)):''))+'</div>'+
           dynMiniChart(v,th,dynShowDP)+
           '<div class="dyn-card-f">'+(chips||'<span class="c" title="no emergence / fixation / loss / non-synonymous event for this variant">no event</span>')+'<span class="dyn-traj" title="Allele frequency at each timepoint, in chronological order">'+v.traj.map(function(a){return a.toFixed(2);}).join(' &#8594; ')+'</span></div>'+
