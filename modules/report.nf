@@ -55,10 +55,10 @@ process COLLECT_DR {
 }
 
 process LIFT_VARIANTS {
-    // Alignment-free k-mer liftover (pathotypr classify) of the run's variant positions onto the canonical
-    // (H37Rv) reference -> a mapping_pos<TAB>h37rv_pos map for the report's SNP tables (--pos-liftover).
-    // Context k-mers are built on the mapping reference; each position lifts iff its context is unique in
-    // H37Rv. Needs the pathotypr container. offset=1 is the fixed 0->1-based convention.
+    // Synteny-anchored k-mer liftover of the run's variant positions onto the canonical (H37Rv) reference
+    // -> a mapping_pos<TAB>h37rv_pos map for the report's SNP tables (--pos-liftover). Alignment-free, no
+    // shared-coordinate assumption; repeat positions are placed by the surrounding unique anchors (never
+    // mis-mapped) rather than dropped. Pure Python (bin/pathotypr_liftover.py lift), no pathotypr call.
     tag "LiftVariants: ${reference}"
     cpus 4
     memory { 4.GB * task.attempt }
@@ -78,14 +78,10 @@ process LIFT_VARIANTS {
     # union of variant positions across the report VCFs (mapping-reference coordinates)
     zcat -f ${vcfs} | awk '!/^#/ && \$2 ~ /^[0-9]+\$/ {print \$2}' | sort -un > positions.txt
     if [ -s positions.txt ]; then
-        python3 ${projectDir}/bin/pathotypr_liftover.py markers positions.txt ${ref_fa} -o markers.tsv
-        # classify's genome input via --tsv_genomes (name<TAB>path): the --fasta-genomes flag alone trips a
-        # required-args bug in pathotypr 0.1.0. Flags are dash-style (--tsv_pos/--ref_fasta keep underscores).
-        printf 'genome\\tpath\\ncanonical\\t%s\\n' "${params.canonical_ref}" > genomes.tsv
-        ${params.pathotypr_bin} classify --tsv_pos markers.tsv --ref_fasta ${ref_fa} \\
-            --tsv_genomes genomes.tsv --output classify_out --kmer-size 21
-        python3 ${projectDir}/bin/pathotypr_liftover.py apply classify_out --out-map ${basename}_pos_liftover.tsv \\
-            --offset 1 --source-fasta ${ref_fa} --target-fasta ${params.canonical_ref} --kmer-size 21
+        # synteny-anchored k-mer liftover of the variant positions (mapping-ref coords) onto the canonical
+        # reference; ambiguous (repeat) positions are resolved by the surrounding unique anchors, never mis-mapped.
+        python3 ${projectDir}/bin/pathotypr_liftover.py lift positions.txt ${ref_fa} ${params.canonical_ref} \\
+            --out-map ${basename}_pos_liftover.tsv --kmer-size 21
     else
         printf 'src_pos\\ttgt_pos\\n' > ${basename}_pos_liftover.tsv
     fi

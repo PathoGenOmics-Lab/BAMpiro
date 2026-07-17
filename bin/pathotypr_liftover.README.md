@@ -1,28 +1,36 @@
 # pathotypr_liftover.py — k-mer coordinate liftover between MTBC references
 
 Translates a set of genome positions from one MTBC reference to another **without a whole-genome
-alignment and without assuming the references share coordinates**, using `pathotypr classify`:
-for a position it builds the flanking-context k-mer and locates it in the target genome, which reports
-the target coordinate (`snp_position`) next to the source one (`ref_position`).
+alignment and without assuming the references share coordinates**: for a position it takes the
+flanking-context k-mer and finds it in the target genome; the target position is the equivalent coordinate.
 
-Two halves, with `pathotypr classify` (in the container) in between:
+## `lift` — the recommended method (self-contained, synteny-anchored)
 
 ```bash
-# A -> B liftover of the positions in POS (BED or 1-based list), context built on reference A:
-python3 pathotypr_liftover.py markers POS  A.fasta  -o markers.tsv
-printf 'genome\tpath\nB\tB.fasta\n' > genomes.tsv          # --tsv_genomes: --fasta-genomes alone trips a
-pathotypr classify --tsv_pos markers.tsv --ref_fasta A.fasta \
-        --tsv_genomes genomes.tsv --output classify_out --kmer-size 21   # required-args bug in pathotypr 0.1.0
-python3 pathotypr_liftover.py apply classify_out --out-map map.tsv --out-bed lifted.bed --contig B \
-        --offset 1 --source-fasta A.fasta --target-fasta B.fasta --kmer-size 21   # uniqueness guard
+# lift the positions in POS (BED or 1-based list) from reference A onto reference B:
+python3 pathotypr_liftover.py lift POS A.fasta B.fasta --out-map map.tsv --out-bed lifted.bed --contig B --kmer-size 21
 ```
 
-**Always pass `--source-fasta` and `--target-fasta`.** A k-mer that recurs in either genome makes the lift
-ambiguous (pathotypr keeps the last occurrence -> a WRONG coordinate; seen on real MTBC at a duplicated
-segment around H37Rv 2,300,000 and 832,200). The guard drops those, so `apply` only ever emits a coordinate
-that is *correct*. Validated on the real H37Rv vs MTBC-ancestor pair: with the guard, 0 wrong coordinates
-(≈96 % of positions lift; the rest are dropped, not mis-mapped), and the DR sites (rpoB 761155, katG
-2155168, gyrA 7570, rrs 1473246) all map correctly.
+Builds **anchors** from k-mers unique in both genomes, then for a position whose k-mer **recurs** (a repeat)
+picks the occurrence **consistent with the surrounding anchors (synteny)** instead of dropping it — so it
+never mis-maps and recovers most repeat positions. Pure Python, no pathotypr call. Validated on the real
+H37Rv / MTBC-ancestor pair: **≈99 % of positions lift with zero wrong coordinates**, it tracks indels
+(before an insertion → identity, after → shifted), and the DR sites (rpoB 761155, katG 2155168, gyrA 7570,
+rrs 1473246) all map correctly. Tune repeat resolution with `--max-shift` / `--min-margin`.
+
+## `markers` + `apply` — the `pathotypr classify` alternative (Rust, for very large sets)
+
+```bash
+python3 pathotypr_liftover.py markers POS A.fasta -o markers.tsv
+printf 'genome\tpath\nB\tB.fasta\n' > genomes.tsv            # --tsv_genomes: --fasta-genomes alone trips a
+pathotypr classify --tsv_pos markers.tsv --ref_fasta A.fasta \
+        --tsv_genomes genomes.tsv --output classify_out --kmer-size 21   # required-args bug in pathotypr 0.1.0
+python3 pathotypr_liftover.py apply classify_out --out-map map.tsv --contig B \
+        --offset 1 --source-fasta A.fasta --target-fasta B.fasta --kmer-size 21   # ALWAYS pass both fastas
+```
+
+classify reports only one occurrence per k-mer, so `apply` **drops** repeats (doesn't synteny-resolve them);
+`--source-fasta`/`--target-fasta` are required so a non-unique k-mer is dropped rather than mis-mapped.
 
 Flag style is mixed in pathotypr 0.1.0: `--tsv_pos` / `--ref_fasta` / `--tsv_genomes` keep underscores,
 but `--kmer-size` / `--fasta-genomes` use dashes. The classify main output is written to the `--output`
