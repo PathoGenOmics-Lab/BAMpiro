@@ -8,14 +8,18 @@ infections). Lineage/DR typing is **off** by default - enable it with
 nextflow run main.nf \
     --tsv samples.tsv \
     --outdir results_bampiro \
-    -profile slurm
+    -profile standard
 ```
+
+`--tsv` is **required** — there is no usable default samplesheet, so omitting it fails
+with `Samplesheet not found: samples_legio.tsv` (a leftover placeholder). The only
+profile defined is `standard` (which runs on SLURM, the default executor).
 
 Enable alignment-free lineage / drug-resistance typing and dual amino-acid numbering:
 
 ```bash
 nextflow run main.nf \
-    --tsv samples.tsv --outdir results_bampiro -profile slurm \
+    --tsv samples.tsv --outdir results_bampiro -profile standard \
     --run_pathotypr true --annotate_canonical true
 ```
 

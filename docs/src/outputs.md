@@ -3,7 +3,10 @@
 The pipeline organizes results by `sampleId`. Below is a breakdown using a sample
 named `MP00091` mapped against reference `LENS`. Run/cohort-level deliverables land
 at the top of `outdir` and are prefixed with the sample-sheet name (here
-`samples_legio`); per-sample files live under their `sampleId` folder.
+`samples_legio`); per-sample files live under their `sampleId` folder. With the
+default `nested_output=true`, that folder is a **nested** path (e.g. `MP00091` →
+`MP/00/09/1/`, not the flat `MP00091/` drawn below); set `nested_output=false` for the
+flat `sampleId` layout shown here.
 
 ```text
 results_bampiro/
@@ -24,8 +27,9 @@ results_bampiro/
 │
 └── MP00091/                                # 📁 Per-Sample Results Directory
     │
-    ├── MP00091.LENS.final.bam              # 🧬 Merged, Coordinate-sorted, Deduplicated BAM
-    ├── MP00091.LENS.final.bam.bai          # BAM Index  (or .cram with --output_cram)
+    ├── MP00091.LENS.filtered.bam           # 🧬 Dedup + length-aware-filtered BAM (analysis BAM, published by default)
+    ├── MP00091.LENS.filtered.bam.bai       # BAM Index  (or .cram with --output_cram)
+    │                                       # (final.bam is published instead when dynamic_read_filter=false, or in addition with --publish_prefilter_bam)
     │
     ├── MP00091.LENS.ann.vcf.gz             # 🎯 MAIN OUTPUT: Annotated Variants (SNPs/Indels)
     ├── MP00091.LENS.ann.vcf.gz.tbi         # Index for the main VCF
@@ -42,16 +46,17 @@ results_bampiro/
     ├── MP00091.LENS.var.homo.indel...      # 📂 SPLIT VCF: Homozygous Indels only
     │
     ├── lineage/                            # 🧬 Pathotypr typing (only if --run_pathotypr)
-    │   └── MP00091.pathotypr.lineage_summary.tsv   # -> Pathotypr lineage / sub-lineage call
+    │   └── MP00091__<runId>.pathotypr.lineage_summary.tsv   # -> Pathotypr lineage / sub-lineage call (__<runId> avoids multi-lane collisions)
     │
     └── stats/                              # 📉 Statistics & Logs Folder
-        ├── MP00091.log                     # -> LEGACY summary log (Tab-separated metrics)
+        ├── MP00091.LENS.log                # -> LEGACY summary log (Tab-separated metrics)
         ├── MP00091.LENS.dedup.stats        # -> Samtools stats (reads mapped, coverage, etc.)
+        ├── MP00091.LENS.filter_mqc.tsv     # -> Length-aware read-filter drop counts (input/kept/dropped; MultiQC table)
         ├── MP00091.LENS.mask_sites.tsv     # -> Specific positions masked due to low confidence
         ├── MP00091...fastp.html/.json      # -> Trimming quality reports
         ├── MP00091...kraken.report         # -> Taxonomic classification report
         ├── MP00091.LENS.snpeff.csv         # -> Variant effect statistics
-        ├── MP00091.dr_mutations.tsv        # -> Pathotypr per-sample DR mutations (only if --run_pathotypr)
+        ├── MP00091__<runId>.dr_mutations.tsv  # -> Pathotypr per-sample DR mutations (only if --run_pathotypr)
         └── Locus_to_exclude_LENS.txt       # -> List of repetitive regions excluded from calling
 ```
 
@@ -71,8 +76,9 @@ BAMpiro/
 │   ├── filter_reads_mappability.py  # Length-aware read filter
 │   └── extract_kraken_reads.py    # Pull reads of a given taxon from Kraken2 output (decontamination)
 ├── assets/
-│   ├── mycolorsTB_nature.tsv     # Canonical MTBC lineage colour palette (report)
-│   └── H37Rv_blindspots.bed      # H37Rv Illumina blind-spots (Zenodo 3701840; --mask_blindspots)
+│   ├── mycolorsTB_nature.tsv       # Canonical MTBC lineage colour palette (report)
+│   ├── H37Rv_blindspots.bed        # H37Rv Illumina blind-spots (Zenodo 3701840; --mask_blindspots)
+│   └── H37Rv_blindspots.README.md  # Provenance / derivation of the blind-spots BED
 ├── modules/                 # Nextflow DSL2 Modules
 │   ├── qc.nf                # FastP, Kraken, MultiQC, software versions
 │   ├── mapping.nf           # BWA-MEM2, MarkDup, length-aware read filter

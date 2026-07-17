@@ -20,8 +20,9 @@ by `bin/qc_report.py` and controlled by `--make_qc_report` (default `true`).
   `exclusion.tsv` / `keep_list.txt` for downstream phylogeny. The margin behind every
   flag is shown inline in the Flagged panel (no hover needed).
 - **Triage-first layout** - the sample table opens sorted worst-QC first, and the
-  **Flagged** panel sits directly under the general statistics (and at the top of
-  the sidebar) so the failing samples are the first thing you reach.
+  **Flagged** panel sits directly under the general statistics (near the top of the
+  sidebar, right under Summary and Stats) so the failing samples are the first thing
+  you reach.
 - **Dark / light theme** - a header toggle that follows your OS preference and is
   remembered per viewer.
 - **Responsive** - reflows to a phone: the frozen sample column is capped, wide
@@ -36,7 +37,7 @@ Grouped as in the sidebar:
 
 | Group | Panels |
 | :--- | :--- |
-| **Overview** | General statistics (value-coloured, sortable, filterable, TSV export) · **Flagged samples** (worst-first, each failing margin shown inline) · Per-lineage summary (canonical *mycolorsTB* palette) · Distributions (beeswarm / bar / histogram) · **Taxonomic composition** (Kraken2: primary taxon / contaminants / unclassified, worst-first) |
+| **Overview** | **Executive summary** (cohort health & headline findings at a glance — the first panel) · General statistics (value-coloured, sortable, filterable, TSV export) · **Flagged samples** (worst-first, each failing margin shown inline) · Per-lineage summary (canonical *mycolorsTB* palette) · Distributions (beeswarm / bar / histogram) · **Taxonomic composition** (Kraken2: primary taxon / contaminants / unclassified, worst-first) |
 | **Correlation & structure** | Metric-pair scatter (box-select to basket) · Metric correlation heatmap · QC-space PCA (+ most-unusual-samples table) · Divergence vs completeness |
 | **Genome & genes** | Consensus completeness · Genome landscape (per-position callability / variant heatmap, gene search, mask-region toggle) · Functional annotation (snpEff classes) · Functional gene burden · Variable genes (SNP-density hotspots) |
 | **Evolution** | Temporal sampling overview · Selection pN/pS (dN/dS, eskaks) · aDNA damage authentication (mapDamage) |
@@ -73,9 +74,9 @@ there is nothing to configure — add a column and the matching panel reacts.
 
 | Column (matched by name) | Examples | What it drives |
 | :--- | :--- | :--- |
-| **sample id** | `sample`, `sample_id`, `name`, `strain`, `isolate` | Keys the metadata to each sample's VCF / stats (falls back to the first column). |
-| **time** | `timepoint`, `day`, `date`, `week`, `month`, `passage`, `generation`, `visit`, `tp`, `t0`… | The x-axis of the **SNP dynamics** trajectories. |
-| **group / series** | `patient`, `series`, `host`, `subject`, `cluster`, `donor`, `case`, `replicate`, `chain`, `samples` | Connects samples into one longitudinal series (a trajectory set per group) for **SNP dynamics** and **epistasis**. |
+| **sample id** | `sample`, `sample_id`, `name`, `gid`, `strain`, `isolate`… | Keys the metadata to each sample's VCF / stats (falls back to the first column). |
+| **time** | `timepoint`, `day`, `date`, `week`, `month`, `hour`, `passage`, `generation`, `visit`, `tp`, `t0`… | The x-axis of the **SNP dynamics** trajectories. |
+| **group / series** | `group`, `patient`, `series`, `host`, `subject`, `cluster`, `experiment`, `donor`, `case`, `replicate`, `chain`, `samples`… | Connects samples into one longitudinal series (a trajectory set per group) for **SNP dynamics** and **epistasis**. |
 | **any other column** | `site`, `lineage`, `region`, `ward`, `batch`… | Adds detail with no special meaning. |
 
 **Every** annotation column — including the time and group ones — also becomes a

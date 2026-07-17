@@ -8,11 +8,12 @@
 
 The pipeline automatically pulls the container `docker://paururo/bampiro:1.0.1`,
 which contains every tool it needs (BWA-MEM2, Samtools, FreeBayes, SnpEff,
-Pathotypr, Python, …). `nextflow.config` pins the image to a specific digest for
-reproducibility; override it with `--container`.
+Pathotypr, Python, …). `nextflow.config` references the image by its mutable `1.0.1`
+tag; for byte-for-byte reproducibility re-pin it to the digest the image was built
+from (`docker://paururo/bampiro@sha256:<digest>`). Override either with `--container`.
 
 ```bash
-nextflow run main.nf --tsv samples.tsv --outdir results_bampiro -profile slurm
+nextflow run main.nf --tsv samples.tsv --outdir results_bampiro -profile standard
 ```
 
 See [Quick Start](quickstart.md) for a full example and the
@@ -38,9 +39,7 @@ The Docker container (`paururo/bampiro:1.0.1`) bundles the following tools:
 | **Genmap** | *(bioconda)* | Genome mappability (length-aware read filter) |
 | **Pathotypr** | *(bioconda)* | Alignment-free MTBC lineage + WHO drug-resistance typing |
 | **MultiQC** | `1.33` | Aggregate results reporting |
-| **Bedtools** | `2.31.1` | Genome arithmetic |
-| **BLAST** | `2.17.0` | Sequence alignment search |
-| **MUMmer4** | `4.0.1` | Efficient sequence alignment (used for repeat masking) |
+| **MUMmer4** | `4.0.1` | `nucmer` / `show-coords` self-alignment for repeat masking |
 | **Biopython** | `1.86` | Biological computation library |
 | **Pandas** | `2.3.3` | Data analysis library |
 

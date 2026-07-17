@@ -26,6 +26,13 @@ sequences, and a consolidated interactive quality-control report.
 - **Interactive QC report** - a single self-contained HTML dashboard (21 panels)
   plus a machine-readable per-sample `qc_flags.tsv`, alongside the classic MultiQC
   report. See [Interactive QC Report](qc-report.md).
+- **Master SNP matrix** - a cohort-wide `<samplesheet>_snp_matrix.tsv` (rows = SNP
+  sites, columns = reference / annotation + per-sample allele frequency & depth) for
+  phylogenetics and downstream analysis (on by default).
+- **Flexible alignment output** - publish alignments as reference-compressed **CRAM**
+  (~40-50% smaller than BAM) via `--output_cram`; variant calling stays on BAM
+  internally and the reference FASTA is published alongside so the CRAMs are
+  self-decodable.
 - **Canonical (H37Rv) numbering** - optionally shows every variant's H37Rv
   **coordinate** (via an alignment-free k-mer [liftover](pathotypr.md#reference-agnostic-coordinates-k-mer-liftover),
   so it works for *any* MTBC reference) and **amino-acid** change alongside the
@@ -44,7 +51,9 @@ sequences, and a consolidated interactive quality-control report.
 7. **Annotation** - `SnpEff` annotation of main and legacy VCFs (+ optional
    canonical/H37Rv pass for [dual amino-acid numbering](pathotypr.md#dual-amino-acid-numbering-h37rv--mycobrowser)).
 8. **Report** - aggregation into the classic MultiQC report **and** the interactive
-   [HTML QC report](qc-report.md) with per-sample PASS/WARN/FAIL flags.
+   [HTML QC report](qc-report.md) with per-sample PASS/WARN/FAIL flags, **plus a
+   cohort-wide master SNP matrix TSV** (rows = SNP sites, columns = reference /
+   annotation + per-sample AF & depth).
 
 ---
 

@@ -11,8 +11,9 @@ mapped to a non-H37Rv reference.
 Each sample gets two `split-fastq` passes:
 
 1. **Lineage** - nested sub-lineage classification against the bundled lineage
-   markers → `<sample>.pathotypr.lineage_summary.tsv` (feeds the per-lineage panel
-   and the lineage colours).
+   markers → `<sample>__<runId>.pathotypr.lineage_summary.tsv` (the `__<runId>` infix
+   keeps a multi-lane / multi-reference sample from colliding; feeds the per-lineage
+   panel and the lineage colours).
 2. **Drug resistance** - WHO-catalogue markers, gated by `--pathotypr_min_alt`
    (default `95` = near-fixed only; lower to ~10-25 to also catch heteroresistant /
    minority alleles) → per-sample DR mutations, aggregated into
@@ -23,8 +24,11 @@ Each sample gets two `split-fastq` passes:
 The marker panels and pre-trained model (Zenodo v1.0.0, DOI
 [10.5281/zenodo.19210044](https://doi.org/10.5281/zenodo.19210044)) and the
 MTBC-ancestor reference are **bundled in the image** under `/opt/pathotypr/`;
-override any of them with `--pathotypr_ref` / `--pathotypr_markers` /
-`--pathotypr_dr_markers` / `--pathotypr_rf_model` if you supply your own. See
+override the reference or marker panels with `--pathotypr_ref` / `--pathotypr_markers`
+/ `--pathotypr_dr_markers` if you supply your own. (The pre-trained RF model is loaded
+by pathotypr from its fixed bundled path — `PATHOTYPR_DATA=/opt/pathotypr`;
+`--pathotypr_rf_model` is defined but **not currently passed to the typing step**, so
+overriding it has no effect — rebuild or bind-mount the image to swap the model.) See
 [Configuration](configuration.md) for every flag.
 
 ## Dual amino-acid numbering (H37Rv / Mycobrowser)
@@ -64,8 +68,11 @@ low-mappability positions that are unreliable to call (Zenodo record
 `assets/H37Rv_blindspots.bed`, NC_000962.3 coordinates) — to each reference's
 exclusion mask, so those sites are dropped from variant calling, consensus and the
 report. Because the BED is in H37Rv coordinates, `--blindspot_liftover true` (default)
-lifts it onto the run reference with the **same k-mer liftover**, so the mask is
-correct even when the reference is **not** H37Rv; set it to `false` (and point
-`--canonical_ref` at an H37Rv FASTA) only when the reference already shares H37Rv
-coordinates. The repetitive fraction is already covered by the pipeline's own repeat /
+lifts it onto the run reference with the **same k-mer liftover**, treating
+`--canonical_ref` as the FASTA the blind-spots are defined on (default: the
+H37Rv-colinear MTBC ancestor bundled at `/opt/pathotypr/reference.fasta`; point it at a
+true H37Rv FASTA for an exact lift), so the mask is correct even when the reference is
+**not** H37Rv. Set `--blindspot_liftover false` — which appends the BED directly and
+ignores `--canonical_ref` — only when the reference already shares H37Rv coordinates.
+The repetitive fraction is already covered by the pipeline's own repeat /
 mappability masking — the blind-spots add the non-repetitive problematic sites.

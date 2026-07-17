@@ -8,16 +8,19 @@ Customize execution by passing parameters on the command line (e.g.
 | **Input/Output** | `--tsv` | `samples_legio.tsv` | Path to the input sample sheet (TSV). |
 | | `--outdir` | `results_bampiro` | Directory where results will be saved. |
 | | `--threads` | `8` | Max CPUs per process (where applicable). |
-| | `--container` | *(pinned digest)* | Container image. Defaults to a pinned `paururo/bampiro` digest for reproducibility. |
-| | `--nested_output` | `true` | Nest per-sample folders (e.g. `MP001` → `MP/00/1`). |
+| | `--container` | `docker://paururo/bampiro:1.0.1` | Container image. The default is the mutable `1.0.1` Docker Hub **tag** (not a digest); re-pin to `docker://paururo/bampiro@sha256:<digest>` for byte-exact reproducibility, or override. |
+| | `--nested_output` | `true` | Nest per-sample folders (e.g. `MP00091` → `MP/00/09/1`). |
 | | `--publish_mode` | `copy` | `copy` duplicates outputs into `outdir`; `link` hardlinks them to the work dir. |
 | | `--output_cram` | `false` | Publish the alignment as CRAM (~40-50% smaller) instead of BAM. |
+| | `--publish_prefilter_bam` | `false` | Also publish the pre-filter `final.bam`. With the length-aware filter on (`--dynamic_read_filter`, the default), `filtered.bam` is the analysis BAM and `final.bam` is a ~redundant second full BAM, so it is dropped by default. |
+| | `--publish_allpos_vcf` | `true` | Publish the masked per-position (all-positions) VCF the consensus is built from. Set `false` to drop it and save disk. |
+| | `--publish_virgin_allpos_vcf` | `false` | Also publish the virgin (`.raw`) per-position VCF (needs `--publish_allpos_vcf`); redundant with the virgin consensus, so off by default. |
 | **Lineage & DR (Pathotypr)** | `--run_pathotypr` | `false` | Enable alignment-free MTBC lineage + WHO drug-resistance typing. |
 | | `--pathotypr_bin` | `pathotypr` | Executable name (on `PATH` inside the container). |
 | | `--pathotypr_ref` | `/opt/pathotypr/reference.fasta` | MTBC-ancestor FASTA the markers are defined on (bundled). |
 | | `--pathotypr_markers` | `/opt/pathotypr/lineage_markers.tsv` | Zenodo lineage markers (bundled). |
 | | `--pathotypr_dr_markers` | `/opt/pathotypr/dr_markers.tsv` | Zenodo WHO drug-resistance markers (bundled). |
-| | `--pathotypr_rf_model` | `/opt/pathotypr/rf_model.pathotypr` | Zenodo pre-trained RF lineage model (bundled). |
+| | `--pathotypr_rf_model` | `/opt/pathotypr/rf_model.pathotypr` | Zenodo pre-trained RF lineage model (bundled). **Not currently wired to the typing step** — overriding has no effect; the model is loaded from its fixed bundled path (`PATHOTYPR_DATA`) inside the image. |
 | | `--pathotypr_min_alt` | `95` | Min alt-allele % for a DR call. Lower it (10-25) to catch heteroresistant / minority alleles. |
 | **Dual AA numbering** | `--annotate_canonical` | `false` | Re-annotate variants against a canonical snpEff DB for dual (H37Rv) amino-acid numbering. |
 | | `--canonical_snpeff_db` | `Mycobacterium_tuberculosis_h37rv` | Canonical snpEff genome for the second annotation. |
@@ -37,6 +40,7 @@ Customize execution by passing parameters on the command line (e.g.
 | | `--report_iupac_max` | `2` | Gate: max IUPAC (ambiguous) %. |
 | | `--report_mapping_min` | `80` | Gate: min mapped %. |
 | **QC & Filter** | `--kraken2_db` | *(path)* | Path to the Kraken2 database directory. |
+| | `--kraken_memory_mapping` | `true` | Read the Kraken2 DB via mmap so parallel tasks share it in RAM (large peak-memory saving; slightly slower per task on a cold page cache). |
 | | `--fastp_min_length` | `35` | Discard reads shorter than this length. |
 | **Mapping/Backbone**| `--allpos_min_cov` | `30` | Minimum coverage to call a site "WT" (otherwise "NC"). |
 | | `--allpos_max_depth` | `10000` | Max depth for mpileup to avoid memory issues. |
@@ -46,6 +50,7 @@ Customize execution by passing parameters on the command line (e.g.
 | | `--freebayes_min_base_qual`| `20` | Min base quality to use a base. |
 | | `--freebayes_min_alt_fraction`| `0.05` | Min fraction of alt reads to propose a variant. |
 | | `--freebayes_min_alt_count`| `2` | Min alt-supporting reads to propose a variant. |
+| | `--bcftools_sort_mem` | `2G` | Max memory (`-m`) for `bcftools sort` when building the all-positions (`all.pos`) VCF. |
 | **VAF & Filters** | `--hom_threshold` | `0.90` | Frequency ≥ 0.90 is called **Homozygous**. |
 | | `--het_min_frac` | `0.10` | Frequency between 0.10 and 0.90 is **Heterozygous**. |
 | | `--filter_min_dp` | `30` | Minimum depth required to call a variant. |
@@ -54,13 +59,15 @@ Customize execution by passing parameters on the command line (e.g.
 | | `--consensus_min_dp` | `7` | Depth threshold below which a base becomes "No Call". |
 | | `--consensus_mask_char` | `X` | Character for masked/low-quality sites. |
 | | `--consensus_nocall_char`| `-` | Character for no-coverage sites (gaps). |
+| | `--consensus_wrap` | `80` | FASTA line width (bp per line) for the output consensus (`0` = single line). |
 | **Flags** | `--exclude_repeats` | `true` | Mask self-aligned repetitive regions from reference. |
 | | `--annotate_main_vcf` | `true` | Run SnpEff on the main VCF. |
 | | `--annotate_legacy_vcfs`| `true` | Run SnpEff on split VCFs (homo/het/indel). |
 
 > **More knobs.** `nextflow.config` also exposes the length-aware read filter
-> (`genmap_*`, `dynamic_read_filter`, `mappability_*`), the reference-bias consensus
-> gate (`consensus_ref_*`), the virgin/unmasked consensus (`keep_virgin_consensus`,
+> (`genmap_*`, `dynamic_read_filter`, `filter_keep_unmapped`, `filter_strict_contigs`,
+> `filter_max_drop_pct`, `mappability_*`), the reference-bias consensus gate
+> (`consensus_ref_*`, `consensus_max_ref_*`), the virgin/unmasked consensus (`keep_virgin_consensus`,
 > `virgin_full_freebayes`), the region-parallel FreeBayes (`freebayes_parallel*`),
 > and the backbone/masking options (`allpos_*`, `mask_baq_dropouts`). See the
 > commented `params { … }` block for the full, annotated list.

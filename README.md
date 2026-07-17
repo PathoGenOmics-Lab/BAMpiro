@@ -64,7 +64,7 @@ pulls a pinned `paururo/bampiro` image with every tool built in - nothing else t
 install.
 
 ```bash
-nextflow run main.nf --tsv samples.tsv --outdir results_bampiro -profile slurm
+nextflow run main.nf --tsv samples.tsv --outdir results_bampiro -profile standard
 ```
 
 Full requirements and the bundled software versions: [Installation](docs/installation.md).
@@ -77,7 +77,7 @@ amino-acid numbering) with:
 
 ```bash
 nextflow run main.nf \
-    --tsv samples.tsv --outdir results_bampiro -profile slurm \
+    --tsv samples.tsv --outdir results_bampiro -profile standard \
     --run_pathotypr true --annotate_canonical true
 ```
 

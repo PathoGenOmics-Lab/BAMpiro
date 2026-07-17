@@ -39,7 +39,7 @@ gap that satisfies **all** of:
    pinned by the flanking shared k-mers and is unverifiable, so the position drops (`--max-gap`);
 2. **colinear** — source span == target span (± `--indel-tol`) and the gap contains no other anchor of any chain;
 3. **homologous on both sides** — the ~k bp of source context on *each* side of the placed coordinate matches
-   (or reverse-complement-matches) the target at ≥ `--min-identity` (default 0.8), verified *independently*
+   (or reverse-complement-matches) the target at ≥ `--min-identity` (default 0.9), verified *independently*
    left and right so a position at a homology boundary can't borrow identity from its colinear flank.
 
 Two anchors prove only that the gap *ends* correspond; conditions 1 and 3 verify the *interior*, so an inversion
