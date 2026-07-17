@@ -37,22 +37,32 @@ table below.
 | `--publish_allpos_vcf` | Publishing the all-positions (backbone) VCF |
 | `--kraken_memory_mapping` | Reading the Kraken2 DB via mmap (RAM-sharing) |
 
-## Working with other organisms
+## Example configs
 
-BAMpiro is organism-agnostic, but its **defaults are tuned for *M. tuberculosis*** (diploid calling to catch
-mixed infections, plus the MTBC-only features). For a clonal haploid bacterium, add the built-in **`generic`**
-profile — it sets **ploidy 1** and forces the MTBC-only features off:
+Two documented, ready-to-use configs live in [`conf/`](../conf) — apply either with `-c`:
+
+### M. tuberculosis (the default organism)
+
+BAMpiro's built-in defaults are already TB-tuned, so a plain run is a valid TB run.
+[`conf/tuberculosis.config`](../conf/tuberculosis.config) additionally turns on the **full recommended MTBC
+feature set** — lineage + drug-resistance typing, dual H37Rv amino-acid numbering, the H37Rv coordinate
+liftover, and blind-spot masking (all bundled in the container):
 
 ```bash
-nextflow run main.nf --tsv samples.tsv --outdir results -profile standard,generic
+nextflow run main.nf --tsv samples.tsv --outdir results -profile standard -c conf/tuberculosis.config
 ```
 
-For anything more (a Kraken2 DB for your species, a canonical amino-acid numbering, tuned gate thresholds),
-copy the commented template [`conf/organism.config`](../conf/organism.config), edit it, and layer it on with
-`-c`:
+*(Running with no `-c` is still a valid TB run — it just leaves those optional features off.)*
+
+### Another organism
+
+BAMpiro is organism-agnostic, but its defaults are TB-tuned (diploid calling for mixed infections + the
+MTBC-only features). Add the built-in **`generic`** profile — it sets **ploidy 1** and forces the MTBC-only
+features off — and copy the commented template [`conf/organism.config`](../conf/organism.config) for the rest
+(Kraken DB, a canonical numbering, gate thresholds):
 
 ```bash
-nextflow run main.nf --tsv samples.tsv --outdir results -profile standard -c my_organism.config
+nextflow run main.nf --tsv samples.tsv --outdir results -profile standard,generic -c my_organism.config
 ```
 
 What `generic` changes versus the TB defaults:

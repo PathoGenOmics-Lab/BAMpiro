@@ -90,6 +90,7 @@ BAMpiro/
 │   ├── reference.nf         # Reference Prep
 │   └── utils.nf             # Publish-path routing / clean publish dir
 ├── .github/dockerfile/      # Container recipe (bundles pathotypr + Zenodo panels + H37Rv snpEff DB)
+├── conf/                    # Ready-made example configs (tuberculosis.config, organism.config)
 ├── docs/                    # This documentation (mdBook source in docs/src/)
 ├── nextflow.config          # Global configuration & params
 └── main.nf                  # Main workflow entry point
