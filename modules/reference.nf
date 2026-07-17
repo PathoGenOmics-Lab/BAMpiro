@@ -98,7 +98,18 @@ process PREPARE_REFERENCE {
     # (H37Rv / the MTBC ancestor share coordinates). Flows to variant calling, consensus and the report.
     if [[ "!{params.mask_blindspots}" == "true" && -s "!{params.blindspot_bed}" ]]; then
         CONTIG=$(head -1 reference.fa | sed 's/^>//; s/[[:space:]].*//')
-        awk -v C="$CONTIG" 'BEGIN{OFS="\t"} $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {print C, $2+1, $3, "blindspot", ""}' "!{params.blindspot_bed}" >> "$out"
+        if [[ "!{params.blindspot_liftover}" == "true" && -s "!{params.canonical_ref}" ]]; then
+            # Alignment-free k-mer liftover of the H37Rv blind-spots onto THIS reference (pathotypr classify),
+            # so the mask is correct without assuming shared coordinates. offset=1 is the fixed 0->1-based
+            # convention (pathotypr generate_kmers is 0-based); classify writes its main output as the -o name.
+            python3 !{projectDir}/bin/pathotypr_liftover.py markers "!{params.blindspot_bed}" "!{params.canonical_ref}" -o bs_markers.tsv
+            !{params.pathotypr_bin} classify --tsv_pos bs_markers.tsv --ref_fasta "!{params.canonical_ref}" --fasta_genomes reference.fa -o bs_classify --kmer_size 21
+            python3 !{projectDir}/bin/pathotypr_liftover.py apply bs_classify --out-bed bs_lifted.bed --contig "$CONTIG" --offset 1
+            awk 'BEGIN{OFS="\t"} $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {print $1, $2+1, $3, "blindspot", ""}' bs_lifted.bed >> "$out"
+        else
+            # reference already shares H37Rv coordinates: append the blind-spots directly (contig rewrite + 1-based)
+            awk -v C="$CONTIG" 'BEGIN{OFS="\t"} $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {print C, $2+1, $3, "blindspot", ""}' "!{params.blindspot_bed}" >> "$out"
+        fi
     fi
     '''
 }

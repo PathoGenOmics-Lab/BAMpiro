@@ -23,8 +23,13 @@ awk -F, 'NR>1 && $6==1{print $1}' S7.csv | \
 
 ## Use in BAMpiro
 
-The H37Rv reference and the MTBC-ancestor reference share H37Rv coordinates, so this mask
-applies to both. Enable it with `--mask_blindspots true` (opt-in): the intervals are added to
-the per-reference exclusion, so they are dropped from variant calling, the consensus, and shown
-in the report's *mask regions* panel. It is applied with the run's reference contig name, so use
-it only with an H37Rv-coordinate reference.
+Enable it with `--mask_blindspots true` (opt-in): the intervals are added to the per-reference
+exclusion, so they are dropped from variant calling, the consensus, and shown in the report's
+*mask regions* panel.
+
+By default (`blindspot_liftover = true`) the BED is **lifted onto the run's reference with pathotypr**
+(`bin/pathotypr_liftover.py` -> `pathotypr classify`, alignment-free k-mer liftover), so it is correct
+even when the reference does **not** share H37Rv coordinates. Set `blindspot_liftover = false` to append
+the BED directly (only correct when the reference already shares H37Rv coordinates, e.g. H37Rv or the
+MTBC ancestor). `canonical_ref` is the FASTA the blind-spot coordinates are defined on (default: the
+container's MTBC-ancestor reference, which is H37Rv-colinear).
