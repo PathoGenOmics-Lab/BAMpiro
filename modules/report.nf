@@ -55,13 +55,13 @@ process COLLECT_DR {
 }
 
 process LIFT_VARIANTS {
-    // Synteny-anchored k-mer liftover of the run's variant positions onto the canonical (H37Rv) reference
+    // Whole-genome anchor-chain liftover of the run's variant positions onto the canonical (H37Rv) reference
     // -> a mapping_pos<TAB>h37rv_pos map for the report's SNP tables (--pos-liftover). Alignment-free, no
-    // shared-coordinate assumption; repeat positions are placed by the surrounding unique anchors (never
-    // mis-mapped) rather than dropped. Pure Python (bin/pathotypr_liftover.py lift), no pathotypr call.
+    // shared-coordinate assumption; every position (incl. SNP sites) is placed by interpolation between
+    // flanking unique anchors -> never mis-mapped. Pure Python (bin/pathotypr_liftover.py lift --global-chain).
     tag "LiftVariants: ${reference}"
     cpus 4
-    memory { 4.GB * task.attempt }
+    memory { 6.GB * task.attempt }
 
     input:
     path(vcfs)              // the report's per-sample annotated VCFs (mapping-reference coordinates; may be .gz)
@@ -81,7 +81,7 @@ process LIFT_VARIANTS {
         # synteny-anchored k-mer liftover of the variant positions (mapping-ref coords) onto the canonical
         # reference; ambiguous (repeat) positions are resolved by the surrounding unique anchors, never mis-mapped.
         python3 ${projectDir}/bin/pathotypr_liftover.py lift positions.txt ${ref_fa} ${params.canonical_ref} \\
-            --out-map ${basename}_pos_liftover.tsv --kmer-size 21
+            --out-map ${basename}_pos_liftover.tsv --kmer-size 21 --global-chain
     else
         printf 'src_pos\\ttgt_pos\\n' > ${basename}_pos_liftover.tsv
     fi

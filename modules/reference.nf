@@ -99,11 +99,11 @@ process PREPARE_REFERENCE {
     if [[ "!{params.mask_blindspots}" == "true" && -s "!{params.blindspot_bed}" ]]; then
         CONTIG=$(head -1 reference.fa | sed 's/^>//; s/[[:space:]].*//')
         if [[ "!{params.blindspot_liftover}" == "true" && -s "!{params.canonical_ref}" ]]; then
-            # Synteny-anchored k-mer liftover of the H37Rv blind-spots onto THIS reference, so the mask is
-            # correct without assuming shared coordinates. Repeat positions are placed by the surrounding
-            # unique anchors (never mis-mapped); ambiguous ones drop. Emits a 0-based BED in this ref's coords.
+            # Whole-genome anchor-chain liftover of the H37Rv blind-spots onto THIS reference, so the mask is
+            # correct without assuming shared coordinates: every position is placed by interpolation between
+            # flanking unique anchors (handles SNP sites + indels; anchor-desert positions drop, never mis-map).
             python3 !{projectDir}/bin/pathotypr_liftover.py lift "!{params.blindspot_bed}" "!{params.canonical_ref}" reference.fa \
-                --out-bed bs_lifted.bed --contig "$CONTIG" --kmer-size 21
+                --out-bed bs_lifted.bed --contig "$CONTIG" --kmer-size 21 --global-chain
             awk 'BEGIN{OFS="\t"} $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {print $1, $2+1, $3, "blindspot", ""}' bs_lifted.bed >> "$out"
         else
             # reference already shares H37Rv coordinates: append the blind-spots directly (contig rewrite + 1-based)

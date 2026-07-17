@@ -167,10 +167,99 @@ def _write_outputs(good, out_map, out_bed, contig, name):
                 w.write("%s\t%d\t%d\t%s\n" % (contig, start - 1, prev, name))
 
 
+def _kmer_unique_map(fasta, k):
+    """{2-bit-encoded k-mer -> its single 1-based CENTRE position} for k-mers UNIQUE in the sequence.
+    Rolling 2-bit code (A/C/G/T -> 0..3), resets on any non-ACGT base. O(len), compact int keys."""
+    seq = _read_first_contig(fasta)
+    half = k // 2
+    mask = (1 << (2 * k)) - 1
+    code_of = {65: 0, 67: 1, 71: 2, 84: 3}
+    seen = {}
+    code = 0
+    valid = 0
+    for i, ch in enumerate(seq.encode("ascii", "replace")):
+        v = code_of.get(ch, -1)
+        if v < 0:
+            valid = 0
+            continue
+        code = ((code << 2) | v) & mask
+        valid += 1
+        if valid >= k:
+            pos = i - half + 1                          # 1-based centre of the k-mer ending at i
+            seen[code] = -1 if code in seen else pos     # first -> pos, seen again -> -1 (ambiguous)
+    return {c: p for c, p in seen.items() if p > 0}
+
+
+def _build_chain(ua, ub):
+    """Anchors = k-mers unique in BOTH genomes -> the longest COLLINEAR (strictly increasing) chain of
+    (a_pos, b_pos) via patience-sorting LIS. Breakpoints between consecutive chain anchors are indels;
+    anchors off the main chain (inversions / spurious) are discarded."""
+    import bisect
+    anchors = sorted((pa, ub[c]) for c, pa in ua.items() if c in ub)
+    if not anchors:
+        return [], []
+    bvals = [b for _, b in anchors]
+    tails_v, tails_i, parent = [], [], [-1] * len(bvals)
+    for i, v in enumerate(bvals):
+        j = bisect.bisect_left(tails_v, v)
+        if j == len(tails_v):
+            tails_v.append(v); tails_i.append(i)
+        else:
+            tails_v[j] = v; tails_i[j] = i
+        parent[i] = tails_i[j - 1] if j > 0 else -1
+    idx = []
+    node = tails_i[-1]
+    while node != -1:
+        idx.append(node); node = parent[node]
+    idx.reverse()
+    return [anchors[i][0] for i in idx], [anchors[i][1] for i in idx]
+
+
+def _lift_chain(args, positions):
+    """Global anchor-chain liftover: build the collinear anchor chain ONCE, then place ANY position by
+    interpolating between its two flanking anchors -> a coordinate even for SNP sites and other positions
+    whose own k-mer would not match, placed by their neighbours. Drops positions in anchor deserts
+    (repeats / non-syntenic regions), so a coordinate is still correct or absent."""
+    import bisect
+    k = args.kmer_size
+    ca, cb = _build_chain(_kmer_unique_map(args.source_fasta, k), _kmer_unique_map(args.target_fasta, k))
+    good, n_exact, n_interp, n_drop = {}, 0, 0, 0
+    if not ca:
+        return good, (0, 0, len(positions))
+    for p in positions:
+        j = bisect.bisect_left(ca, p)
+        if j < len(ca) and ca[j] == p:
+            good[p] = cb[j]; n_exact += 1
+            continue
+        left = (ca[j - 1], cb[j - 1]) if j > 0 else None
+        right = (ca[j], cb[j]) if j < len(ca) else None
+        if left and right:
+            if (right[0] - left[0]) > args.max_gap:                 # anchor desert -> not confidently syntenic
+                n_drop += 1; continue
+            b = left[1] + (p - left[0]) * (right[1] - left[1]) / (right[0] - left[0])
+            good[p] = int(round(b)); n_interp += 1
+        elif left and (p - left[0]) <= args.max_gap:
+            good[p] = p + (left[1] - left[0]); n_interp += 1        # extrapolate past the last anchor
+        elif right and (right[0] - p) <= args.max_gap:
+            good[p] = p + (right[1] - right[0]); n_interp += 1
+        else:
+            n_drop += 1
+    return good, (n_exact, n_interp, n_drop)
+
+
 def cmd_lift(args):
     """Self-contained SYNTENY-anchored liftover (no pathotypr call): match each position's context k-mer
     from source to target, and for positions whose k-mer RECURS (repeats) pick the occurrence consistent
-    with the surrounding unique anchors instead of dropping it. Recovers most repeat positions correctly."""
+    with the surrounding unique anchors instead of dropping it. Recovers most repeat positions correctly.
+    With --global-chain, use the whole-genome anchor-chain instead (places SNP sites and other positions by
+    interpolation between flanking anchors, not by their own k-mer)."""
+    if args.global_chain:
+        positions = _positions(args.positions)
+        good, (ne, ni, nd) = _lift_chain(args, positions)
+        _write_outputs(good, args.out_map, args.out_bed, args.contig, args.name)
+        sys.stderr.write("[liftover] lift(anchor-chain): %d exact + %d interpolated = %d ; %d dropped (of %d)\n"
+                         % (ne, ni, len(good), nd, len(positions)))
+        return
     import bisect
     k = args.kmer_size
     half = k // 2
@@ -271,6 +360,11 @@ def main():
                    help="max bp between a repeated k-mer's occurrence and the synteny prediction to accept it")
     l.add_argument("--min-margin", type=int, default=20,
                    help="the accepted occurrence must be at least this many bp closer than the next one")
+    l.add_argument("--global-chain", action="store_true",
+                   help="use the whole-genome anchor CHAIN: place every position (incl. SNP sites) by "
+                        "interpolating between flanking unique anchors, instead of per-position k-mer matching")
+    l.add_argument("--max-gap", type=int, default=2000,
+                   help="--global-chain: max bp between flanking anchors to still interpolate (else drop)")
     l.set_defaults(func=cmd_lift)
 
     args = ap.parse_args()

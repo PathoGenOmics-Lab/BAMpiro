@@ -8,15 +8,28 @@ flanking-context k-mer and finds it in the target genome; the target position is
 
 ```bash
 # lift the positions in POS (BED or 1-based list) from reference A onto reference B:
-python3 pathotypr_liftover.py lift POS A.fasta B.fasta --out-map map.tsv --out-bed lifted.bed --contig B --kmer-size 21
+python3 pathotypr_liftover.py lift POS A.fasta B.fasta --out-map map.tsv --out-bed lifted.bed --contig B \
+        --kmer-size 21 --global-chain
 ```
 
-Builds **anchors** from k-mers unique in both genomes, then for a position whose k-mer **recurs** (a repeat)
-picks the occurrence **consistent with the surrounding anchors (synteny)** instead of dropping it — so it
-never mis-maps and recovers most repeat positions. Pure Python, no pathotypr call. Validated on the real
-H37Rv / MTBC-ancestor pair: **≈99 % of positions lift with zero wrong coordinates**, it tracks indels
-(before an insertion → identity, after → shifted), and the DR sites (rpoB 761155, katG 2155168, gyrA 7570,
-rrs 1473246) all map correctly. Tune repeat resolution with `--max-shift` / `--min-margin`.
+**`--global-chain` (recommended, what BAMpiro uses)** builds a whole-genome coordinate map: every k-mer
+unique in BOTH genomes is an anchor (~97 % of the MTBC genome — anchors roughly every base), chained into a
+collinear order (LIS), and any position is placed by **interpolating between its flanking anchors**. So a
+position is mapped by its NEIGHBOURS, not by its own k-mer — SNP sites and other differing positions lift
+correctly, and indels are followed. Benchmarked on the real H37Rv / MTBC-ancestor pair vs the per-position
+method:
+
+| | per-position (default) | `--global-chain` |
+|---|---|---|
+| colinear, 500 positions | 99.0 % lift | **100 % lift** |
+| SNP AT the query site (e.g. DR rpoB 761155) | **dropped** | **placed correctly** |
+| +25 bp indel | tracked | tracked |
+| wrong coordinates | 0 | 0 |
+
+Cost: builds the map by scanning each genome once — ≈6 s and ≈1.7 GB for a 4.4 Mb genome (a per-reference,
+one-time step). Without `--global-chain`, `lift` uses the lighter per-position method: anchors from
+unique-in-both k-mers, and repeats resolved by the nearest anchors (`--max-shift` / `--min-margin`), but a
+SNP at the queried site drops the position.
 
 ## `markers` + `apply` — the `pathotypr classify` alternative (Rust, for very large sets)
 
