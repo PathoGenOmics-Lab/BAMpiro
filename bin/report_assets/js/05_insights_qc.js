@@ -52,8 +52,8 @@ function insDrug(){
   narr='<b class="'+tone+'">'+nRes+'/'+nTot+' sample'+(nRes===1?'':'s')+'</b> carry resistance-associated variants (WHO groups 1&#8211;2) spanning <b>'+drugList.length+' drug'+(drugList.length===1?'':'s')+'</b>';
   if(nMDR>0){ narr+='; <b class="tone-bad">'+nMDR+' MDR</b> (rifampicin + isoniazid resistant in one sample)'; }
   narr+='. Genomic screen (WHO catalogue), not a clinical DST result.';
-  for(k=0;k<nMDR;k++){ chips.push({t:'MDR '+mdr[k], cls:'bad', title:'rifampicin + isoniazid resistance called in '+mdr[k]}); }
-  for(k=0;k<drugList.length;k++){ chips.push({t:drugList[k], cls:'warn', title:'resistance-associated variant(s) for '+drugList[k]}); }
+  for(k=0;k<nMDR;k++){ chips.push({t:'MDR '+esc(mdr[k]), cls:'bad', title:'rifampicin + isoniazid resistance called in '+mdr[k]}); }
+  for(k=0;k<drugList.length;k++){ chips.push({t:esc(drugList[k]), cls:'warn', title:'resistance-associated variant(s) for '+drugList[k]}); }
   return insBox('Resistance', narr, chips);
 }
 function insLineages(){

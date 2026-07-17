@@ -1,5 +1,6 @@
 function drGColor(gn){ return (gn===1||gn===2)?'#dc2626':(gn===3?'#d97706':((gn===4||gn===5)?'#94a3b8':'#b8c2cf')); }
-function drStatus(gns){ var r=false,u=false,n=false; for(var i=0;i<gns.length;i++){var g=gns[i]; if(g===1||g===2)r=true; else if(g===3)u=true; else if(g===4||g===5)n=true;} return r?{t:'R',c:'#dc2626'}:(u?{t:'?',c:'#d97706'}:(n?{t:'&#183;',c:'#94a3b8'}:{t:'',c:'#eef2f7'})); }
+function drGInk(gn){ return (gn===1||gn===2||gn===3)?'#fff':'#1f2a37'; }   // dark ink on the pale grey (4-5 / unknown) badges so the label stays legible
+function drStatus(gns){ var r=false,u=false,n=false; for(var i=0;i<gns.length;i++){var g=gns[i]; if(g===1||g===2)r=true; else if(g===3)u=true; else if(g===4||g===5)n=true;} return r?{t:'R',c:'#dc2626'}:(u?{t:'?',c:'#d97706'}:(n?{t:'&#183;',c:'#94a3b8'}:{t:'',c:'var(--track)'})); }
 // ---- Kraken2 taxonomic composition (contamination / host check on the reads before mapping) ----
 function renderKraken(){
   var host=el('kraken_body'), sec=el('kraken'); if(!host)return;
@@ -75,12 +76,12 @@ function renderDrug(){
     var q=drState.q.toLowerCase();
     var rows=calls.filter(function(c){ return !q||(c.s.toLowerCase().indexOf(q)>=0)||(c.drug.toLowerCase().indexOf(q)>=0)||(c.gene.toLowerCase().indexOf(q)>=0)||(c.mutation.toLowerCase().indexOf(q)>=0); });
     rows=rows.slice().sort(function(a,b){ if(a.s!==b.s) return a.s<b.s?-1:1; return (a.gn||9)-(b.gn||9); });
-    el('drcount').textContent=rows.length+' call(s)';
+    el('drcount').textContent=rows.length+' call(s)'+(rows.length>600?' · showing first 600 (download for all)':'');
     var h='<thead><tr><th>Sample</th><th>Drug</th><th>Gene</th><th>Mutation (H37Rv)</th><th>WHO grade</th><th>AF</th><th>DP</th></tr></thead><tbody>';
     if(!rows.length) h+='<tr><td colspan="7" class="c" style="padding:18px;text-align:center">no call matches the filter.</td></tr>';
     h+=rows.slice(0,600).map(function(c){
       return '<tr><td>'+esc(c.s)+'</td><td><b>'+esc(c.drug)+'</b></td><td>'+esc(c.gene)+geneRvTag(c.gene)+'</td><td class="epitbl-r">'+esc(c.mutation)+'</td>'+
-        '<td><span class="dr-badge" style="background:'+drGColor(c.gn)+'" title="'+esc(c.marker||'')+'">'+esc(c.grade||'?')+'</span></td>'+
+        '<td><span class="dr-badge" style="background:'+drGColor(c.gn)+';color:'+drGInk(c.gn)+'" title="'+esc(c.marker||'')+'">'+esc(c.grade||'?')+'</span></td>'+
         '<td>'+(c.af==null?'':c.af.toFixed(2))+'</td><td>'+(c.dp==null?'':c.dp)+'</td></tr>';
     }).join('')+'</tbody>';
     el('drtable').innerHTML=h;
