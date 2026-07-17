@@ -3157,7 +3157,7 @@ function renderDynamics(){
     if(on){ geneList.forEach(function(g){dynState.sel[g]=1;}); }
     else { var fg=geneList.filter(function(g){return genes[g].some(dynHasFlag);}); (fg.length?fg:geneList).slice(0,8).forEach(function(g){dynState.sel[g]=1;}); }
     var bb=el('dynAll'); if(bb){ bb.textContent=on?'show less':'show all'; bb.classList.toggle('on',on); }
-    paintChips(); paintGrid(); }
+    paintChips(); paintGrid(); if(window.__syncSitesBtn)window.__syncSitesBtn(); }
   el('dynAll').onclick=function(){ dynSetAll(!dynState.showAll); };   // toggle: every trajectory <-> flagged genes only
   window.__dynSetAll=dynSetAll;
   if(dynState.showAll){ el('dynAll').textContent='show less'; el('dynAll').classList.add('on'); }
@@ -3334,7 +3334,7 @@ function renderEpistasis(){
   Array.prototype.forEach.call(host.querySelectorAll('.epi-confbtn'),function(b){ b.onclick=function(){ epiState.conf=b.getAttribute('data-c'); Array.prototype.forEach.call(host.querySelectorAll('.epi-confbtn'),function(x){x.className='dyn-btn epi-confbtn'+(x.getAttribute('data-c')===epiState.conf?' on':'');}); draw(); }; });
   el('epir').oninput=function(){ epiState.minr=+this.value; el('epirv').textContent=epiState.minr.toFixed(2); draw(); };
   el('epizoom').oninput=function(){ epiZoom=+this.value; el('epi-cards').style.setProperty('--dyncw', epiZoom+'px'); };
-  function epiSetAll(on){ epiState.showAll=on; var eb=el('epiShowAll'); if(eb){ eb.textContent=on?'show less':'show all'; eb.classList.toggle('on',on); } draw(); }
+  function epiSetAll(on){ epiState.showAll=on; var eb=el('epiShowAll'); if(eb){ eb.textContent=on?'show less':'show all'; eb.classList.toggle('on',on); } draw(); if(window.__syncSitesBtn)window.__syncSitesBtn(); }
   el('epiShowAll').onclick=function(){ epiSetAll(!epiState.showAll); };   // toggle: every reported pair <-> the top 12
   window.__epiSetAll=epiSetAll;
   if(epiState.showAll){ el('epiShowAll').textContent='show less'; el('epiShowAll').classList.add('on'); }
@@ -3871,13 +3871,17 @@ renderAll();
   var hasAny=(R.snp_matrix&&R.snp_matrix.rows&&R.snp_matrix.rows.length)||(R.dynamics&&R.dynamics.groups&&R.dynamics.groups.length)||(R.epistasis&&R.epistasis.pairs&&R.epistasis.pairs.length);
   if(!hasAny){ b.style.display='none'; return; }
   b.style.display='';
-  window.__syncSitesBtn=function(){};   // kept so the matrix panel button can call it harmlessly
-  b.onclick=function(){   // master switch: flip every panel's 'show all' at once, on and off
-    var on=!b.classList.contains('on'); b.classList.toggle('on',on);
-    var l=el('allSitesLbl'); if(l)l.textContent=on?'show less':'show all';
+  function anyOn(){ return dynState.showAll || epiState.showAll || (R.snp_matrix&&R.snp_matrix.rows&&snpmxAll); }
+  window.__syncSitesBtn=function(){   // keep the master switch in step with the per-panel buttons
+    var on=!!anyOn(); b.classList.toggle('on',on); var l=el('allSitesLbl'); if(l)l.textContent=on?'show less':'show all'; b.setAttribute('aria-pressed',on?'true':'false');
+  };
+  window.__syncSitesBtn();
+  b.onclick=function(){   // master switch: if anything is expanded collapse everything, else expand everything
+    var on=!anyOn();
     if(window.__dynSetAll) window.__dynSetAll(on);                                    // trajectories
     if(window.__epiSetAll) window.__epiSetAll(on);                                    // epistasis pairs
     if(R.snp_matrix&&R.snp_matrix.rows){ snpmxAll=on; var w=el('snpmxwrap'); if(w)w.scrollTop=0; if(window.__snpmxDraw)window.__snpmxDraw(); }   // matrix sites
+    window.__syncSitesBtn();
     // deliberately no scroll: the header switch just flips the state, it doesn't navigate anywhere
   };
 })();
