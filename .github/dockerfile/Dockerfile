@@ -53,6 +53,7 @@ RUN micromamba create -n bampiro-env -c conda-forge -c bioconda -y \
     'freebayes' \
     'bcftools' \
     'genmap' \
+    'mummer4' \
     'snpeff' \
     'kraken2' \
     'multiqc' \
