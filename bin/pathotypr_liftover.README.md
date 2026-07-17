@@ -34,13 +34,17 @@ SNP at the queried site drops the position.
 ### Anchor-chain design — "correct or absent"
 
 A position is placed **only** when it is bracketed by two consecutive anchors of a chain across a **colinear**
-gap (source span == target span, and the gap contains **no other anchor of any chain** — so it can't be
-crossing an inversion, indel or rearrangement of any size). Of the chains that bracket it, the one with the
-**tightest** gap wins. There is **no extrapolation**: SNP sites and colinear regions are exact, and anything
-ambiguous — an indel/RD shadow, a rearrangement boundary, an anchor desert, a position past every chain's ends
-— **drops** rather than receiving a smeared or extrapolated coordinate. Validated on the real H37Rv / ancestor
-pair (DR sites exact, ~99.9 % lift, 0 wrong on a 8.8 k dense sweep) and on synthetic constructions of every
-failure mode below (24/24 scenarios, 0 wrong coords).
+gap (source span == target span, and the gap contains **no other anchor of any chain**), **and** the resulting
+coordinate passes a **sequence-homology check**: the ~k bp of source context around the position must match
+(or reverse-complement-match) the target context at the placed coordinate. Two anchors prove only that the gap
+*ends* correspond; the homology check verifies the *interior*, so an inversion hidden by sampling, a stretch of
+non-homologous filler, or a net-zero double-indel — all of which pass a length-only colinearity test — are
+caught and **dropped**. Of the verified chains that bracket a position, the one with the **tightest** gap wins.
+There is **no extrapolation**: colinear/SNP sites are exact, and anything ambiguous — an indel/RD shadow, a
+rearrangement boundary, an anchor desert, a non-homologous interior, a position past every chain's ends — drops
+rather than getting a smeared coordinate. Validated on the real H37Rv / ancestor pair (DR sites exact, ~99.9 %
+lift, 0 wrong on an 8.8 k dense sweep) and on synthetic constructions of every failure mode below (30/30
+scenarios, 0 wrong coords).
 
 - **`--sample N` (FracMinHash, memory).** Keep only ~1/N of the k-mers as anchors — deterministically, hashing
   the **canonical** code (`hash(min(kmer, revcomp(kmer))) % N == 0`), so a k-mer *and its reverse complement*

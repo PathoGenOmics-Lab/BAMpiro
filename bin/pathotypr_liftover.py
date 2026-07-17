@@ -21,11 +21,11 @@ the real H37Rv / MTBC-ancestor pair: `lift` reaches ~99% with zero wrong coordin
 DR sites (rpoB 761155, katG 2155168, gyrA 7570, rrs 1473246) map correctly.
 
 `lift --global-chain` is "correct or absent": a position is placed only when bracketed by anchors across a
-colinear gap or an inverted block; indel shadows, RD-deletion interiors and anchor deserts DROP rather than
-receive a smeared/extrapolated coordinate. The one blind spot is inherent to k-mers: a rearrangement SHORTER
-than k (e.g. a sub-21 bp inversion) has no k-mer inside it and preserves the flanking gap length, so it is
-invisible and its few interior positions get the colinear (identity) coordinate; keep k below any structural
-feature you must resolve.
+colinear gap or inverted block AND its placed coordinate passes a sequence-homology check; indel shadows,
+RD-deletion interiors, anchor deserts and non-homologous interiors DROP rather than receive a smeared or
+extrapolated coordinate. The one blind spot is inherent to k-mers: a rearrangement SHORTER than k (e.g. a
+sub-21 bp inversion) is invisible when it happens to preserve the flanking gap length and its own context
+still matches, so keep k below any structural feature you must resolve.
 """
 from __future__ import annotations
 import argparse
@@ -192,14 +192,13 @@ def _rc_code(code, k):
     return rc
 
 
-def _kmer_unique_map(fasta, k, sample=1):
+def _kmer_unique_map(seq, k, sample=1):
     """{2-bit k-mer code -> single 1-based CENTRE} for k-mers UNIQUE in the sequence. Rolling 2-bit code,
     resets on non-ACGT. With sample>1, keep only ~1/sample of k-mers (FracMinHash on the CANONICAL code,
     hash(min(code, revcomp(code))) % sample == 0) -> ~sample x less memory. Hashing the canonical code is
     deliberate: a k-mer and its reverse complement share ONE keep/drop decision, so a forward k-mer AND its
     reverse-complement partner in the other genome co-survive at rate 1/sample (not 1/sample^2). Without this,
     reverse-strand (inversion) anchors are decimated quadratically and inversions get silently mis-lifted."""
-    seq = _read_first_contig(fasta)
     half = k // 2
     mask = (1 << (2 * k)) - 1
     shift = 2 * (k - 1)
@@ -245,6 +244,32 @@ def _lis(pairs, increasing=True):
     return [pairs[i][0] for i in idx], [pairs[i][1] for i in idx]
 
 
+_COMP = {"A": "T", "T": "A", "C": "G", "G": "C"}
+
+
+def _homologous(src, tgt, p, t, orient, w, min_id):
+    """True if the ~(2w+1) bp context of SOURCE position p matches (orient +1) or reverse-complement-matches
+    (orient -1) the context of TARGET position t, at >= min_id identity. This is the homology gate that makes
+    an INTERPOLATED coordinate trustworthy: two anchors bracketing a gap only prove the gap ENDS correspond;
+    they say nothing about the interior, which could be an inversion, non-homologous filler, or a net-zero
+    double-indel of preserved length (all pass a length-only colinearity test). Verifying the actual sequence
+    at the placed coordinate catches every one of those -> a wrong interpolation fails and the position drops.
+    p, t are 1-based centres."""
+    ns, nt = len(src), len(tgt)
+    match = total = 0
+    for d in range(-w, w + 1):
+        si = p - 1 + d
+        ti = (t - 1 + d) if orient == 1 else (t - 1 - d)
+        if 0 <= si < ns and 0 <= ti < nt:
+            total += 1
+            if orient == 1:
+                if src[si] == tgt[ti]:
+                    match += 1
+            elif src[si] == _COMP.get(tgt[ti]):
+                match += 1
+    return total > 0 and match >= min_id * total
+
+
 def _chains(pairs, increasing, min_anchors, max_chains=1024):
     """Extract SUCCESSIVE longest monotonic-in-b chains, removing the used anchors between rounds, until the
     next chain has < min_anchors. Each chain is one collinear block: for the reverse strand that is one
@@ -268,19 +293,25 @@ def _lift_chain(args, positions):
     anchors, one per inversion) cover inversions -- a single LIS holds only one, so multiple independent
     inversions each need their own chain. A position is placed only when BRACKETED by two consecutive anchors
     of some chain across a COLLINEAR gap (source span == target span +- indel_tol) that CONTAINS NO OTHER anchor
-    of any chain (so the gap can't be crossing an inversion, indel or rearrangement); of the chains that bracket
-    it, the one with the TIGHTEST gap wins. Everything else DROPS: a non-colinear gap (deletion OR insertion
-    shadow), a gap straddling a rearrangement, an anchor desert, or a position beyond every chain's ends. No
-    extrapolation. So a coordinate is correct or absent -- colinear/SNP sites exact, inverted blocks mapped by
-    the reflected coordinate, indel/RD interiors and rearrangement boundaries dropped. RD deletions (target lost
-    >= rd_min bp) are reported to --rd-out. A parity correction makes the reverse chains exact for even k too."""
+    of any chain, AND whose interpolated coordinate passes a SEQUENCE-HOMOLOGY check (the anchors prove only the
+    gap ends correspond; the interior is verified by comparing the actual source/target context, so an inversion,
+    non-homologous filler or net-zero double-indel that a length-only test would accept is caught and dropped).
+    Of the verified chains that bracket it, the one with the TIGHTEST gap wins. Everything else DROPS: a
+    non-colinear gap, a gap straddling a rearrangement, an anchor desert, a non-homologous interior, or a
+    position beyond every chain's ends. No extrapolation. So a coordinate is correct or absent -- colinear/SNP
+    sites exact, inverted blocks mapped by the reflected coordinate, indel/RD interiors and rearrangement
+    boundaries dropped. RD deletions (target lost >= rd_min bp) are reported to --rd-out. A parity correction
+    makes the reverse chains exact for even k too."""
     import bisect
     k = args.kmer_size
     sample = max(1, args.sample)
     tol = max(0, args.indel_tol)
     par = 1 - (k % 2)                                            # RC centre parity: 0 for odd k, 1 for even k
-    uA = _kmer_unique_map(args.source_fasta, k, sample)
-    uB = _kmer_unique_map(args.target_fasta, k, sample)
+    src = _read_first_contig(args.source_fasta)
+    tgt = _read_first_contig(args.target_fasta)
+    vw = k // 2                                                  # homology-verification half-window (~k bp)
+    uA = _kmer_unique_map(src, k, sample)
+    uB = _kmer_unique_map(tgt, k, sample)
     fwd, rev, in_f, in_r = [], [], set(), set()
     for c, a in uA.items():
         b = uB.get(c)
@@ -328,8 +359,11 @@ def _lift_chain(args, positions):
         best, best_gap, best_orient = None, None, 0
         for ca, cb, orient in chains:
             c, g = bracket(ca, cb, p, orient)
-            if c is not None and (best is None or g < best_gap):
-                best, best_gap, best_orient = c, g, orient      # tightest bracketing gap wins
+            # verify homology at the placed coordinate (skip the exact-anchor hit g==0: a shared unique k-mer
+            # is homologous by construction); a length-only-colinear but non-homologous interior fails here.
+            if c is not None and (g == 0 or _homologous(src, tgt, p, c, orient, vw, args.min_identity)):
+                if best is None or g < best_gap:
+                    best, best_gap, best_orient = c, g, orient  # tightest verified bracketing gap wins
         if best is None:
             n_drop += 1
         elif best_orient == 1:
@@ -476,6 +510,10 @@ def main():
     l.add_argument("--min-density", type=float, default=0.2,
                    help="--global-chain: min anchor density (anchors / (span/sample)) for a reverse chain to be "
                         "a real inversion block; sparser chains are scattered spurious anchors and are discarded")
+    l.add_argument("--min-identity", type=float, default=0.7,
+                   help="--global-chain: min sequence identity in the ~k bp window around an INTERPOLATED "
+                        "coordinate for it to be accepted; below this the interior is not homologous (inversion "
+                        "hidden by sampling, non-homologous filler, net-zero double-indel) and the position drops")
     l.add_argument("--sample", type=int, default=1,
                    help="--global-chain: keep ~1/N of k-mers as anchors (FracMinHash) -> ~N x less memory")
     l.add_argument("--rd-out", default=None,
