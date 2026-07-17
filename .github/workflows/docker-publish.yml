@@ -1,12 +1,13 @@
 name: Build & publish container
 
-# Builds the self-contained pipeline image and pushes it to Docker Hub (paururo/bampiro).
-# Runs when a version tag is pushed (e.g. `git tag 1.0.1 && git push --tags`, which also
-# happens when you create a GitHub Release), or manually via "Run workflow".
+# Builds the self-contained pipeline image and pushes it to the GitHub Container Registry
+# (ghcr.io/pathogenomics-lab/bampiro). Runs when a version tag is pushed (e.g. `git tag 1.0.1 &&
+# git push --tags`, which also happens when you create a GitHub Release), or manually via "Run workflow".
 #
-# Required repository secrets (Settings -> Secrets and variables -> Actions):
-#   DOCKERHUB_USERNAME  - a Docker Hub account with push access to paururo/bampiro (i.e. paururo)
-#   DOCKERHUB_TOKEN     - a Docker Hub access token (Account Settings -> Security -> New Access Token)
+# NO secrets to configure: it logs in with the automatic, ephemeral GITHUB_TOKEN (scoped to this repo,
+# expires when the job ends). It only needs `packages: write` (granted below). After the first run,
+# make the package Public once (repo -> Packages -> the image -> Package settings -> Change visibility)
+# so the cluster pulls it without authentication.
 
 on:
   push:
@@ -21,7 +22,7 @@ on:
         default: '1.0.1'
 
 env:
-  IMAGE_NAME: paururo/bampiro
+  IMAGE_NAME: ghcr.io/pathogenomics-lab/bampiro
   # The Dockerfile enforces linux/amd64; GitHub runners are x86_64 so this builds natively.
   PLATFORM: linux/amd64
 
@@ -31,6 +32,7 @@ concurrency:
 
 permissions:
   contents: read
+  packages: write   # lets the GITHUB_TOKEN push to ghcr.io for this repo's owner
 
 jobs:
   build-push:
@@ -50,11 +52,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
+      - name: Log in to the GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}   # automatic per-run token, not a stored secret
 
       - name: Derive image tags
         id: meta
