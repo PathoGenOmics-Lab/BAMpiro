@@ -72,9 +72,12 @@ the desert-interpolation guarantee.
   the source advanced ≥ `--rd-min` (default 50) bp more than the target is additionally reported as an **RD
   deletion** to `--rd-out FILE` (source coords). Verified on 300 bp insertion / deletion and a 5 kb RD block.
 
-The one blind spot is inherent to k-mers: a rearrangement **shorter than k** (e.g. a sub-21 bp inversion) has
-no k-mer inside it and preserves the flanking gap length, so it is invisible and its few interior positions
-take the colinear (identity) coordinate. Keep k below any structural feature you must resolve.
+The one residual blind spot is a k-mer-resolution limit: a rearrangement small enough that it perturbs fewer
+than ~(1 − `--min-identity`) of each ~k/2 bp context half-window can be placed at the un-reflected coordinate,
+with the error bounded by the event size. At k=21 and `--min-identity` 0.9 that is a reverse-complement
+inversion of about **≤ 2 bp** (a 3 bp inversion is already caught — its off-centre positions drop, its centre
+reflects to itself); raising `--min-identity` shrinks it further at ~no coverage cost on low-divergence MTBC
+references. It is **not** tied to a self-similar/tandem context.
 
 ## `markers` + `apply` — the `pathotypr classify` alternative (Rust, for very large sets)
 

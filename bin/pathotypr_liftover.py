@@ -25,8 +25,11 @@ SMALL colinear gap (<= ~2k, so the flanking shared k-mers pin the interior) AND 
 homologous ON EACH SIDE; indel shadows, RD interiors, anchor deserts, rearrangement boundaries and any
 non-homologous interior DROP rather than receive a smeared coordinate. The cost is coverage in anchor deserts
 (repeats), which the pipeline masks by other means; raise --max-gap to trade the desert-interpolation guarantee
-for coverage. The residual blind spot is inherent to k-mers: a rearrangement shorter than k in a self-similar
-(tandem-repeat) context can slip within the gap cap; keep k below any structural feature you must resolve.
+for coverage. The residual blind spot: a rearrangement small enough that it perturbs fewer than ~(1-min_identity)
+of each context half-window -- at k=21, min_identity 0.9 that is a reverse-complement inversion of about <= 2 bp
+-- can be placed at the un-reflected coordinate (error bounded by the event size). Raise --min-identity (near-
+free on low-divergence references) to shrink it further; it is a hard k-mer-resolution limit, not tied to any
+self-similar context.
 """
 from __future__ import annotations
 import argparse
@@ -524,10 +527,12 @@ def main():
     l.add_argument("--min-density", type=float, default=0.2,
                    help="--global-chain: min anchor density (anchors / (span/sample)) for a reverse chain to be "
                         "a real inversion block; sparser chains are scattered spurious anchors and are discarded")
-    l.add_argument("--min-identity", type=float, default=0.8,
+    l.add_argument("--min-identity", type=float, default=0.9,
                    help="--global-chain: min sequence identity, ON EACH SIDE of an INTERPOLATED coordinate, in "
                         "the ~k bp context window; below this the interior is not homologous (inversion hidden by "
-                        "sampling, non-homologous filler, net-zero double-indel, diverged decoy) and it drops")
+                        "sampling, non-homologous filler, net-zero double-indel, diverged decoy) and it drops. "
+                        "Higher = catches smaller rearrangements (a ~3 bp inversion perturbs ~2 bp/half, caught "
+                        "at 0.9 but not 0.8) at ~no coverage cost on low-divergence MTBC references")
     l.add_argument("--sample", type=int, default=1,
                    help="--global-chain: keep ~1/N of k-mers as anchors (FracMinHash) -> ~N x less memory")
     l.add_argument("--rd-out", default=None,
