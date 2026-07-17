@@ -245,23 +245,40 @@ def _lis(pairs, increasing=True):
     return [pairs[i][0] for i in idx], [pairs[i][1] for i in idx]
 
 
+def _chains(pairs, increasing, min_anchors, max_chains=1024):
+    """Extract SUCCESSIVE longest monotonic-in-b chains, removing the used anchors between rounds, until the
+    next chain has < min_anchors. Each chain is one collinear block: for the reverse strand that is one
+    inversion, so several independent inversions each get their own chain (a single LIS can hold only one).
+    Returns [(ca, cb), ...] with each ca sorted ascending in a."""
+    out = []
+    pool = list(pairs)                                           # already sorted by a
+    while pool and len(out) < max_chains:
+        ca, cb = _lis(pool, increasing)
+        if len(ca) < min_anchors:
+            break
+        out.append((ca, cb))
+        used = set(zip(ca, cb))
+        pool = [pr for pr in pool if pr not in used]
+    return out
+
+
 def _lift_chain(args, positions):
-    """Whole-genome anchor-chain liftover. Anchors = k-mers unique in both genomes; the FORWARD chain (LIS)
-    is the collinear backbone and a REVERSE chain (longest decreasing run of reverse-complement anchors)
-    covers inversions. A position is placed only when it is BRACKETED by two consecutive anchors of a chain
-    across a COLLINEAR gap (source span == target span, so no indel lies between them); it takes the chain
-    whose bracketing gap is TIGHTEST (inside an inversion the reverse anchors bracket tightly while the forward
-    ones straddle the whole block, so the reverse chain wins). A gap whose source and target spans differ holds
-    an indel (deletion OR insertion): its interior has no clean equivalent and is DROPPED, never smeared across
-    the indel. Neither chain is extrapolated except identity-offset just past the forward chain ends. So a
-    coordinate is correct or absent -- colinear regions and SNP sites are exact, indel shadows and RD interiors
-    drop, inverted blocks map by the reflected coordinate. RD deletions (target lost >= rd_min bp) are also
-    reported to --rd-out. The reverse chain applies a parity correction so it is exact for even k too."""
+    """Whole-genome anchor-chain liftover. Anchors = k-mers unique in both genomes. The FORWARD chain (LIS) is
+    the collinear backbone; several REVERSE chains (successive longest decreasing runs of reverse-complement
+    anchors, one per inversion) cover inversions -- a single LIS holds only one, so multiple independent
+    inversions each need their own chain. A position is placed only when BRACKETED by two consecutive anchors
+    of some chain across a COLLINEAR gap (source span == target span +- indel_tol) that CONTAINS NO OTHER anchor
+    of any chain (so the gap can't be crossing an inversion, indel or rearrangement); of the chains that bracket
+    it, the one with the TIGHTEST gap wins. Everything else DROPS: a non-colinear gap (deletion OR insertion
+    shadow), a gap straddling a rearrangement, an anchor desert, or a position beyond every chain's ends. No
+    extrapolation. So a coordinate is correct or absent -- colinear/SNP sites exact, inverted blocks mapped by
+    the reflected coordinate, indel/RD interiors and rearrangement boundaries dropped. RD deletions (target lost
+    >= rd_min bp) are reported to --rd-out. A parity correction makes the reverse chains exact for even k too."""
     import bisect
     k = args.kmer_size
     sample = max(1, args.sample)
     tol = max(0, args.indel_tol)
-    par = 1 - (k % 2)                                             # RC centre parity: 0 for odd k, 1 for even k
+    par = 1 - (k % 2)                                            # RC centre parity: 0 for odd k, 1 for even k
     uA = _kmer_unique_map(args.source_fasta, k, sample)
     uB = _kmer_unique_map(args.target_fasta, k, sample)
     fwd, rev, in_f, in_r = [], [], set(), set()
@@ -272,66 +289,59 @@ def _lift_chain(args, positions):
         rc = uB.get(_rc_code(c, k))
         if rc is not None:
             rev.append((a, rc + par)); in_r.add(a)
-    amb = in_f & in_r                                             # a source pos anchoring both strands -> drop
+    amb = in_f & in_r                                            # a source pos anchoring both strands -> drop
     fa, fb = _lis(sorted((a, b) for a, b in fwd if a not in amb), True)
-    ra, rb = _lis(sorted((a, b) for a, b in rev if a not in amb), False)
+    # A real inversion is a DENSE, CONTIGUOUS block of reverse anchors (~1 per `sample` bp of its span); a
+    # chain assembled from scattered spurious reverse anchors (a k-mer whose revcomp happens to be unique
+    # elsewhere) is SPARSE. Keep only dense chains, else a coincidental spurious pair could place a repeat-
+    # desert position at an unrelated coordinate. Density = anchors / (span / sample).
+    rev_chains = [(ca, cb) for ca, cb in _chains(sorted((a, b) for a, b in rev if a not in amb), False, max(2, args.min_chain))
+                  if len(ca) * sample >= args.min_density * (ca[-1] - ca[0] + 1)]
+    chains = ([(fa, fb, 1)] if fa else []) + [(ca, cb, -1) for ca, cb in rev_chains]
+    allpos = sorted((in_f | in_r) - amb)                        # forbid set: EVERY anchored source position
 
-    rd = []                                                       # (a_left, a_right): target lost >= rd_min bp
+    rd = []                                                     # (a_left, a_right): target lost >= rd_min bp
     for i in range(1, len(fa)):
         if (fa[i] - fa[i - 1]) - (fb[i] - fb[i - 1]) >= args.rd_min:
             rd.append((fa[i - 1], fa[i]))
 
-    def bracket(ca, cb, p, orient, forbid=None):
-        """(coord, gap) if p sits between two consecutive anchors across a COLLINEAR gap
-        (|a_gap - orient*b_gap| <= tol and a_gap <= max_gap); else (None, None). orient is +1 forward, -1
-        reverse. No extrapolation: a p outside the chain's anchored span returns (None, None). If `forbid`
-        (the other chain's anchors) has any anchor strictly inside the bracketing gap, the gap SPANS a
-        rearrangement (e.g. the forward gap crosses an inversion): its interior can't be trusted -> (None, None),
-        so the position is placed by the other chain if it brackets it, else dropped (never mis-lifted)."""
+    def bracket(ca, cb, p, orient):
+        """(coord, gap) if p sits between two consecutive anchors of this chain across a COLLINEAR gap
+        (|a_gap - orient*b_gap| <= tol, a_gap <= max_gap) that contains NO other anchored position; else
+        (None, None). orient is +1 forward, -1 reverse. No extrapolation past the chain's anchored span. The
+        no-other-anchor rule is what stops a gap from crossing an inversion/indel/rearrangement of ANY size."""
         j = bisect.bisect_left(ca, p)
         if j < len(ca) and ca[j] == p:
             return cb[j], 0
         if j == 0 or j >= len(ca):
-            return None, None                                    # p is outside this chain's anchored span
+            return None, None                                   # p is outside this chain's anchored span
         al, ar, bl, br = ca[j - 1], ca[j], cb[j - 1], cb[j]
         a_gap = ar - al
-        b_gap = br - bl
-        if a_gap > args.max_gap or abs(a_gap - orient * b_gap) > tol:
-            return None, None                                    # gap too long, or an indel lives in it -> drop
-        if forbid and bisect.bisect_right(forbid, al) < bisect.bisect_left(forbid, ar):
-            return None, None                                    # the other chain anchors inside this gap -> spans a rearrangement
-        return int(round(bl + (p - al) * b_gap / a_gap)), a_gap
-
-    def fwd_end(p):
-        """Identity-offset extrapolation just past the forward chain ends only (bounded by max_gap)."""
-        if not fa:
-            return None
-        if p < fa[0] and (fa[0] - p) <= args.max_gap:
-            return fb[0] - (fa[0] - p)
-        if p > fa[-1] and (p - fa[-1]) <= args.max_gap:
-            return fb[-1] + (p - fa[-1])
-        return None
+        if a_gap > args.max_gap or abs(a_gap - orient * (br - bl)) > tol:
+            return None, None                                   # gap too long, or an indel lives in it -> drop
+        if bisect.bisect_right(allpos, al) < bisect.bisect_left(allpos, ar):
+            return None, None                                   # another anchor lies in the gap -> it spans a rearrangement
+        return int(round(bl + (p - al) * (br - bl) / a_gap)), a_gap
 
     good, n_fwd, n_rev, n_drop = {}, 0, 0, 0
     for p in positions:
-        cf, gf = bracket(fa, fb, p, 1, ra)                       # forbid a forward gap that crosses an inversion
-        cr, gr = bracket(ra, rb, p, -1)
-        if cf is not None and (cr is None or gf <= gr):
-            good[p] = cf; n_fwd += 1                             # colinear: forward brackets (tighter/only)
-        elif cr is not None:
-            good[p] = cr; n_rev += 1                             # inverted block: reverse anchors bracket p
+        best, best_gap, best_orient = None, None, 0
+        for ca, cb, orient in chains:
+            c, g = bracket(ca, cb, p, orient)
+            if c is not None and (best is None or g < best_gap):
+                best, best_gap, best_orient = c, g, orient      # tightest bracketing gap wins
+        if best is None:
+            n_drop += 1
+        elif best_orient == 1:
+            good[p] = best; n_fwd += 1
         else:
-            ce = fwd_end(p)                                      # chain end only; indel shadows / RD / deserts drop
-            if ce is not None:
-                good[p] = ce; n_fwd += 1
-            else:
-                n_drop += 1
+            good[p] = best; n_rev += 1
     if args.rd_out:
         with open(args.rd_out, "w", encoding="utf-8") as w:
             for a0, a1 in rd:
                 w.write("%s\t%d\t%d\tRD_deletion\n" % (args.source_contig, a0, a1))
-    return good, {"fwd": n_fwd, "rev": n_rev, "drop": n_drop,
-                  "anchors": len(fa), "inv_anchors": len(ra), "rd": len(rd)}
+    return good, {"fwd": n_fwd, "rev": n_rev, "drop": n_drop, "anchors": len(fa),
+                  "inv_chains": len(rev_chains), "inv_anchors": sum(len(c[0]) for c in rev_chains), "rd": len(rd)}
 
 
 def cmd_lift(args):
@@ -345,9 +355,10 @@ def cmd_lift(args):
         good, st = _lift_chain(args, positions)
         _write_outputs(good, args.out_map, args.out_bed, args.contig, args.name)
         sys.stderr.write("[liftover] lift(anchor-chain): %d fwd + %d inverted = %d lifted ; %d dropped "
-                         "(indel shadow / RD / desert) ; %d collinear anchors (+%d inversion), %d RD deletion(s)\n"
+                         "(indel shadow / RD / desert / boundary) ; %d collinear anchors, %d inversion "
+                         "chain(s)/%d anchors, %d RD deletion(s)\n"
                          % (st["fwd"], st["rev"], len(good), st["drop"],
-                            st["anchors"], st["inv_anchors"], st["rd"]))
+                            st["anchors"], st["inv_chains"], st["inv_anchors"], st["rd"]))
         return
     import bisect
     k = args.kmer_size
@@ -458,6 +469,13 @@ def main():
                    help="--global-chain: max source-vs-target span mismatch (bp) for a gap to count as colinear "
                         "and be interpolated; a larger mismatch means an indel lives in the gap -> its interior "
                         "is dropped (default 0 = only exactly-colinear gaps interpolate -> coord is exact or absent)")
+    l.add_argument("--min-chain", type=int, default=10,
+                   help="--global-chain: min anchors for a reverse (inversion) chain to be used for placement; "
+                        "each independent inversion gets its own chain. Smaller inversions still never mis-map "
+                        "(they drop) -- this only sets which are placed. Does not affect the forbid guard")
+    l.add_argument("--min-density", type=float, default=0.2,
+                   help="--global-chain: min anchor density (anchors / (span/sample)) for a reverse chain to be "
+                        "a real inversion block; sparser chains are scattered spurious anchors and are discarded")
     l.add_argument("--sample", type=int, default=1,
                    help="--global-chain: keep ~1/N of k-mers as anchors (FracMinHash) -> ~N x less memory")
     l.add_argument("--rd-out", default=None,

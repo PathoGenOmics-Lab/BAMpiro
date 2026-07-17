@@ -34,11 +34,13 @@ SNP at the queried site drops the position.
 ### Anchor-chain design — "correct or absent"
 
 A position is placed **only** when it is bracketed by two consecutive anchors of a chain across a **colinear**
-gap (source span == target span, so no indel lies between them). It takes the chain whose bracketing gap is
-**tightest**; a forward gap that itself contains reverse anchors is *not* interpolated (it would be crossing an
-inverted block). So SNP sites and colinear regions are exact, and anything ambiguous **drops** rather than
-receiving a smeared or extrapolated coordinate. Validated on the real H37Rv / ancestor pair (DR sites, 100 %
-lift, 0 wrong) and on synthetic constructions of every failure mode below (18/18 scenarios, 0 wrong coords).
+gap (source span == target span, and the gap contains **no other anchor of any chain** — so it can't be
+crossing an inversion, indel or rearrangement of any size). Of the chains that bracket it, the one with the
+**tightest** gap wins. There is **no extrapolation**: SNP sites and colinear regions are exact, and anything
+ambiguous — an indel/RD shadow, a rearrangement boundary, an anchor desert, a position past every chain's ends
+— **drops** rather than receiving a smeared or extrapolated coordinate. Validated on the real H37Rv / ancestor
+pair (DR sites exact, ~99.9 % lift, 0 wrong on a 8.8 k dense sweep) and on synthetic constructions of every
+failure mode below (24/24 scenarios, 0 wrong coords).
 
 - **`--sample N` (FracMinHash, memory).** Keep only ~1/N of the k-mers as anchors — deterministically, hashing
   the **canonical** code (`hash(min(kmer, revcomp(kmer))) % N == 0`), so a k-mer *and its reverse complement*
@@ -46,11 +48,13 @@ lift, 0 wrong) and on synthetic constructions of every failure mode below (18/18
   the 4.4 Mb pair `--sample 10` drops the anchor map from **2.1 GB to ~300 MB** (7×), still **0 wrong** and
   100 % lift. BAMpiro uses `--sample 10` for the **blind-spots mask** (memory) and **no sampling** for the
   **variant-coordinate** lift (max anchor density near indels).
-- **Inversions / rearrangements (automatic).** A REVERSE chain of reverse-complement anchors (longest
-  *decreasing* run) places a position inside an inverted block by the reflected mapping `s+e−P+1`. It works
-  under sampling (canonical hashing above) and for small inversions (the forward chain refuses to cross a gap
-  containing reverse anchors, so boundary positions drop instead of mis-mapping). A parity correction makes it
-  exact for even k too. Verified on 100 kb and 400 bp inversions, with `--sample 10`/`30`, and with k=20.
+- **Inversions / rearrangements (automatic, multiple).** Reverse-complement anchors form **one reverse chain
+  per inversion** (successive longest *decreasing* runs — a single chain can hold only one, so two independent
+  inversions each get their own); each places a position inside its block by the reflected mapping `s+e−P+1`.
+  A chain is kept only if it is a **dense contiguous block** (`--min-density`), so scattered spurious reverse
+  anchors (a k-mer whose revcomp is coincidentally unique elsewhere) can't mis-place a repeat-desert position.
+  Works under sampling (canonical hashing above); a parity correction makes it exact for even k. Verified on
+  100 kb, 400 bp and **two independent** 400 bp inversions, with `--sample 10`/`30`, and with k=20.
 - **Indels — deletions AND insertions (automatic + optional RD BED).** A gap whose source and target spans
   differ holds an indel; its interior (the ±k breakpoint shadow, which has no clean equivalent) is **dropped**,
   never smeared across the indel — in either direction (target lost *or* gained sequence). A forward gap where
