@@ -167,9 +167,29 @@ def _write_outputs(good, out_map, out_bed, contig, name):
                 w.write("%s\t%d\t%d\t%s\n" % (contig, start - 1, prev, name))
 
 
-def _kmer_unique_map(fasta, k):
-    """{2-bit-encoded k-mer -> its single 1-based CENTRE position} for k-mers UNIQUE in the sequence.
-    Rolling 2-bit code (A/C/G/T -> 0..3), resets on any non-ACGT base. O(len), compact int keys."""
+_HMUL = 0x9E3779B97F4A7C15
+_M64 = (1 << 64) - 1
+
+
+def _hash64(code):
+    h = (code * _HMUL) & _M64
+    return h ^ (h >> 29)
+
+
+def _rc_code(code, k):
+    """Reverse-complement of a 2-bit-encoded k-mer (A<->T, C<->G)."""
+    rc = 0
+    for _ in range(k):
+        rc = (rc << 2) | (3 - (code & 3))
+        code >>= 2
+    return rc
+
+
+def _kmer_unique_map(fasta, k, sample=1):
+    """{2-bit k-mer code -> single 1-based CENTRE} for k-mers UNIQUE in the sequence. Rolling 2-bit code,
+    resets on non-ACGT. With sample>1, keep only ~1/sample of k-mers (FracMinHash: hash(code) % sample == 0)
+    -> ~sample x less memory; the choice is deterministic so both genomes keep the SAME subset and shared
+    anchors survive."""
     seq = _read_first_contig(fasta)
     half = k // 2
     mask = (1 << (2 * k)) - 1
@@ -184,23 +204,21 @@ def _kmer_unique_map(fasta, k):
             continue
         code = ((code << 2) | v) & mask
         valid += 1
-        if valid >= k:
-            pos = i - half + 1                          # 1-based centre of the k-mer ending at i
-            seen[code] = -1 if code in seen else pos     # first -> pos, seen again -> -1 (ambiguous)
+        if valid >= k and (sample <= 1 or _hash64(code) % sample == 0):
+            pos = i - half + 1
+            seen[code] = -1 if code in seen else pos
     return {c: p for c, p in seen.items() if p > 0}
 
 
-def _build_chain(ua, ub):
-    """Anchors = k-mers unique in BOTH genomes -> the longest COLLINEAR (strictly increasing) chain of
-    (a_pos, b_pos) via patience-sorting LIS. Breakpoints between consecutive chain anchors are indels;
-    anchors off the main chain (inversions / spurious) are discarded."""
+def _lis(pairs, increasing=True):
+    """Longest strictly-monotonic-in-b subsequence of `pairs` (already sorted by a). increasing=False finds
+    the longest DECREASING run (an inversion). Returns (ca, cb) of the chained anchors."""
     import bisect
-    anchors = sorted((pa, ub[c]) for c, pa in ua.items() if c in ub)
-    if not anchors:
+    if not pairs:
         return [], []
-    bvals = [b for _, b in anchors]
-    tails_v, tails_i, parent = [], [], [-1] * len(bvals)
-    for i, v in enumerate(bvals):
+    vals = [b if increasing else -b for _, b in pairs]
+    tails_v, tails_i, parent = [], [], [-1] * len(vals)
+    for i, v in enumerate(vals):
         j = bisect.bisect_left(tails_v, v)
         if j == len(tails_v):
             tails_v.append(v); tails_i.append(i)
@@ -212,39 +230,86 @@ def _build_chain(ua, ub):
     while node != -1:
         idx.append(node); node = parent[node]
     idx.reverse()
-    return [anchors[i][0] for i in idx], [anchors[i][1] for i in idx]
+    return [pairs[i][0] for i in idx], [pairs[i][1] for i in idx]
 
 
 def _lift_chain(args, positions):
-    """Global anchor-chain liftover: build the collinear anchor chain ONCE, then place ANY position by
-    interpolating between its two flanking anchors -> a coordinate even for SNP sites and other positions
-    whose own k-mer would not match, placed by their neighbours. Drops positions in anchor deserts
-    (repeats / non-syntenic regions), so a coordinate is still correct or absent."""
+    """Whole-genome anchor-chain liftover. Anchors = k-mers unique in both genomes; the FORWARD chain (LIS)
+    is the collinear backbone and a REVERSE chain (longest decreasing run of reverse-complement anchors)
+    covers an inversion. Any position is placed by interpolating between its flanking anchors on the closer
+    chain (SNP sites + indels handled). Large forward gaps where the target lost sequence are reported as RD
+    deletions and their interior positions are dropped (no equivalent). Anchor-desert positions drop."""
     import bisect
     k = args.kmer_size
-    ca, cb = _build_chain(_kmer_unique_map(args.source_fasta, k), _kmer_unique_map(args.target_fasta, k))
-    good, n_exact, n_interp, n_drop = {}, 0, 0, 0
-    if not ca:
-        return good, (0, 0, len(positions))
-    for p in positions:
+    sample = max(1, args.sample)
+    uA = _kmer_unique_map(args.source_fasta, k, sample)
+    uB = _kmer_unique_map(args.target_fasta, k, sample)
+    fwd, rev, in_f, in_r = [], [], set(), set()
+    for c, a in uA.items():
+        if c in uB:
+            fwd.append((a, uB[c])); in_f.add(a)
+        rc = uB.get(_rc_code(c, k))
+        if rc is not None:
+            rev.append((a, rc)); in_r.add(a)
+    amb = in_f & in_r                                              # a source pos anchoring both strands -> drop
+    fa, fb = _lis(sorted((a, b) for a, b in fwd if a not in amb), True)
+    ra, rb = _lis(sorted((a, b) for a, b in rev if a not in amb), False)
+
+    rd = []                                                        # (a_left, a_right): target lost >= rd_min bp
+    for i in range(1, len(fa)):
+        if (fa[i] - fa[i - 1]) - (fb[i] - fb[i - 1]) >= args.rd_min:
+            rd.append((fa[i - 1], fa[i]))
+    rd_left = [x[0] for x in rd]
+
+    def in_rd(p):
+        j = bisect.bisect_right(rd_left, p) - 1
+        return j >= 0 and rd[j][0] < p < rd[j][1]
+
+    def interp(ca, cb, p, slope):
         j = bisect.bisect_left(ca, p)
         if j < len(ca) and ca[j] == p:
-            good[p] = cb[j]; n_exact += 1
-            continue
-        left = (ca[j - 1], cb[j - 1]) if j > 0 else None
-        right = (ca[j], cb[j]) if j < len(ca) else None
-        if left and right:
-            if (right[0] - left[0]) > args.max_gap:                 # anchor desert -> not confidently syntenic
-                n_drop += 1; continue
-            b = left[1] + (p - left[0]) * (right[1] - left[1]) / (right[0] - left[0])
-            good[p] = int(round(b)); n_interp += 1
-        elif left and (p - left[0]) <= args.max_gap:
-            good[p] = p + (left[1] - left[0]); n_interp += 1        # extrapolate past the last anchor
-        elif right and (right[0] - p) <= args.max_gap:
-            good[p] = p + (right[1] - right[0]); n_interp += 1
+            return cb[j]
+        left = j - 1 if j > 0 else None
+        right = j if j < len(ca) else None
+        if left is not None and right is not None:
+            if (ca[right] - ca[left]) > args.max_gap:
+                return None
+            return int(round(cb[left] + (p - ca[left]) * (cb[right] - cb[left]) / (ca[right] - ca[left])))
+        if left is not None and (p - ca[left]) <= args.max_gap:
+            return cb[left] + slope * (p - ca[left])
+        if right is not None and (ca[right] - p) <= args.max_gap:
+            return cb[right] - slope * (ca[right] - p)
+        return None
+
+    def nearest(ca, p):
+        if not ca:
+            return 1 << 62
+        j = bisect.bisect_left(ca, p)
+        d = 1 << 62
+        if j < len(ca):
+            d = ca[j] - p
+        if j > 0:
+            d = min(d, p - ca[j - 1])
+        return d
+
+    good, n_fwd, n_rev, n_rd, n_drop = {}, 0, 0, 0, 0
+    for p in positions:
+        cf = None if not fa else (None if in_rd(p) else interp(fa, fb, p, 1))
+        cr = None if not ra else interp(ra, rb, p, -1)
+        if cf is not None and (cr is None or nearest(fa, p) <= nearest(ra, p)):
+            good[p] = cf; n_fwd += 1
+        elif cr is not None:
+            good[p] = cr; n_rev += 1
+        elif fa and in_rd(p):
+            n_rd += 1
         else:
             n_drop += 1
-    return good, (n_exact, n_interp, n_drop)
+    if args.rd_out:
+        with open(args.rd_out, "w", encoding="utf-8") as w:
+            for a0, a1 in rd:
+                w.write("%s\t%d\t%d\tRD_deletion\n" % (args.source_contig, a0, a1))
+    return good, {"fwd": n_fwd, "rev": n_rev, "rd_drop": n_rd, "drop": n_drop,
+                  "anchors": len(fa), "inv_anchors": len(ra), "rd": len(rd)}
 
 
 def cmd_lift(args):
@@ -255,10 +320,12 @@ def cmd_lift(args):
     interpolation between flanking anchors, not by their own k-mer)."""
     if args.global_chain:
         positions = _positions(args.positions)
-        good, (ne, ni, nd) = _lift_chain(args, positions)
+        good, st = _lift_chain(args, positions)
         _write_outputs(good, args.out_map, args.out_bed, args.contig, args.name)
-        sys.stderr.write("[liftover] lift(anchor-chain): %d exact + %d interpolated = %d ; %d dropped (of %d)\n"
-                         % (ne, ni, len(good), nd, len(positions)))
+        sys.stderr.write("[liftover] lift(anchor-chain): %d fwd + %d inverted = %d lifted ; %d dropped (%d in "
+                         "RD) ; %d collinear anchors (+%d inversion), %d RD deletion(s)\n"
+                         % (st["fwd"], st["rev"], len(good), st["drop"] + st["rd_drop"], st["rd_drop"],
+                            st["anchors"], st["inv_anchors"], st["rd"]))
         return
     import bisect
     k = args.kmer_size
@@ -365,6 +432,13 @@ def main():
                         "interpolating between flanking unique anchors, instead of per-position k-mer matching")
     l.add_argument("--max-gap", type=int, default=2000,
                    help="--global-chain: max bp between flanking anchors to still interpolate (else drop)")
+    l.add_argument("--sample", type=int, default=1,
+                   help="--global-chain: keep ~1/N of k-mers as anchors (FracMinHash) -> ~N x less memory")
+    l.add_argument("--rd-out", default=None,
+                   help="--global-chain: write detected RD deletions (target lost sequence) as a BED (source coords)")
+    l.add_argument("--rd-min", type=int, default=50,
+                   help="--global-chain: minimum size (bp) of a target deletion to call it an RD block")
+    l.add_argument("--source-contig", default="source", help="contig name for the --rd-out BED")
     l.set_defaults(func=cmd_lift)
 
     args = ap.parse_args()

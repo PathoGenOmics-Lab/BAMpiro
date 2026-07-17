@@ -103,7 +103,7 @@ process PREPARE_REFERENCE {
             # correct without assuming shared coordinates: every position is placed by interpolation between
             # flanking unique anchors (handles SNP sites + indels; anchor-desert positions drop, never mis-map).
             python3 !{projectDir}/bin/pathotypr_liftover.py lift "!{params.blindspot_bed}" "!{params.canonical_ref}" reference.fa \
-                --out-bed bs_lifted.bed --contig "$CONTIG" --kmer-size 21 --global-chain
+                --out-bed bs_lifted.bed --contig "$CONTIG" --kmer-size 21 --global-chain --sample 10
             awk 'BEGIN{OFS="\t"} $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {print $1, $2+1, $3, "blindspot", ""}' bs_lifted.bed >> "$out"
         else
             # reference already shares H37Rv coordinates: append the blind-spots directly (contig rewrite + 1-based)

@@ -26,10 +26,28 @@ method:
 | +25 bp indel | tracked | tracked |
 | wrong coordinates | 0 | 0 |
 
-Cost: builds the map by scanning each genome once — ≈6 s and ≈1.7 GB for a 4.4 Mb genome (a per-reference,
+Cost: builds the map by scanning each genome once — ≈6 s and ≈2.1 GB for a 4.4 Mb genome (a per-reference,
 one-time step). Without `--global-chain`, `lift` uses the lighter per-position method: anchors from
 unique-in-both k-mers, and repeats resolved by the nearest anchors (`--max-shift` / `--min-margin`), but a
 SNP at the queried site drops the position.
+
+### Anchor-chain refinements (all validated on the real H37Rv / ancestor pair)
+
+- **`--sample N` (FracMinHash, memory).** Keep only ~1/N of the k-mers as anchors — deterministically
+  (`hash(kmer) % N == 0`), so BOTH genomes keep the SAME subset and shared anchors survive. On the 4.4 Mb
+  pair `--sample 10` drops the anchor map from **2.1 GB to 282 MB** (7.5×) with **0 wrong** coordinates on
+  colinear/SNP sites. Trade-off: sparser anchors widen the ambiguous ±k window right at an indel breakpoint
+  (a few extra positions get a fuzzy interpolated coord). So BAMpiro uses `--sample 10` for the **blind-spots
+  mask** (a mask tolerates ±few bp) and **no sampling** for the **variant-coordinate** lift (exactness).
+- **Inversions / rearrangements (automatic).** Besides the forward chain, a REVERSE chain is built from
+  reverse-complement anchors (longest *decreasing* run), so a position inside an inverted block is placed by
+  the reflected mapping `s+e−P+1`. Each position uses whichever chain has the closer flanking anchor. Verified
+  on a synthetic 100 kb inversion: every inverted-region position mapped correctly, 0 wrong.
+- **RD deletions (automatic + optional BED).** A forward-chain gap where the source advanced ≥ `--rd-min`
+  (default 50) bp more than the target is an RD block (sequence deleted in the target); its interior positions
+  have no equivalent and are **dropped** rather than interpolated across the deletion. `--rd-out FILE` writes
+  the detected RD blocks as a BED (source coords). Verified on a synthetic 5 kb deletion: interior dropped,
+  flanks correct, RD block emitted.
 
 ## `markers` + `apply` — the `pathotypr classify` alternative (Rust, for very large sets)
 
@@ -69,4 +87,8 @@ name exactly (no extension); its columns are `genome  k-mer  k-merPOS  SNPgenome
   repetitive blind-spots) or is broken by a nearby A/B difference. `apply` reports the lift/ambiguous
   counts. For the blind-spots the repetitive fraction is already covered by the pipeline's own
   nucmer + genmap masking on the target reference; this liftover adds the non-repetitive problematic sites.
+- **At an A/B indel breakpoint** the k-mers spanning it don't anchor, so the ±k window around the breakpoint
+  has no exact anchor and those positions get an interpolated (fuzzy, ±few bp) coordinate. Inherent to any
+  k-mer method; `--sample` widens this window. Away from indels the coordinate is exact. RD blocks (large
+  deletions) are the extreme case and are dropped explicitly rather than fuzzed (see above).
 - **k-mer size** must match between `markers`/`classify` (default 21).
