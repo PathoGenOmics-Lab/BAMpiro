@@ -91,6 +91,15 @@ process PREPARE_REFERENCE {
                END { if (NR>0) print c, cs, ce, "", "" }' \
         >> "$out"
     fi
+
+    # H37Rv Illumina "blind spots" (Zenodo 3701840): add them to the exclusion. The BED is 0-based
+    # half-open in NC_000962.3 coords; rewrite to the exclusion's 1-based-inclusive coords (start+1, end)
+    # and to THIS reference's contig name. Opt-in and only correct for an H37Rv-coordinate reference
+    # (H37Rv / the MTBC ancestor share coordinates). Flows to variant calling, consensus and the report.
+    if [[ "!{params.mask_blindspots}" == "true" && -s "!{params.blindspot_bed}" ]]; then
+        CONTIG=$(head -1 reference.fa | sed 's/^>//; s/[[:space:]].*//')
+        awk -v C="$CONTIG" 'BEGIN{OFS="\t"} $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {print C, $2+1, $3, "blindspot", ""}' "!{params.blindspot_bed}" >> "$out"
+    fi
     '''
 }
 
