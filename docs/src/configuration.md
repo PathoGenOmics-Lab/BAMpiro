@@ -37,6 +37,36 @@ table below.
 | `--publish_allpos_vcf` | Publishing the all-positions (backbone) VCF |
 | `--kraken_memory_mapping` | Reading the Kraken2 DB via mmap (RAM-sharing) |
 
+## Working with other organisms
+
+BAMpiro is organism-agnostic, but its **defaults are tuned for *M. tuberculosis*** (diploid calling to catch
+mixed infections, plus the MTBC-only features). For a clonal haploid bacterium, add the built-in **`generic`**
+profile — it sets **ploidy 1** and forces the MTBC-only features off:
+
+```bash
+nextflow run main.nf --tsv samples.tsv --outdir results -profile standard,generic
+```
+
+For anything more (a Kraken2 DB for your species, a canonical amino-acid numbering, tuned gate thresholds),
+copy the commented template [`conf/organism.config`](../conf/organism.config), edit it, and layer it on with
+`-c`:
+
+```bash
+nextflow run main.nf --tsv samples.tsv --outdir results -profile standard -c my_organism.config
+```
+
+What `generic` changes versus the TB defaults:
+
+| Setting | TB default | `generic` | Why |
+| :--- | :--- | :--- | :--- |
+| `freebayes_ploidy` | `2` | **`1`** | TB calls diploid to detect mixed infections; a clonal bacterium is haploid |
+| `run_pathotypr` · `variant_liftover` · `mask_blindspots` · `annotate_canonical` | *(off)* | **off** | all *M. tuberculosis*-specific (H37Rv lineage/DR, blind-spots, coordinate liftover) |
+
+Everything else is already generic: point the samplesheet `refFasta` / `refGff` at your genome, set
+`--kraken2_db` and the `taxId` column for your species, and the report's TB-only panels (lineage, drug
+resistance) simply **self-hide** when there is no such data. To keep a canonical amino-acid numbering for your
+organism, build a SnpEff DB and set `--annotate_canonical true` with `--canonical_snpeff_db` / `--canonical_label`.
+
 ## All parameters
 
 | Category | Parameter | Default | Description |

@@ -2,7 +2,9 @@
 
 By default BAMpiro assumes *M. tuberculosis* settings (ploidy = 2 to detect mixed
 infections). Lineage/DR typing is **off** by default - enable it with
-`--run_pathotypr true`.
+`--run_pathotypr true`. **Working with a different organism?** Add `-profile
+standard,generic` (ploidy 1 + the MTBC-only features off) — see
+[Working with other organisms](configuration.md#working-with-other-organisms).
 
 ```bash
 nextflow run main.nf \
