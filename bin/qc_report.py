@@ -1411,6 +1411,10 @@ def main():
                          "amino-acid position shown alongside the used-reference one (matched by sample + contig:pos).")
     ap.add_argument("--aa2-label", default="H37Rv",
                     help="Label for the canonical-reference amino-acid numbering shown by --vcfs-h37rv (default H37Rv).")
+    ap.add_argument("--pos-liftover", default=None,
+                    help="TSV 'mapping_pos<TAB>canonical_pos' (e.g. pathotypr_liftover.py apply --out-map) -> the "
+                         "reference-of-interest COORDINATE per variant, alignment-free. Fills pos_h37rv for the SNP "
+                         "tables; an alternative to --vcfs-h37rv when the references do not share coordinates.")
     ap.add_argument("--gate", action="store_true")
     args = ap.parse_args()
     thr = {k: getattr(args, k) for k in DEF}
@@ -1541,6 +1545,21 @@ def main():
                     if _cv.get('aa'):
                         _v['aa_h37rv'] = _cv['aa']
                     _v['pos_h37rv'] = _ck   # reference-of-interest coordinate (contig:pos), possibly != the mapping one
+    if args.pos_liftover:   # alignment-free canonical coordinate per variant (pathotypr k-mer liftover map)
+        _lift = {}
+        try:
+            with open(args.pos_liftover, encoding="utf-8", errors="replace") as _fh:
+                for _line in _fh:
+                    _c = _line.rstrip("\n").split("\t")
+                    if len(_c) >= 2 and _c[0].strip().isdigit() and _c[1].strip().isdigit():
+                        _lift[_c[0].strip()] = _c[1].strip()
+        except OSError as _e:
+            sys.stderr.write("[qc_report] WARN pos-liftover (%s): %s\n" % (args.pos_liftover, _e))
+        for _s, _pm in _variants.items():
+            for _key, _v in _pm.items():
+                _p = _key.rpartition(":")[2]
+                if not _v.get("pos_h37rv") and _p in _lift:
+                    _v["pos_h37rv"] = "%s:%s" % (args.aa2_label, _lift[_p])
     _sample_meta = parse_sample_meta(args.metadata)   # shared by the dynamics filter and the SNP matrix header
     _dynamics = build_dynamics(parse_metadata(args.metadata), _variants, _sample_meta)   # feeds dynamics + epistasis
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
