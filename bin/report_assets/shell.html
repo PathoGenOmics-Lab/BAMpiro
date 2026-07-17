@@ -47,6 +47,7 @@
 <section id="dist"><h2>Distributions <span class="c">- one mark per sample; shaded band = acceptable range (modern gate); hover for detail</span>
 <span class="seg" id="colorby" style="margin-left:auto"><button class="on" data-cb="qc">colour: QC</button><button data-cb="lineage">lineage</button></span>
 <span class="seg" id="ptype"><button class="on" data-t="beeswarm">beeswarm</button><button data-t="bar">bar</button><button data-t="histogram">histogram</button></span>
+<label class="dyn-zoom" title="Resize the plots - taller rows spread the marks"><span><span data-ic="search" data-ic-cls="sort"></span>&#8211;/+</span><input type="range" id="plotszoom" min="24" max="72" step="4" value="30"></label>
 <button class="exp-h" data-panel="plotsPanel" data-render="plots"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="plotsPanel"><div id="plots" class="pad" style="padding-top:6px;padding-bottom:6px"></div>
 <div class="legend" id="leg-qc"><span><i style="background:#94a3b8"></i>PASS</span><span><i style="background:#d97706"></i>WARN</span><span><i style="background:#dc2626"></i>FAIL</span><span style="margin-left:auto">beeswarm dashed line = median</span></div>
@@ -74,16 +75,19 @@
 <div class="panel" id="divcompPanel"><div id="divcomp_body" class="pad"></div>
 <div class="legend" id="divcomp_quadn"></div>
 <div class="hot-note" id="divcomp_caption"></div></div></section>
-<section id="cons"><h2>Consensus completeness <span class="c">- callable / IUPAC / missing per sample, worst first</span></h2>
+<section id="cons"><h2>Consensus completeness <span class="c">- callable / IUPAC / missing per sample, worst first</span>
+<label class="dyn-zoom" title="Resize the per-sample bars" style="margin-left:auto"><span><span data-ic="search" data-ic-cls="sort"></span>&#8211;/+</span><input type="range" id="conszoom" min="18" max="56" step="2" value="26"></label></h2>
 <div class="panel"><div id="stacks" style="max-height:60vh;overflow:auto"></div>
 <div class="legend"><span><i style="background:#22a06b"></i>callable</span><span><i style="background:#e6b25a"></i>IUPAC</span><span><i style="background:#cbd5e1"></i>missing (- / N)</span></div></div></section>
 <section id="genome"><h2>Genome landscape <span class="c">- a signal along the reference; rows = samples (grouped by lineage). A contiguous block = a localised feature (e.g. an RD deletion, a variant cluster). Missing = consensus callability (coverage proxy); SNPs/Het/Indels = VCF variant density. Drag across the track to zoom a region</span>
 <input class="gsearch" id="genegoto" type="search" placeholder="go to gene" style="margin-left:auto"><span id="gselreadout" style="font-size:11px;color:var(--accent)"></span><button class="btn" id="maskbtn"><span data-ic="ban"></span>mask regions</button><span class="seg" id="gtrack"></span>
+<label class="dyn-zoom" title="Row height - taller rows per sample"><span><span data-ic="search" data-ic-cls="sort"></span>&#8211;/+</span><input type="range" id="genzoom" min="3" max="22" step="1" value="9"></label>
 <button class="exp-h" data-panel="genomePanel" data-render="genome"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="genomePanel"><div class="genome-scroll"><div id="genome_body" class="pad"></div></div>
 <div class="legend"><span><i style="background:rgb(238,244,240)"></i>none / callable</span><span><i style="background:rgb(160,120,150)"></i>&#8594;</span><span><i style="background:rgb(120,70,90)"></i>high</span><span style="margin-left:auto">top strip = cohort mean; hover a cell for the position + value</span></div></div></section>
 <section id="function"><h2>Functional annotation <span class="c">- snpEff impact + effect classes per sample; the missense/silent ratio is a pN/pS PROXY, not a selection test</span>
-<button class="exp-h" data-panel="functionPanel" data-render="function" style="margin-left:auto"><span data-ic="maximize"></span>full</button></h2>
+<label class="dyn-zoom" title="Resize the per-sample bars" style="margin-left:auto"><span><span data-ic="search" data-ic-cls="sort"></span>&#8211;/+</span><input type="range" id="fnzoom" min="18" max="56" step="2" value="26"></label>
+<button class="exp-h" data-panel="functionPanel" data-render="function"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="functionPanel">
   <div class="provbar" style="margin:12px 16px 4px"><div class="prov" id="fn_cohort"></div></div>
   <div id="fn_stacks" style="max-height:56vh;overflow:auto"></div>

@@ -42,12 +42,15 @@ function renderFunction(){
     '<span style="color:#94a3b8;font-weight:400">(pN/pS proxy; '+Math.round(mis).toLocaleString('en-US')+' missense / '+Math.round(syn).toLocaleString('en-US')+' synonymous; not a selection test)</span></div>';
   if(coh)coh.innerHTML='<div style="flex-basis:100%"><div class="dsub" style="margin:2px 0 4px">Cohort effect classes <span style="font-weight:400;color:#94a3b8">(summed over samples in view)</span></div>'+strip+effRows+'</div>';
   if(cap)cap.innerHTML=FUNCTION_CAPTION;
+  host.style.setProperty('--stackh',fnZoom+'px'); host.style.setProperty('--sbh',Math.round(fnZoom*0.5)+'px');
+  var fz=el('fnzoom'); if(fz){ fz.value=fnZoom; fz.oninput=function(){ fnZoom=+this.value; host.style.setProperty('--stackh',fnZoom+'px'); host.style.setProperty('--sbh',Math.round(fnZoom*0.5)+'px'); }; }
 }
+var fnZoom=26, genomeZoom=0;   // function per-sample bar row height (px, CSS var); genome row height override (0 = auto)
 function renderGenome(){
   var host=el('genome_body'); if(!host)return;
   var samp=R.samples.filter(function(s){return s.miss||s.trk;});
   if(!samp.length){host.innerHTML='<span class="nd" style="padding:0">no consensus/variant data for a genome landscape.</span>';return;}
-  var tk=st.gtrack||'missing'; if(!gtrackHas(tk)){tk='missing';st.gtrack='missing';}
+  var tk=st.gtrack||'missing'; if(!gtrackHas(tk)){ var av=GTRACKS.filter(function(g){return gtrackHas(g.k);}); tk=av.length?av[0].k:'missing'; st.gtrack=tk; }   // fall back to the first track that HAS data (e.g. SNP density when there's no consensus/missing track) instead of showing a spurious 'no data'
   var meta=GTRACKS[0]; GTRACKS.forEach(function(g){if(g.k==tk)meta=g;}); var base=meta.base;
   var rows0=samp.filter(function(s){return (tk=='missing')?s.miss:(s.trk&&s.trk[tk]);});
   if(!rows0.length){host.innerHTML='<span class="nd" style="padding:0">no data for this track.</span>';return;}
@@ -56,7 +59,7 @@ function renderGenome(){
   var vis={}; visible().forEach(function(s){vis[s.s]=1;});
   var rows=rows0.slice().sort(function(a,b){var la=(R.lineages||[]).indexOf(a.lineage),lb=(R.lineages||[]).indexOf(b.lineage);
     if(la<0)la=999; if(lb<0)lb=999; if(la!=lb)return la-lb; return a.s.localeCompare(b.s);});
-  var W=Math.max(280,host.clientWidth||900), gut=54, profH=54, rowH=Math.max(3,Math.min(9,Math.floor(300/rows.length))), plotW=W-gut-8;
+  var W=Math.max(280,host.clientWidth||900), gut=54, profH=54, rowH=genomeZoom>0?genomeZoom:Math.max(3,Math.min(9,Math.floor(300/rows.length))), plotW=W-gut-8;
   var z0=0,z1=nb-1; if(st.gzoom){z0=Math.max(0,Math.min(nb-1,st.gzoom.b0|0));z1=Math.max(z0,Math.min(nb-1,st.gzoom.b1|0));}
   var winN=z1-z0+1;                                            // zoom window (bins); the whole reference when st.gzoom is null
   function x(i){return gut+(i-z0)/winN*plotW;} var bw=plotW/winN+0.6;
@@ -98,6 +101,7 @@ function renderGenome(){
   // selection overlay only when it is a SUB-region of the current view (when zoomed to exactly the selection, the whole plot is it)
   if(st.gsel&&!(st.gsel.b0<=z0&&st.gsel.b1>=z1)){var gbx=el('gbrush');if(gbx){var bx0=Math.max(gut,x(st.gsel.b0)),bx1=Math.min(gut+plotW,x(st.gsel.b1+1));
     if(bx1>bx0){gbx.setAttribute('x',bx0.toFixed(1));gbx.setAttribute('width',(bx1-bx0).toFixed(1));gbx.style.display='';}else gbx.style.display='none';}}
+  var gz=el('genzoom'); if(gz){ if(genomeZoom<=0)gz.value=rowH; gz.oninput=function(){ genomeZoom=+this.value; renderGenome(); }; }   // row-height zoom (re-renders; slider lives in the h2 so the drag survives)
 }
 
 // ---- SNP-dense gene / region detection (cohort SNP density along the reference) ----

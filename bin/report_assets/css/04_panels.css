@@ -156,8 +156,8 @@ table.snpmx .snpmx-h{writing-mode:vertical-rl;transform:rotate(180deg);font-size
 table.snpmx .snpmx-info{position:sticky;left:0;background:var(--panel);z-index:4;text-align:left;padding:5px 13px;border-right:1px solid var(--line);white-space:nowrap;font-size:12.5px}
 table.snpmx thead .snpmx-info{z-index:6;background:var(--soft)}
 .snpmx-aa{color:var(--accent);font-weight:700}
-table.snpmx td.snpmx-cell{min-width:32px;text-align:center;color:#0f2431;font-variant-numeric:tabular-nums;padding:3px 2px}
-table.snpmx td.snpmx-cell.wdp{min-width:42px}
+table.snpmx td.snpmx-cell{min-width:var(--mxcw,32px);text-align:center;color:#0f2431;font-variant-numeric:tabular-nums;padding:3px 2px}
+table.snpmx td.snpmx-cell.wdp{min-width:calc(var(--mxcw,32px) + 10px)}
 .snpmx-af{display:block;font-weight:600;font-size:10px}
 .snpmx-dp{display:block;font-size:8.5px;color:var(--txt2);line-height:1.15}
 table.snpmx td.snpmx-empty{background:repeating-linear-gradient(45deg,#f6f8fb,#f6f8fb 3px,#eef2f7 3px,#eef2f7 6px)}

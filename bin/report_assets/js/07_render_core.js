@@ -107,9 +107,10 @@ function renderTable(){
     sp.onkeydown=function(e){if(e.key=='Enter'||e.key==' '||e.key=='Spacebar'){e.preventDefault();e.stopPropagation();openDetail(sp.getAttribute('data-s'));}};});
 }
 
+var plotsZoom=30;   // beeswarm/bar/histogram plot height (px); the slider re-renders (dims are baked into the SVG)
 function renderPlots(){
   var host=el('plots'); host.innerHTML='';
-  var W=host.clientWidth||900, narrow=W<520, labelW=narrow?96:156, svgW=Math.max(narrow?190:240,W-labelW-4), padL=8, rightPad=64, pw=svgW-padL-rightPad, H=30, cy=H/2;
+  var W=host.clientWidth||900, narrow=W<520, labelW=narrow?96:156, svgW=Math.max(narrow?190:240,W-labelW-4), padL=8, rightPad=64, pw=svgW-padL-rightPad, H=plotsZoom, cy=H/2;
   var vis={}; visible().forEach(function(s){vis[s.s]=1;});
   DIST.forEach(function(pk){
     var mt=MET[pk]||{label:pk,kind:'float'};
@@ -147,6 +148,8 @@ function renderPlots(){
       '<text x="'+(padL+pw+6)+'" y="'+(cy+3)+'" font-size="9" fill="#94a3b8">'+shortv(hi,mt.kind)+'</text></svg></div>';
     host.appendChild(row);
   });
+  host.style.setProperty('--beeh',(plotsZoom+10)+'px');
+  var pz=el('plotszoom'); if(pz){ pz.value=plotsZoom; pz.oninput=function(){ plotsZoom=+this.value; renderPlots(); }; }
 }
 
 function renderScatter(){
@@ -221,6 +224,7 @@ function renderCorr(){
   host.innerHTML=svg+'</svg>';
 }
 
+var consZoom=26;   // consensus per-sample bar row height (px); CSS var --stackh, no re-render
 function renderStacks(){
   var host=el('stacks');
   var rows=R.samples.filter(function(s){return s.m.callable_pct!=null||s.m.missing_pct!=null;})
@@ -236,6 +240,9 @@ function renderStacks(){
      '<div style="width:'+mis.toFixed(2)+'%;background:#cbd5e1" title="missing"></div></div>'+
      '<span class="sv">'+mis.toFixed(1)+'%</span></div>';}).join('');
   Array.prototype.forEach.call(host.querySelectorAll('.stack'),function(d){d.onclick=function(){setHi(d.getAttribute('data-s'));};});
+  function applyZ(){ host.style.setProperty('--stackh',consZoom+'px'); host.style.setProperty('--sbh',Math.round(consZoom*0.5)+'px'); }
+  applyZ();
+  var cz=el('conszoom'); if(cz){ cz.value=consZoom; cz.oninput=function(){ consZoom=+this.value; applyZ(); }; }
 }
 
 function qcScore(s){var fails=s.f.filter(function(f){return FAILF[f];}).length;return fails*100+(s.f.length-fails)*10;}

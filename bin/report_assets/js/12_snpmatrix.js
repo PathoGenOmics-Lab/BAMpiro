@@ -4,6 +4,7 @@ var SNPMX_PAL=['#bcd0ea','#f3d1b0','#c3e0c9','#f0c4cf','#d6c9ec','#b8e0dd','#ead
 var SNPMX_PAL_DARK=['#2f4a6b','#6b4c2f','#2f5a40','#6b3a4a','#4a3a6b','#2f5a55','#5c4a2f','#3a4450','#6b3838','#4c4c2f','#5a2f5a','#35506b'];
 var snpmxFilter={};
 var snpmxAll=false;   // false = show the top MAXR most-shared sites; true = virtualized scroll over every site
+var snpmxZoom=32;     // SNP-matrix cell width in px (zoom slider); CSS var --mxcw, no re-render (row height untouched -> virtualization safe)
 function renderSnpMatrix(){
   var host=el('snpmx_body'), sec=el('snpmatrix'); if(!host)return;
   var M=R.snp_matrix;
@@ -39,6 +40,7 @@ function renderSnpMatrix(){
       '<label class="snpmx-toggle"><input type="checkbox" id="snpmxdp" checked> show depth</label>'+
       '<button class="dyn-btn" id="snpmxdl" title="Download the full matrix (all samples) as a wide TSV">'+icon('download')+'download matrix (TSV)</button>'+
       '<button class="dyn-btn snpmx-allbtn" id="snpmxallbtn" style="display:none" title="Toggle between the top most-shared sites and a scrollable view of every site"></button>'+
+      '<label class="dyn-zoom" title="Resize the matrix cells - drag to widen the columns"><span>'+icon('search','sort')+'&#8211;/+</span><input type="range" id="snpmxzoom" min="26" max="80" step="2" value="'+snpmxZoom+'"></label>'+
       '<span class="dyn-count" id="snpmxcount"></span></div>'+
     filterUI+
     (meta?('<div class="snpmx-metanote">column levels from the samplesheet: '+meta.fields.map(function(f){return '<b>'+esc(f)+'</b>';}).join(' &#183; ')+' &#183; hover a header cell for its value</div>'):'')+
@@ -103,6 +105,8 @@ function renderSnpMatrix(){
   }
   el('snpmxq').oninput=function(){clearTimeout(_mxdb);_mxdb=setTimeout(draw,160);};
   el('snpmxdp').onchange=draw;
+  el('snpmxwrap').style.setProperty('--mxcw', snpmxZoom+'px');   // cell-width zoom (no re-render; the cells read the CSS var)
+  el('snpmxzoom').oninput=function(){ snpmxZoom=+this.value; el('snpmxwrap').style.setProperty('--mxcw', snpmxZoom+'px'); };
   if(meta){
     Array.prototype.forEach.call(host.querySelectorAll('.snpmx-filters select'),function(sel){ sel.onchange=function(){ var f=sel.getAttribute('data-f'); if(sel.value) snpmxFilter[f]=sel.value; else delete snpmxFilter[f]; draw(); }; });
     el('snpmxfclear').onclick=function(){ snpmxFilter={}; Array.prototype.forEach.call(host.querySelectorAll('.snpmx-filters select'),function(s){s.value='';}); draw(); };
