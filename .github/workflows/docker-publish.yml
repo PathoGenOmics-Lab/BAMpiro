@@ -1,13 +1,15 @@
 name: Build & publish container
 
-# Builds the self-contained pipeline image and pushes it to the GitHub Container Registry
-# (ghcr.io/pathogenomics-lab/bampiro). Runs when a version tag is pushed (e.g. `git tag 1.0.1 &&
-# git push --tags`, which also happens when you create a GitHub Release), or manually via "Run workflow".
+# Builds the self-contained pipeline image once and publishes it to:
+#   - GitHub Container Registry  ghcr.io/pathogenomics-lab/bampiro   (always; via the ephemeral GITHUB_TOKEN)
+#   - Docker Hub                 paururo/bampiro                     (only if the two secrets below are set)
+# Runs on a version tag (`git tag 1.0.1 && git push --tags`, or a GitHub Release) or manually ("Run workflow").
 #
-# NO secrets to configure: it logs in with the automatic, ephemeral GITHUB_TOKEN (scoped to this repo,
-# expires when the job ends). It only needs `packages: write` (granted below). After the first run,
-# make the package Public once (repo -> Packages -> the image -> Package settings -> Change visibility)
-# so the cluster pulls it without authentication.
+# GHCR needs NO secret. Docker Hub is OPTIONAL - add these repository secrets to also push there
+# (Settings -> Secrets and variables -> Actions); if they are absent the job just pushes to GHCR:
+#   DOCKERHUB_USERNAME  - a Docker Hub account with push access to paururo/bampiro (i.e. paururo)
+#   DOCKERHUB_TOKEN     - a Docker Hub access token (Account Settings -> Security -> New Access Token)
+# Make whichever image the cluster pulls Public (Package settings / Docker Hub repo visibility).
 
 on:
   push:
@@ -37,6 +39,8 @@ permissions:
 jobs:
   build-push:
     runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_ENABLED: ${{ secrets.DOCKERHUB_USERNAME != '' }}   # push to Docker Hub only when the secret is set
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
@@ -59,11 +63,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}   # automatic per-run token, not a stored secret
 
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_ENABLED == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compose target image list
+        id: images
+        run: |
+          IMAGES="${IMAGE_NAME}"
+          if [ "${DOCKERHUB_ENABLED}" = "true" ]; then IMAGES="${IMAGES}"$'\n'"paururo/bampiro"; fi
+          { echo "list<<EOF"; printf '%s\n' "${IMAGES}"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+
       - name: Derive image tags
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_NAME }}
+          images: ${{ steps.images.outputs.list }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -87,16 +105,17 @@ jobs:
       - name: Summary (tags + digest to re-pin)
         run: |
           {
-            echo "### 🐳 Pushed \`${IMAGE_NAME}\`"
+            echo "### 🐳 Pushed to GHCR$([ "${DOCKERHUB_ENABLED}" = "true" ] && echo " + Docker Hub")"
             echo ""
-            echo "**Tags**"
+            echo "**Tags** (same manifest pushed to every image below)"
             echo '```'
             echo "${{ steps.meta.outputs.tags }}"
             echo '```'
-            echo "**Digest:** \`${{ steps.build.outputs.digest }}\`"
+            echo "**Digest:** \`${{ steps.build.outputs.digest }}\` (identical on both registries)"
             echo ""
-            echo "Pin it in \`nextflow.config\` for reproducible runs:"
+            echo "Pin it in \`nextflow.config\` for reproducible runs (use whichever registry the cluster can pull):"
             echo '```groovy'
             echo "container = \"docker://${IMAGE_NAME}@${{ steps.build.outputs.digest }}\""
+            [ "${DOCKERHUB_ENABLED}" = "true" ] && echo "// or: container = \"docker://paururo/bampiro@${{ steps.build.outputs.digest }}\""
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
