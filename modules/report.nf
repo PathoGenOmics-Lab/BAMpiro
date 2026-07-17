@@ -41,7 +41,7 @@ process COLLECT_DR {
     memory '2 GB'
 
     input:
-    path(dr_mutations)      // every sample's ${sampleId}.dr_mutations.tsv (pathotypr DR run)
+    path(dr_mutations)      // every sample's ${sampleId}__${runId}.dr_mutations.tsv (pathotypr DR run)
     val(basename)
 
     output:

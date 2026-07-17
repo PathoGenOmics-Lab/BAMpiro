@@ -31,9 +31,11 @@ process RUN_PATHOTYPR_PE {
     val pathotypr_bin
 
     output:
-    tuple val(sampleId), path("${sampleId}.pathotypr.lineage_summary.tsv"), emit: summary
-    tuple val(sampleId), path("${sampleId}.dr_mutations.tsv"),              emit: dr_mutations
-    path("${sampleId}.pathotypr.*"), emit: results
+    // runId in the file names so a multi-lane (or multi-reference) sample does not emit identically-named
+    // files that collide when COLLECT_DR .collect()s them; the tuple key stays sampleId for the joins.
+    tuple val(sampleId), path("${sampleId}__${runId}.pathotypr.lineage_summary.tsv"), emit: summary
+    tuple val(sampleId), path("${sampleId}__${runId}.dr_mutations.tsv"),              emit: dr_mutations
+    path("${sampleId}__${runId}.pathotypr.*"), emit: results
 
     script:
     """
@@ -41,13 +43,13 @@ process RUN_PATHOTYPR_PE {
     # Lineage (nested sub-lineage classification) -> \${prefix}_summary.tsv
     ${pathotypr_bin} split-fastq -i ${r1} -i ${r2} --paired \\
         --reference ${ref_fasta_pathotypr} --markers ${lineage_markers} \\
-        --nested-classification --output-prefix ${sampleId}.pathotypr.lineage --threads ${task.cpus}
+        --nested-classification --output-prefix ${sampleId}__${runId}.pathotypr.lineage --threads ${task.cpus}
     # Drug resistance (WHO catalogue markers) -> \${prefix}_<sample>_mutations.tsv
     ${pathotypr_bin} split-fastq -i ${r1} -i ${r2} --paired \\
         --reference ${ref_fasta_pathotypr} --markers ${dr_markers} \\
-        --output-prefix ${sampleId}.pathotypr.dr --min-alt-percent ${params.pathotypr_min_alt} --threads ${task.cpus}
-    # Fix the DR detail file name to carry our sampleId (pathotypr names the sample after the FASTQ)
-    cp "\$(ls ${sampleId}.pathotypr.dr_*_mutations.tsv | head -1)" ${sampleId}.dr_mutations.tsv
+        --output-prefix ${sampleId}__${runId}.pathotypr.dr --min-alt-percent ${params.pathotypr_min_alt} --threads ${task.cpus}
+    # Fix the DR detail file name to carry our sampleId+runId (pathotypr names the sample after the FASTQ)
+    cp "\$(ls ${sampleId}__${runId}.pathotypr.dr_*_mutations.tsv | head -1)" ${sampleId}__${runId}.dr_mutations.tsv
     """
 }
 
@@ -65,19 +67,20 @@ process RUN_PATHOTYPR_SE {
     val pathotypr_bin
 
     output:
-    tuple val(sampleId), path("${sampleId}.pathotypr.lineage_summary.tsv"), emit: summary
-    tuple val(sampleId), path("${sampleId}.dr_mutations.tsv"),              emit: dr_mutations
-    path("${sampleId}.pathotypr.*"), emit: results
+    // runId in the file names (see RUN_PATHOTYPR_PE) so multi-lane / multi-ref samples don't collide in COLLECT_DR
+    tuple val(sampleId), path("${sampleId}__${runId}.pathotypr.lineage_summary.tsv"), emit: summary
+    tuple val(sampleId), path("${sampleId}__${runId}.dr_mutations.tsv"),              emit: dr_mutations
+    path("${sampleId}__${runId}.pathotypr.*"), emit: results
 
     script:
     """
     set -euo pipefail
     ${pathotypr_bin} split-fastq -i ${r1} \\
         --reference ${ref_fasta_pathotypr} --markers ${lineage_markers} \\
-        --nested-classification --output-prefix ${sampleId}.pathotypr.lineage --threads ${task.cpus}
+        --nested-classification --output-prefix ${sampleId}__${runId}.pathotypr.lineage --threads ${task.cpus}
     ${pathotypr_bin} split-fastq -i ${r1} \\
         --reference ${ref_fasta_pathotypr} --markers ${dr_markers} \\
-        --output-prefix ${sampleId}.pathotypr.dr --min-alt-percent ${params.pathotypr_min_alt} --threads ${task.cpus}
-    cp "\$(ls ${sampleId}.pathotypr.dr_*_mutations.tsv | head -1)" ${sampleId}.dr_mutations.tsv
+        --output-prefix ${sampleId}__${runId}.pathotypr.dr --min-alt-percent ${params.pathotypr_min_alt} --threads ${task.cpus}
+    cp "\$(ls ${sampleId}__${runId}.pathotypr.dr_*_mutations.tsv | head -1)" ${sampleId}__${runId}.dr_mutations.tsv
     """
 }

@@ -24,7 +24,9 @@ _LP = ["drug", "resistance", "marker_name", "grade", "gene", "mutation"]
 def sample_from_name(path):
     b = os.path.basename(path)
     b = re.sub(r'\.dr_mutations\.tsv$|_mutations\.tsv$|\.tsv$', '', b)
-    return b
+    # files are named <sample>.dr_mutations.tsv or <sample>__<runId>.dr_mutations.tsv (multi-lane / multi-ref);
+    # '__' is the pipeline's sample/run separator and never appears inside a sample id, so take the part before it.
+    return b.split('__')[0]
 
 
 def main():
