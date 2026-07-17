@@ -3,6 +3,42 @@
 Customize execution by passing parameters on the command line (e.g.
 `--threads 16`) or by editing `nextflow.config`.
 
+## Feature toggles (what to turn on / off)
+
+Each of these is a boolean you flip on the command line (e.g. `--run_pathotypr true`).
+This is the quick on/off overview; every flag also appears with its default in the full
+table below.
+
+**Opt-in — OFF by default, enable with `--<flag> true`:**
+
+| Flag | Turns on |
+| :--- | :--- |
+| `--run_pathotypr` | Alignment-free lineage + WHO drug-resistance typing ([pathotypr](pathotypr.md)) |
+| `--annotate_canonical` | Dual **amino-acid** numbering (re-annotate vs H37Rv) + Mycobrowser gene links |
+| `--variant_liftover` | Dual **coordinate** — the H37Rv position per variant (alignment-free k-mer liftover) |
+| `--mask_blindspots` | Mask the H37Rv Illumina blind-spots ([Zenodo 3701840](https://zenodo.org/records/3701840)) |
+| `--output_cram` | Publish alignments as CRAM instead of BAM |
+| `--report_gate` | Fail the run if any sample is flagged **FAIL** |
+| `--publish_prefilter_bam` | Also publish the pre-filter `final.bam` |
+| `--publish_virgin_allpos_vcf` | Also publish the virgin (`.raw`) per-position VCF |
+
+**On by default — DISABLE with `--<flag> false`:**
+
+| Flag | Turns off |
+| :--- | :--- |
+| `--make_qc_report` | The interactive HTML QC report + `qc_flags.tsv` |
+| `--make_snp_matrix` | The cohort master SNP-matrix TSV |
+| `--make_consensus` | The per-sample consensus FASTA |
+| `--exclude_repeats` | `nucmer` self-alignment repeat masking |
+| `--dynamic_read_filter` | The length-aware (mappability) read filter |
+| `--annotate_main_vcf` · `--annotate_legacy_vcfs` | snpEff annotation of the main / split VCFs |
+| `--blindspot_liftover` | Lifting the blind-spots onto a non-H37Rv reference (only relevant with `--mask_blindspots`) |
+| `--nested_output` | Nested per-sample output folders (e.g. `MP/00/09/1/`) |
+| `--publish_allpos_vcf` | Publishing the all-positions (backbone) VCF |
+| `--kraken_memory_mapping` | Reading the Kraken2 DB via mmap (RAM-sharing) |
+
+## All parameters
+
 | Category | Parameter | Default | Description |
 | :--- | :--- | :--- | :--- |
 | **Input/Output** | `--tsv` | `samples_legio.tsv` | Path to the input sample sheet (TSV). |
