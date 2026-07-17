@@ -34,17 +34,24 @@ SNP at the queried site drops the position.
 ### Anchor-chain design — "correct or absent"
 
 A position is placed **only** when it is bracketed by two consecutive anchors of a chain across a **colinear**
-gap (source span == target span, and the gap contains **no other anchor of any chain**), **and** the resulting
-coordinate passes a **sequence-homology check**: the ~k bp of source context around the position must match
-(or reverse-complement-match) the target context at the placed coordinate. Two anchors prove only that the gap
-*ends* correspond; the homology check verifies the *interior*, so an inversion hidden by sampling, a stretch of
-non-homologous filler, or a net-zero double-indel — all of which pass a length-only colinearity test — are
-caught and **dropped**. Of the verified chains that bracket a position, the one with the **tightest** gap wins.
-There is **no extrapolation**: colinear/SNP sites are exact, and anything ambiguous — an indel/RD shadow, a
-rearrangement boundary, an anchor desert, a non-homologous interior, a position past every chain's ends — drops
-rather than getting a smeared coordinate. Validated on the real H37Rv / ancestor pair (DR sites exact, ~99.9 %
-lift, 0 wrong on an 8.8 k dense sweep) and on synthetic constructions of every failure mode below (30/30
-scenarios, 0 wrong coords).
+gap that satisfies **all** of:
+1. **small** — the source span is ≤ ~2k (+ a margin for sampling); beyond that the anchor-free interior is not
+   pinned by the flanking shared k-mers and is unverifiable, so the position drops (`--max-gap`);
+2. **colinear** — source span == target span (± `--indel-tol`) and the gap contains no other anchor of any chain;
+3. **homologous on both sides** — the ~k bp of source context on *each* side of the placed coordinate matches
+   (or reverse-complement-matches) the target at ≥ `--min-identity` (default 0.8), verified *independently*
+   left and right so a position at a homology boundary can't borrow identity from its colinear flank.
+
+Two anchors prove only that the gap *ends* correspond; conditions 1 and 3 verify the *interior*, so an inversion
+hidden by sampling, non-homologous filler, a net-zero double-indel, a diverged decoy copy, or a tandem-repeat
+phase slip — all of which pass a length-only colinearity test — are caught and **dropped**. Of the verified
+chains that bracket a position, the **tightest** gap wins. There is **no extrapolation**. So colinear/SNP sites
+are exact and everything ambiguous drops rather than getting a smeared coordinate. Validated on the real H37Rv /
+ancestor pair (DR sites exact, ~98 % lift with the safe gap cap, **0 wrong** on an 8.8 k dense sweep) and on
+synthetic constructions of every failure mode below (32/32 scenarios, 0 wrong coords). The cost of correctness:
+positions inside anchor deserts (> ~2k with no shared unique k-mer — i.e. repeats/low-complexity) drop; those
+are covered by the pipeline's own repeat masking, and `--max-gap` can be raised if coverage matters more than
+the desert-interpolation guarantee.
 
 - **`--sample N` (FracMinHash, memory).** Keep only ~1/N of the k-mers as anchors — deterministically, hashing
   the **canonical** code (`hash(min(kmer, revcomp(kmer))) % N == 0`), so a k-mer *and its reverse complement*

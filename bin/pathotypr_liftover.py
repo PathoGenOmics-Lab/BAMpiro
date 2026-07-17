@@ -21,11 +21,12 @@ the real H37Rv / MTBC-ancestor pair: `lift` reaches ~99% with zero wrong coordin
 DR sites (rpoB 761155, katG 2155168, gyrA 7570, rrs 1473246) map correctly.
 
 `lift --global-chain` is "correct or absent": a position is placed only when bracketed by anchors across a
-colinear gap or inverted block AND its placed coordinate passes a sequence-homology check; indel shadows,
-RD-deletion interiors, anchor deserts and non-homologous interiors DROP rather than receive a smeared or
-extrapolated coordinate. The one blind spot is inherent to k-mers: a rearrangement SHORTER than k (e.g. a
-sub-21 bp inversion) is invisible when it happens to preserve the flanking gap length and its own context
-still matches, so keep k below any structural feature you must resolve.
+SMALL colinear gap (<= ~2k, so the flanking shared k-mers pin the interior) AND its placed coordinate is
+homologous ON EACH SIDE; indel shadows, RD interiors, anchor deserts, rearrangement boundaries and any
+non-homologous interior DROP rather than receive a smeared coordinate. The cost is coverage in anchor deserts
+(repeats), which the pipeline masks by other means; raise --max-gap to trade the desert-interpolation guarantee
+for coverage. The residual blind spot is inherent to k-mers: a rearrangement shorter than k in a self-similar
+(tandem-repeat) context can slip within the gap cap; keep k below any structural feature you must resolve.
 """
 from __future__ import annotations
 import argparse
@@ -249,25 +250,31 @@ _COMP = {"A": "T", "T": "A", "C": "G", "G": "C"}
 
 def _homologous(src, tgt, p, t, orient, w, min_id):
     """True if the ~(2w+1) bp context of SOURCE position p matches (orient +1) or reverse-complement-matches
-    (orient -1) the context of TARGET position t, at >= min_id identity. This is the homology gate that makes
-    an INTERPOLATED coordinate trustworthy: two anchors bracketing a gap only prove the gap ENDS correspond;
-    they say nothing about the interior, which could be an inversion, non-homologous filler, or a net-zero
-    double-indel of preserved length (all pass a length-only colinearity test). Verifying the actual sequence
-    at the placed coordinate catches every one of those -> a wrong interpolation fails and the position drops.
-    p, t are 1-based centres."""
+    (orient -1) the context of TARGET position t at >= min_id identity ON EACH SIDE of the centre. This is the
+    homology gate that makes an INTERPOLATED coordinate trustworthy: two anchors bracketing a gap only prove
+    the gap ENDS correspond, not the interior (an inversion, non-homologous filler, or a net-zero double-indel
+    all pass a length-only test). Verifying the sequence AT the placed coordinate catches those. Requiring BOTH
+    the left and right half to pass independently (not just the aggregate) is what stops a position within ~w bp
+    of a homology BOUNDARY from borrowing identity from its colinear flank while the placed coordinate itself is
+    non-homologous. A minimum in-range width avoids a trivial pass at a genome edge. p, t are 1-based centres."""
     ns, nt = len(src), len(tgt)
-    match = total = 0
-    for d in range(-w, w + 1):
-        si = p - 1 + d
-        ti = (t - 1 + d) if orient == 1 else (t - 1 - d)
-        if 0 <= si < ns and 0 <= ti < nt:
-            total += 1
-            if orient == 1:
-                if src[si] == tgt[ti]:
-                    match += 1
-            elif src[si] == _COMP.get(tgt[ti]):
-                match += 1
-    return total > 0 and match >= min_id * total
+
+    def side(lo, hi):
+        m = n = 0
+        for d in range(lo, hi + 1):
+            si = p - 1 + d
+            ti = (t - 1 + d) if orient == 1 else (t - 1 - d)
+            if 0 <= si < ns and 0 <= ti < nt:
+                n += 1
+                if (src[si] == tgt[ti]) if orient == 1 else (src[si] == _COMP.get(tgt[ti])):
+                    m += 1
+        return m, n
+
+    lm, ln = side(-w, -1)
+    rm, rn = side(1, w)
+    if ln + rn < w:                                    # too little in-range context to trust (genome edge)
+        return False
+    return (ln == 0 or lm >= min_id * ln) and (rn == 0 or rm >= min_id * rn)
 
 
 def _chains(pairs, increasing, min_anchors, max_chains=1024):
@@ -307,6 +314,12 @@ def _lift_chain(args, positions):
     sample = max(1, args.sample)
     tol = max(0, args.indel_tol)
     par = 1 - (k % 2)                                            # RC centre parity: 0 for odd k, 1 for even k
+    # Interpolate ONLY across a SMALL flanking-anchor gap: when the gap is <= ~2k the two shared k-mers almost
+    # cover the interior, so it is provably (near-)homologous; a larger gap is an anchor desert whose interior
+    # is unverifiable (an inversion, non-homologous filler, a diverged decoy copy or a tandem-repeat slip could
+    # sit there and pass a single-coordinate check), so drop it. Scales with sample (sparser anchors -> wider
+    # legitimate colinear gaps). An explicit --max-gap overrides.
+    mg = args.max_gap if args.max_gap is not None else 2 * k + 2 * sample + 2
     src = _read_first_contig(args.source_fasta)
     tgt = _read_first_contig(args.target_fasta)
     vw = k // 2                                                  # homology-verification half-window (~k bp)
@@ -348,7 +361,7 @@ def _lift_chain(args, positions):
             return None, None                                   # p is outside this chain's anchored span
         al, ar, bl, br = ca[j - 1], ca[j], cb[j - 1], cb[j]
         a_gap = ar - al
-        if a_gap > args.max_gap or abs(a_gap - orient * (br - bl)) > tol:
+        if a_gap > mg or abs(a_gap - orient * (br - bl)) > tol:
             return None, None                                   # gap too long, or an indel lives in it -> drop
         if bisect.bisect_right(allpos, al) < bisect.bisect_left(allpos, ar):
             return None, None                                   # another anchor lies in the gap -> it spans a rearrangement
@@ -497,8 +510,9 @@ def main():
     l.add_argument("--global-chain", action="store_true",
                    help="use the whole-genome anchor CHAIN: place every position (incl. SNP sites) by "
                         "interpolating between flanking unique anchors, instead of per-position k-mer matching")
-    l.add_argument("--max-gap", type=int, default=2000,
-                   help="--global-chain: max bp between flanking anchors to still interpolate (else drop)")
+    l.add_argument("--max-gap", type=int, default=None,
+                   help="--global-chain: max bp between flanking anchors to still interpolate (default adaptive "
+                        "~2k+2*sample: beyond this the anchor-free interior is unverifiable, so the position drops)")
     l.add_argument("--indel-tol", type=int, default=0,
                    help="--global-chain: max source-vs-target span mismatch (bp) for a gap to count as colinear "
                         "and be interpolated; a larger mismatch means an indel lives in the gap -> its interior "
@@ -510,10 +524,10 @@ def main():
     l.add_argument("--min-density", type=float, default=0.2,
                    help="--global-chain: min anchor density (anchors / (span/sample)) for a reverse chain to be "
                         "a real inversion block; sparser chains are scattered spurious anchors and are discarded")
-    l.add_argument("--min-identity", type=float, default=0.7,
-                   help="--global-chain: min sequence identity in the ~k bp window around an INTERPOLATED "
-                        "coordinate for it to be accepted; below this the interior is not homologous (inversion "
-                        "hidden by sampling, non-homologous filler, net-zero double-indel) and the position drops")
+    l.add_argument("--min-identity", type=float, default=0.8,
+                   help="--global-chain: min sequence identity, ON EACH SIDE of an INTERPOLATED coordinate, in "
+                        "the ~k bp context window; below this the interior is not homologous (inversion hidden by "
+                        "sampling, non-homologous filler, net-zero double-indel, diverged decoy) and it drops")
     l.add_argument("--sample", type=int, default=1,
                    help="--global-chain: keep ~1/N of k-mers as anchors (FracMinHash) -> ~N x less memory")
     l.add_argument("--rd-out", default=None,
