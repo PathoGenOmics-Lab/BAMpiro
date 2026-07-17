@@ -85,6 +85,11 @@ The samplesheet is a TSV (`sampleId`, `r1`, `r2`, `refId`, `refFasta`, `refGff`,
 See the [Quick Start guide](docs/quickstart.md) for the full format and multi-run
 merging, and [Outputs](docs/outputs.md) for the result layout.
 
+**New to BAMpiro?** Follow the hands-on
+[**Jupyter tutorial**](docs/tutorial/bampiro_tutorial.ipynb) — install → samplesheet →
+run → explore the outputs with `pandas` / `matplotlib` on a bundled 17-sample example
+cohort (runnable without running the pipeline first).
+
 ## Interactive QC Report
 
 Every run writes a single self-contained `<samplesheet>_qc_report.html` (no internet,

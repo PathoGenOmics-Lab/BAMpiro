@@ -27,6 +27,10 @@ When it finishes, open `results_bampiro/<samplesheet>_qc_report.html` - the
 consolidated [interactive QC report](qc-report.md). See [Outputs](outputs.md) for
 the full result layout and [Configuration](configuration.md) for every parameter.
 
+> **Prefer a hands-on walkthrough?** The [Jupyter tutorial](tutorial/) runs the same
+> journey end-to-end and lets you explore an example cohort's outputs with
+> `pandas` / `matplotlib` — no pipeline run needed.
+
 ## Samplesheet
 
 Create a Tab-Separated Value (TSV) file (e.g. `samples.tsv`) with the following columns:

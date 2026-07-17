@@ -1,0 +1,18 @@
+sample	samples	timepoint	site	lineage
+TB-P1-d0	TB-P1	0	Madrid	L2
+TB-P1-d60	TB-P1	60	Madrid	L2
+TB-P1-d120	TB-P1	120	Madrid	L2
+TB-P1-d180	TB-P1	180	Madrid	L2
+TB-P2-t1	TB-P2	1	Barcelona	L4
+TB-P2-t2	TB-P2	2	Barcelona	L4
+TB-P2-t3	TB-P2	3	Barcelona	L4
+TB-P2-t4	TB-P2	4	Barcelona	L4
+TB-P3-v1	TB-P3	1	Valencia	L3
+TB-P3-v2	TB-P3	2	Valencia	L3
+TB-P3-v3	TB-P3	3	Valencia	L3
+TB-2019-A			Sevilla	L1
+TB-2019-B			Sevilla	L4
+TB-2020-C			Madrid	L2
+TB-2020-D			Sevilla	L4
+TB-2021-E			Sevilla	L3
+TB-2022-F			Madrid	L2
