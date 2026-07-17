@@ -7,6 +7,7 @@
 - [Installation](./installation.md)
 - [Quick Start](./quickstart.md)
 - [Configuration](./configuration.md)
+- [Troubleshooting](./troubleshooting.md)
 
 # Analyses
 
@@ -16,3 +17,4 @@
 # Reference
 
 - [Outputs](./outputs.md)
+- [From outputs to a phylogeny](./downstream.md)

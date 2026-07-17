@@ -60,6 +60,27 @@ results_bampiro/
         └── Locus_to_exclude_LENS.txt       # -> List of repetitive regions excluded from calling
 ```
 
+## QC flag codes
+
+`<samplesheet>_qc_flags.tsv` gives each sample a **verdict** (PASS / WARN / FAIL) and the
+`flags` it tripped. A sample **FAILs** if it hits any FAIL-level flag (or has no metrics);
+otherwise any flag makes it WARN. All thresholds are `--report_*` params and are
+live-adjustable inside the HTML report.
+
+| Code | Condition | Param | Level |
+| :--- | :--- | :--- | :--- |
+| `LOW_DEPTH` | mean depth below | `--report_depth_min` | **FAIL** |
+| `LOW_BREADTH` | genome breadth below | `--report_breadth_min` | **FAIL** |
+| `HIGH_MISSING` | missing % above | `--report_missing_max` | **FAIL** |
+| `NO_DATA` | no QC metrics for the sample | — | **FAIL** |
+| `MAPPING_LOW` | mapped % below | `--report_mapping_min` | WARN |
+| `HIGH_DUP` | duplication % above | `--report_dup_max` | WARN |
+| `HIGH_IUPAC` | ambiguous/IUPAC % above | `--report_iupac_max` | WARN |
+| `TITV_LOW` | Ti/Tv below | `--report_titv_min` | WARN |
+
+**FAIL** = a candidate for the exclusion basket (FAIL samples start pre-selected);
+**WARN** = review, usually keep. See [Downstream](downstream.md) for applying the basket.
+
 ## Directory layout
 
 ```text

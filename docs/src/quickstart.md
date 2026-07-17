@@ -59,6 +59,29 @@ T00001	RUN1	/data/T1_R1.fq.gz	/data/T1_R2.fq.gz	H37Rv	/refs/tb.fa	/refs/tb.gff	1
 ECOLI_1	RUN2	/data/EC_R1.fq.gz	/data/EC_R2.fq.gz	K12	/refs/ecoli.fa	/refs/ecoli.gff	562
 ```
 
+Reads, `refFasta` and `refGff` may be **plain or gzipped** (`.gz` is auto-detected).
+
+### Reference requirements
+
+- **`refGff` is required** (a mandatory column), even if you don't care about annotation —
+  it builds the per-sample SnpEff database. If you truly have no annotation, give a minimal
+  GFF3 stub: a `##gff-version 3` line plus one `region`/`gene` feature whose seqid matches
+  the FASTA header.
+- The GFF must be **GFF3**, and its **first column (seqid) must be identical to the FASTA
+  header id** (up to the first whitespace), or the SnpEff build fails / annotates nothing.
+  Check with:
+
+  ```bash
+  grep '^>' ref.fa | head          # FASTA contig ids
+  cut -f1 ref.gff | grep -v '^#' | sort -u   # GFF seqids  (must match)
+  ```
+
+### One sample against several references
+
+Give the **same `sampleId`** different `refId` / `refFasta` / `refGff` rows to map one
+sample against several references; outputs are produced per `(sample, reference)`. (Merging,
+below, groups on `sampleId` **and** `refId`, so multi-reference rows don't merge together.)
+
 ## Handling multiple runs per sample (merging)
 
 BAMpiro automatically handles multiple sequencing runs (e.g. different lanes or

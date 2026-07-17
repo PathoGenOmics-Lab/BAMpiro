@@ -69,3 +69,21 @@ MTBC-ancestor reference, plus the pre-downloaded **H37Rv snpEff database**
 (`Mycobacterium_tuberculosis_h37rv`) - so [lineage/DR typing](pathotypr.md) and
 [dual amino-acid annotation](pathotypr.md#dual-amino-acid-numbering-h37rv--mycobrowser)
 run offline and reproducibly.
+
+## Resource requirements
+
+Nextflow schedules each process with its own CPU / RAM request (retrying with more RAM
+on an out-of-memory kill). The peak driver is **Kraken2**, so size your machine / queue
+for it:
+
+| Step | CPUs | Memory | Notes |
+| :--- | :--- | :--- | :--- |
+| **Kraken2** (contamination) | — | **~80 GB** | loads the whole DB; the run's memory ceiling. `--kraken_memory_mapping` (default on) mmaps it so parallel tasks share RAM |
+| Mappability track (`genmap`) | 8 | 16 GB | once per reference (cached across runs) |
+| Reference prep / SnpEff DB build | 4 | 8 GB | once per reference |
+| Mapping (`bwa-mem2`) | `--threads` (8) | scales with genome | the only step `--threads` controls |
+| Pathotypr typing | 4 | 8 GB | only with `--run_pathotypr` |
+| Variant calling / consensus / report | 1–4 | 2–4 GB | — |
+
+On a laptop, use a smaller Kraken2 DB (or skip a DB you don't have) so the 80 GB step
+fits; disk is roughly a few GB per sample (BAM/CRAM + VCFs + consensus).

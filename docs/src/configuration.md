@@ -75,7 +75,9 @@ What `generic` changes versus the TB defaults:
 Everything else is already generic: point the samplesheet `refFasta` / `refGff` at your genome, set
 `--kraken2_db` and the `taxId` column for your species, and the report's TB-only panels (lineage, drug
 resistance) simply **self-hide** when there is no such data. To keep a canonical amino-acid numbering for your
-organism, build a SnpEff DB and set `--annotate_canonical true` with `--canonical_snpeff_db` / `--canonical_label`.
+organism, set `--annotate_canonical true` with `--canonical_snpeff_db` / `--canonical_label` — but note **only
+the H37Rv SnpEff DB is bundled** in the image, so for another organism either add its genome to the image and
+rebuild, or make sure a bare `canonical_snpeff_db` id can be downloaded by SnpEff at run time (needs internet).
 
 ## All parameters
 
@@ -83,7 +85,7 @@ organism, build a SnpEff DB and set `--annotate_canonical true` with `--canonica
 | :--- | :--- | :--- | :--- |
 | **Input/Output** | `--tsv` | `samples_legio.tsv` | Path to the input sample sheet (TSV). |
 | | `--outdir` | `results_bampiro` | Directory where results will be saved. |
-| | `--threads` | `8` | Max CPUs per process (where applicable). |
+| | `--threads` | `8` | CPUs for the **BWA-MEM2 mapping** steps only; every other process has its own fixed `cpus` (see [Resource requirements](installation.md#resource-requirements)). |
 | | `--container` | `docker://paururo/bampiro:1.0.1` | Container image. The default is the mutable `1.0.1` Docker Hub **tag** (not a digest); re-pin to `docker://paururo/bampiro@sha256:<digest>` for byte-exact reproducibility, or override. |
 | | `--nested_output` | `true` | Nest per-sample folders (e.g. `MP00091` → `MP/00/09/1`). |
 | | `--publish_mode` | `copy` | `copy` duplicates outputs into `outdir`; `link` hardlinks them to the work dir. |

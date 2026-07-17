@@ -66,8 +66,8 @@ drug-resistance typing**, and a restructured documentation set. Rebranded to
 ### Changed
 
 - **Rebranded to BAMpiro** (larger report UI; panels with no input hide themselves).
-- The container is **pinned to a digest** and its tool versions are recorded, for
-  reproducible runs.
+- The container is referenced by version **tag** and its tool versions are recorded;
+  re-pin to the `@sha256:` digest for byte-for-byte reproducible runs.
 - Right-sized per-process CPU / memory, streamed the deduplication pipeline, and
   produced lighter intermediates for faster `-resume`.
 - Replaced the report's top navigation with the collapsible contents sidebar.

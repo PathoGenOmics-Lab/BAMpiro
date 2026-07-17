@@ -21,6 +21,17 @@ Each sample gets two `split-fastq` passes:
    [QC report](qc-report.md) (a sample × drug matrix with the worst WHO grade per
    drug, plus a per-mutation table).
 
+Each call carries its **WHO catalogue grade**: **1) Assoc w R** and **2) Assoc w R –
+Interim** are resistance-associated (the report and any "resistant" count use grades
+1–2); **3) Uncertain**; **4) Not assoc w R – Interim** and **5) Not assoc w R** are not
+associated. `<samplesheet>_dr.tsv` columns: `sample, drug, gene, mutation, grade,
+marker_name, af, dp`.
+
+> **Responsible use.** This is a **genomic screen against the WHO catalogue, not a
+> clinical DST result.** Treat it as a flag for review, not a diagnosis; a call's
+> allele frequency (`af`) and depth (`dp`) matter, and absence of a marker is not
+> proof of susceptibility. When filtering, restrict to grades 1–2 for "resistant".
+
 The marker panels and pre-trained model (Zenodo v1.0.0, DOI
 [10.5281/zenodo.19210044](https://doi.org/10.5281/zenodo.19210044)) and the
 MTBC-ancestor reference are **bundled in the image** under `/opt/pathotypr/`;
