@@ -54,6 +54,40 @@ process COLLECT_DR {
     """
 }
 
+process LIFT_VARIANTS {
+    // Alignment-free k-mer liftover (pathotypr classify) of the run's variant positions onto the canonical
+    // (H37Rv) reference -> a mapping_pos<TAB>h37rv_pos map for the report's SNP tables (--pos-liftover).
+    // Context k-mers are built on the mapping reference; each position lifts iff its context is unique in
+    // H37Rv. Needs the pathotypr container. offset=1 is the fixed 0->1-based convention.
+    tag "LiftVariants: ${reference}"
+    cpus 4
+    memory { 4.GB * task.attempt }
+
+    input:
+    path(vcfs)              // the report's per-sample annotated VCFs (mapping-reference coordinates; may be .gz)
+    path(ref_fa)            // the mapping reference FASTA (k-mer context source)
+    val(reference)
+    val(basename)
+
+    output:
+    path("${basename}_pos_liftover.tsv"), emit: map
+
+    script:
+    """
+    set -euo pipefail
+    # union of variant positions across the report VCFs (mapping-reference coordinates)
+    zcat -f ${vcfs} | awk '!/^#/ && \$2 ~ /^[0-9]+\$/ {print \$2}' | sort -un > positions.txt
+    if [ -s positions.txt ]; then
+        python3 ${projectDir}/bin/pathotypr_liftover.py markers positions.txt ${ref_fa} -o markers.tsv
+        ${params.pathotypr_bin} classify --tsv_pos markers.tsv --ref_fasta ${ref_fa} \\
+            --fasta_genomes ${params.canonical_ref} -o classify_out --kmer_size 21
+        python3 ${projectDir}/bin/pathotypr_liftover.py apply classify_out --out-map ${basename}_pos_liftover.tsv --offset 1
+    else
+        printf 'src_pos\\ttgt_pos\\n' > ${basename}_pos_liftover.tsv
+    fi
+    """
+}
+
 process QC_REPORT {
     tag "QC report"
     publishDir "${params.outdir}", mode: params.publish_mode
@@ -69,6 +103,7 @@ process QC_REPORT {
     path(metadata)          // samplesheet/metadata TSV -> SNP dynamics panel (auto-detects time+group)
     path(vcfs)              // per-sample annotated VCFs -> per-SNP allele frequencies for dynamics
     path(vcfs_h37rv)        // per-sample VCFs annotated vs H37Rv -> dual amino-acid numbering (may be NO_FILE)
+    path(pos_liftover)      // mapping_pos<TAB>h37rv_pos map (pathotypr liftover) -> canonical COORDINATE per variant (may be NO_FILE)
     path(dr_report)         // run drug-resistance calls TSV (collect_dr) -> Drug resistance panel (may be NO_FILE)
     path(kraken_reports)    // per-sample Kraken2 .report files -> Taxonomic composition panel (may be empty)
     val(provenance)         // pre-quoted provenance tokens (container=..., reference=...)
@@ -90,6 +125,7 @@ process QC_REPORT {
     MD_ARG=""; [ -s "${metadata}" ] && MD_ARG="--metadata ${metadata}"
     VCF_ARG=""; [ -n "${vcfs}" ] && VCF_ARG="--vcfs ${vcfs}"
     VH_ARG="";  case "${vcfs_h37rv}" in ""|NO_FILE) ;; *) VH_ARG="--vcfs-h37rv ${vcfs_h37rv}";; esac
+    PL_ARG="";  case "${pos_liftover}" in ""|NO_FILE) ;; *) [ -s "${pos_liftover}" ] && PL_ARG="--pos-liftover ${pos_liftover}";; esac
     DR_ARG="";  [ -s "${dr_report}" ] && [ "${dr_report}" != "NO_FILE" ] && DR_ARG="--dr-report ${dr_report}"
     KRK_ARG=""; [ -n "${kraken_reports}" ] && KRK_ARG="--kraken ${kraken_reports}"
     python3 ${projectDir}/bin/qc_report.py \\
@@ -97,7 +133,7 @@ process QC_REPORT {
         ${cons_arg} \\
         --gene-burden ${gene_burden} \\
         --gff ${gff} \\
-        \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$DR_ARG \$KRK_ARG \\
+        \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$PL_ARG \$DR_ARG \$KRK_ARG \\
         --aa2-label "${params.canonical_label}" \\
         --provenance ${provenance} \\
         --version "${workflow.manifest.version}" \\

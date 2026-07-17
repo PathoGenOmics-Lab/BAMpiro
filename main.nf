@@ -18,7 +18,7 @@ include { CONSENSUS_FASTA } from './modules/consensus'
 include { CALL_BACKBONE as CALL_BACKBONE_RAW; MERGE_VCFS as MERGE_VCFS_RAW } from './modules/variants'
 include { CONSENSUS_FASTA as CONSENSUS_FASTA_RAW } from './modules/consensus'
 include { ANNOTATE_LEGACY_VCF; ANNOTATE_MAIN_VCF; ANNOTATE_CANONICAL; GENERATE_LEGACY_STATS } from './modules/annotation'
-include { COLLECT_SUMMARY; COLLECT_DR; QC_REPORT; SNP_MATRIX } from './modules/report'
+include { COLLECT_SUMMARY; COLLECT_DR; LIFT_VARIANTS; QC_REPORT; SNP_MATRIX } from './modules/report'
 include { cleanStr; nullish; sanitizeId } from './modules/utils'
 
 /* ----------------------------- Configuration Logic ----------------------------- */
@@ -492,8 +492,15 @@ workflow {
             : file("NO_FILE")
         // Kraken2 per-sample reports (deduped) -> Taxonomic composition panel; empty when Kraken is off.
         def report_kraken = ch_kraken_reports.unique { it.name }.collect().ifEmpty([])
+        // Alignment-free canonical COORDINATE per variant via pathotypr (alternative to the --vcfs-h37rv path):
+        // lift the run's variant positions (mapping-reference coords) onto H37Rv and hand the map to the report.
+        def report_ref_fa = ref_bundle.bundle.filter { rId, fa, idx, excl -> rId == report_ref }
+                                             .map { rId, fa, idx, excl -> fa }.first()
+        def pos_liftover  = params.variant_liftover
+            ? LIFT_VARIANTS(report_vcfs, report_ref_fa, report_ref, tsv_name).map
+            : file("NO_FILE")
         QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
-                  report_meta, report_vcfs, report_vcfs_h37rv, dr_report, report_kraken, provenance, tsv_name)
+                  report_meta, report_vcfs, report_vcfs_h37rv, pos_liftover, dr_report, report_kraken, provenance, tsv_name)
     }
 
     // 11b. Master SNP matrix: rows = SNP sites, columns = reference/annotation + per-sample AF & depth.
