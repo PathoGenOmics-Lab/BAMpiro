@@ -63,13 +63,15 @@ BAMpiro/
 │   ├── stats_to_legacy.py         # Per-sample metrics -> legacy log (parses the pathotypr lineage call)
 │   ├── collect_summary.py         # Aggregate per-sample logs -> cohort summary + gene-burden TSVs
 │   ├── collect_dr.py              # Aggregate pathotypr DR calls -> run drug-resistance TSV
+│   ├── pathotypr_liftover.py      # Alignment-free k-mer coordinate liftover (mapping ref <-> H37Rv)
 │   ├── build_snp_matrix.py        # Build the master SNP matrix (site × sample)
 │   ├── qc_report.py               # Build the interactive self-contained HTML QC report
 │   ├── WGS_fasta_allpos.py        # Consensus FASTA from the all-positions VCF
 │   ├── build_min_unique_len.py    # Per-reference mappability track (genmap)
 │   └── filter_reads_mappability.py  # Length-aware read filter
 ├── assets/
-│   └── mycolorsTB_nature.tsv     # Canonical MTBC lineage colour palette (report)
+│   ├── mycolorsTB_nature.tsv     # Canonical MTBC lineage colour palette (report)
+│   └── H37Rv_blindspots.bed      # H37Rv Illumina blind-spots (Zenodo 3701840; --mask_blindspots)
 ├── modules/                 # Nextflow DSL2 Modules
 │   ├── qc.nf                # FastP, Kraken, MultiQC, software versions
 │   ├── mapping.nf           # BWA-MEM2, MarkDup, length-aware read filter

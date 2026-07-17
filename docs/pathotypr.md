@@ -33,6 +33,39 @@ With `--annotate_canonical true`, each sample's variants are re-annotated with a
 canonical snpEff database (`--canonical_snpeff_db`, default H37Rv) *in addition to*
 your mapping reference. The report then shows every amino-acid change in **both**
 numberings (the used reference + `--canonical_label`, default `H37Rv`) and links each
-gene to its Mycobrowser locus (`Rv…`). Turn it off for non-MTB organisms, or point
-`--canonical_snpeff_db` at another snpEff genome. This is only meaningful when the
-mapping reference shares the canonical reference's coordinates.
+gene to its Mycobrowser locus (`Rv…`). The **amino-acid** number is exact when your
+mapping reference shares (or is lifted to) H37Rv coordinates; the canonical
+**coordinate** shown beside it is provided independently and alignment-free by the
+k-mer liftover below, so the SNP tables carry the H37Rv position even for a non-H37Rv
+reference. Turn `--annotate_canonical` off for non-MTB organisms, or point
+`--canonical_snpeff_db` at another snpEff genome.
+
+## Reference-agnostic coordinates (k-mer liftover)
+
+`--variant_liftover true` translates every variant position into canonical (H37Rv)
+coordinates for the report's SNP tables **without a whole-genome alignment and without
+assuming shared coordinates**, so it works for *any* MTBC reference. It is done by
+`bin/pathotypr_liftover.py` (pure Python, `lift --global-chain`): every k-mer unique in
+both the mapping reference and `--canonical_ref` becomes an anchor, the anchors are
+chained into collinear (and inverted) blocks, and each position is placed by
+interpolating between its flanking anchors — then the placement is **verified against
+the actual sequence**. The method is **"correct or absent"**: SNP sites, indels and
+inversions are followed, and any position it cannot pin (a repeat / low-complexity
+desert, or a rearrangement below the k-mer resolution) is *dropped* rather than
+mis-mapped. It replaces the Picard/bcftools liftover for the report coordinate (the
+amino-acid numbering still comes from the snpEff re-annotation above). See
+`bin/pathotypr_liftover.README.md` for the algorithm, options and limits.
+
+## Blind-spot masking (H37Rv problematic sites)
+
+`--mask_blindspots true` adds the H37Rv Illumina **blind spots** — the repetitive /
+low-mappability positions that are unreliable to call (Zenodo record
+[3701840](https://zenodo.org/records/3701840), shipped as
+`assets/H37Rv_blindspots.bed`, NC_000962.3 coordinates) — to each reference's
+exclusion mask, so those sites are dropped from variant calling, consensus and the
+report. Because the BED is in H37Rv coordinates, `--blindspot_liftover true` (default)
+lifts it onto the run reference with the **same k-mer liftover**, so the mask is
+correct even when the reference is **not** H37Rv; set it to `false` (and point
+`--canonical_ref` at an H37Rv FASTA) only when the reference already shares H37Rv
+coordinates. The repetitive fraction is already covered by the pipeline's own repeat /
+mappability masking — the blind-spots add the non-repetitive problematic sites.

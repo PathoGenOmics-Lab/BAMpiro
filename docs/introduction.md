@@ -14,7 +14,9 @@ sequences, and a consolidated interactive quality-control report.
 - **Universal bacterial support** - any reference genome + GFF annotation.
 - **Automated reference prep** - indexes genomes and builds SnpEff databases on the fly.
 - **Repeat masking** - `nucmer` (MUMmer4) auto-detects and excludes repetitive
-  regions from variant calling, plus a length-aware `genmap` read filter.
+  regions from variant calling, plus a length-aware `genmap` read filter and optional
+  H37Rv Illumina blind-spot masking ([Zenodo](pathotypr.md#blind-spot-masking-h37rv-problematic-sites),
+  lifted onto any reference).
 - **Robust QC** - `FastP` cleaning and `Kraken2` taxonomic contamination checks.
 - **Variant calling** - `FreeBayes` with customizable ploidy (1 or 2) and strict filtering.
 - **Backbone generation** - "all-sites" VCFs (WT + variants) for phylogenetic supermatrices.
@@ -24,9 +26,10 @@ sequences, and a consolidated interactive quality-control report.
 - **Interactive QC report** - a single self-contained HTML dashboard (21 panels)
   plus a machine-readable per-sample `qc_flags.tsv`, alongside the classic MultiQC
   report. See [Interactive QC Report](qc-report.md).
-- **Dual amino-acid numbering** - optionally re-annotates variants against a
-  canonical reference (H37Rv by default) so protein changes are shown in both
-  numberings.
+- **Canonical (H37Rv) numbering** - optionally shows every variant's H37Rv
+  **coordinate** (via an alignment-free k-mer [liftover](pathotypr.md#reference-agnostic-coordinates-k-mer-liftover),
+  so it works for *any* MTBC reference) and **amino-acid** change alongside the
+  mapping-reference ones, with Mycobrowser (`Rv…`) gene links.
 
 ## Workflow summary
 
