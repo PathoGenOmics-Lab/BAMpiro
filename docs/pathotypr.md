@@ -25,10 +25,9 @@ The marker panels and pre-trained model (Zenodo v1.0.0, DOI
 [10.5281/zenodo.19210044](https://doi.org/10.5281/zenodo.19210044)) and the
 MTBC-ancestor reference are **bundled in the image** under `/opt/pathotypr/`;
 override the reference or marker panels with `--pathotypr_ref` / `--pathotypr_markers`
-/ `--pathotypr_dr_markers` if you supply your own. (The pre-trained RF model is loaded
-by pathotypr from its fixed bundled path — `PATHOTYPR_DATA=/opt/pathotypr`;
-`--pathotypr_rf_model` is defined but **not currently passed to the typing step**, so
-overriding it has no effect — rebuild or bind-mount the image to swap the model.) See
+/ `--pathotypr_dr_markers` if you supply your own. (BAMpiro types lineage by k-mer
+**markers** — `split-fastq --nested-classification` — not by the RF `predict` model, so
+the bundled `rf_model.pathotypr` is currently unused and no flag exposes it.) See
 [Configuration](configuration.md) for every flag.
 
 ## Dual amino-acid numbering (H37Rv / Mycobrowser)

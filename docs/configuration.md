@@ -20,7 +20,6 @@ Customize execution by passing parameters on the command line (e.g.
 | | `--pathotypr_ref` | `/opt/pathotypr/reference.fasta` | MTBC-ancestor FASTA the markers are defined on (bundled). |
 | | `--pathotypr_markers` | `/opt/pathotypr/lineage_markers.tsv` | Zenodo lineage markers (bundled). |
 | | `--pathotypr_dr_markers` | `/opt/pathotypr/dr_markers.tsv` | Zenodo WHO drug-resistance markers (bundled). |
-| | `--pathotypr_rf_model` | `/opt/pathotypr/rf_model.pathotypr` | Zenodo pre-trained RF lineage model (bundled). **Not currently wired to the typing step** — overriding has no effect; the model is loaded from its fixed bundled path (`PATHOTYPR_DATA`) inside the image. |
 | | `--pathotypr_min_alt` | `95` | Min alt-allele % for a DR call. Lower it (10-25) to catch heteroresistant / minority alleles. |
 | **Dual AA numbering** | `--annotate_canonical` | `false` | Re-annotate variants against a canonical snpEff DB for dual (H37Rv) amino-acid numbering. |
 | | `--canonical_snpeff_db` | `Mycobacterium_tuberculosis_h37rv` | Canonical snpEff genome for the second annotation. |
