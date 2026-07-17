@@ -11,7 +11,9 @@ function dynMiniChart(v,th,showDP){
   var dps=v.dp||[], hasDP=showDP&&dps.some(function(d){return d!=null;});
   var maxDP=1; if(hasDP){ dps.forEach(function(d){ if(d!=null&&d>maxDP)maxDP=d; }); }
   var mr=hasDP?16:10, pw=W-ml-mr, ph=H-mt-mb;
-  function X(i){ return ml+(n<=1?pw/2:(i/(n-1))*pw); }
+  var bw=Math.min(n<=1?18:(pw/n)*0.5, 16);        // DP bar width (px)
+  var px=hasDP?(bw/2+1.5):3, iw=pw-2*px;          // inner x-padding so the first/last point (and its DP bar) clear the value axis
+  function X(i){ return ml+px+(n<=1?iw/2:(i/(n-1))*iw); }
   function Y(a){ return mt+(1-a)*ph; }                  // allele frequency (left axis)
   function YD(d){ return mt+ph-(d/maxDP)*ph; }          // read depth (right axis)
   var col=dynColor(v.flags), nonsyn=v.flags&&v.flags.indexOf('nonsyn')>=0;
@@ -20,7 +22,6 @@ function dynMiniChart(v,th,showDP){
   svg+='<line x1="'+ml+'" y1="'+mt+'" x2="'+ml+'" y2="'+(mt+ph).toFixed(1)+'" stroke="'+TH.axis+'" stroke-width="1"/>';   // left value axis + ticks = a real-figure cue
   [0,0.5,1].forEach(function(a){ svg+='<line x1="'+(ml-3)+'" y1="'+Y(a).toFixed(1)+'" x2="'+ml+'" y2="'+Y(a).toFixed(1)+'" stroke="'+TH.axis+'" stroke-width="1"/>'; });
   if(hasDP){   // depth bars behind the AF line; each bar carries its DP value on top (see the pass after the line)
-    var bw=Math.min(n<=1?18:(pw/n)*0.5, 16);
     dps.forEach(function(d,i){ if(d==null)return; var x=X(i), y=YD(d), h=(mt+ph)-y; svg+='<rect x="'+(x-bw/2).toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(0,h).toFixed(1)+'" fill="#7ea8d6" opacity="0.45" rx="1.5"><title>t='+esc(v.times[i]==null?i:v.times[i])+'  DP='+d+'</title></rect>'; });
   }
   if(th){ [[th.emerge,DYNCOL.emergence],[th.fix,DYNCOL.fixation]].forEach(function(t){ svg+='<line x1="'+ml+'" y1="'+Y(t[0]).toFixed(1)+'" x2="'+(W-mr)+'" y2="'+Y(t[0]).toFixed(1)+'" stroke="'+t[1]+'" stroke-dasharray="3 3" opacity="0.3"/>'; }); }
