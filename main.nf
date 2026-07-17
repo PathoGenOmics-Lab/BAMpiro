@@ -383,10 +383,13 @@ workflow {
         tuple(rId, fai_file)
     }
 
-    // Prepare FastP JSONs (grouped by sample)
-    def json_ch = fastp_pe.json.mix(fastp_se.json)   // already [sId, json], keyed by the real sampleId val
-        .groupTuple()                                 // (do NOT re-derive sId from the filename: a sampleId
-        .map { sId, jsons -> tuple(sId, jsons[0]) }   //  containing '__' would be truncated by split('__'))
+    // Prepare FastP JSONs (grouped by sample). A multi-lane sample has one JSON per lane; pass them ALL
+    // so GENERATE_LEGACY_STATS aggregates read counts (SUM) and quality rates (read/base-weighted) instead
+    // of silently keeping a single lane. Grouped on the real sampleId val (do NOT re-derive it from the
+    // filename: a sampleId containing '__' would be truncated by split('__')). Sorted for a stable -resume.
+    def json_ch = fastp_pe.json.mix(fastp_se.json)   // [sId, json]
+        .groupTuple()                                 // -> [sId, [json_lane1, json_lane2, ...]]
+        .map { sId, jsons -> tuple(sId, jsons.toSorted { it.name }) }
 
     // BAM stats already carry (sampleId, refId) as vals -- do NOT re-parse the filename with
     // tokenize('.'), which truncates any dotted refId (e.g. NC_000962.3) and breaks the join.

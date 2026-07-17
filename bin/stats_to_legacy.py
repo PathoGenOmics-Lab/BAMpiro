@@ -116,7 +116,8 @@ def _format_gene_burden(ann_gene):
 def parse_args():
     parser = argparse.ArgumentParser(description="Generate Legacy TB Pipeline Log")
     parser.add_argument('--sample', required=True, help="Sample ID")
-    parser.add_argument('--fastp-json', required=True, help="Path to fastp.json")
+    parser.add_argument('--fastp-json', required=True, nargs='+',
+                        help="fastp.json path(s); a multi-lane sample has one per lane and they are aggregated")
     parser.add_argument('--bam-stats', required=True, help="Path to samtools stats output")
     parser.add_argument('--vcf', required=True, help="Path to final VCF")
     parser.add_argument('--ref-fai', required=True, help="Path to reference .fai index")
@@ -464,28 +465,64 @@ def main():
         data['GENOME_LEN'] = str(g_size)   # reference length -> SNP density works even when make_consensus is off
     r_len = 0.0
 
-    try:
-        with open(args.fastp_json, 'r') as f:
-            j = json.load(f)
+    # fastp — one JSON per sequencing lane; a multi-lane sample has several. Read counts must SUM and
+    # quality rates must be read/base-weighted, otherwise picking a single lane under-counts the sample.
+    def _f(x):
+        try:
+            return float(x)
+        except (TypeError, ValueError):
+            return 0.0
+    lanes = []
+    for fp in (args.fastp_json or []):
+        try:
+            with open(fp, 'r') as f:
+                j = json.load(f)
             before = j.get('summary', {}).get('before_filtering', {})
             after = j.get('summary', {}).get('after_filtering', {})
             dup = j.get('duplication', {})
+            lanes.append({
+                'before_reads': _f(before.get('total_reads', 0)),
+                'after_reads': _f(after.get('total_reads', 0)),
+                'after_bases': _f(after.get('total_bases', 0)),
+                'r1_len': _f(after.get('read1_mean_length', 0)),
+                'dup': _f(dup.get('rate', 0)),
+                'q20': _f(after['q20_rate']) if 'q20_rate' in after else None,
+                'q30': _f(after['q30_rate']) if 'q30_rate' in after else None,
+                'gc': _f(after['gc_content']) if 'gc_content' in after else None,
+            })
+        except Exception as e:
+            sys.stderr.write(f"[stats_to_legacy] WARN fastp parse ({fp}): {e}\n")
 
-            data['TRD_OUT'] = str(before.get('total_reads', 'NA'))
-            data['TRM_OUT'] = str(after.get('total_reads', 'NA'))
-            r_len = float(after.get('read1_mean_length', 0))
-            data['RDL_OUT'] = f"{r_len:.1f}"
-            data['DUP_OUT'] = f"{float(dup.get('rate', 0))*100:.2f}"
-            if 'q20_rate' in after: data['Q20_PCT'] = f"{float(after['q20_rate'])*100:.2f}"
-            if 'q30_rate' in after: data['Q30_PCT'] = f"{float(after['q30_rate'])*100:.2f}"
-            if 'gc_content' in after: data['GC_PCT'] = f"{float(after['gc_content'])*100:.2f}"
-            data['PHE_OUT'] = '33'
-            data['FV_OUT'] = 'FASTQ_SUCCESS'
+    if lanes:
+        def wmean(key, wkey):
+            # weighted mean over lanes that report `key`; falls back to a plain mean if weights are 0
+            vals = [(l[key], l[wkey]) for l in lanes if l[key] is not None]
+            if not vals:
+                return None
+            den = sum(w for _, w in vals)
+            if den > 0:
+                return sum(v * w for v, w in vals) / den
+            return sum(v for v, _ in vals) / len(vals)
 
-            if g_size > 0:
-                data['LNG_OUT'] = f"{float(after.get('total_bases', 0))/g_size:.2f}"
-    except Exception as e:
-        sys.stderr.write(f"[stats_to_legacy] WARN fastp parse ({args.fastp_json}): {e}\n")
+        trd = sum(l['before_reads'] for l in lanes)
+        trm = sum(l['after_reads'] for l in lanes)
+        tot_after_bases = sum(l['after_bases'] for l in lanes)
+        r_len = wmean('r1_len', 'after_reads') or 0.0
+
+        data['TRD_OUT'] = str(int(trd)) if trd > 0 else 'NA'
+        data['TRM_OUT'] = str(int(trm)) if trm > 0 else 'NA'
+        data['RDL_OUT'] = f"{r_len:.1f}"
+        data['DUP_OUT'] = f"{(wmean('dup', 'before_reads') or 0.0)*100:.2f}"
+        q20 = wmean('q20', 'after_bases')
+        q30 = wmean('q30', 'after_bases')
+        gc = wmean('gc', 'after_bases')
+        if q20 is not None: data['Q20_PCT'] = f"{q20*100:.2f}"
+        if q30 is not None: data['Q30_PCT'] = f"{q30*100:.2f}"
+        if gc is not None: data['GC_PCT'] = f"{gc*100:.2f}"
+        data['PHE_OUT'] = '33'
+        data['FV_OUT'] = 'FASTQ_SUCCESS'
+        if g_size > 0:
+            data['LNG_OUT'] = f"{tot_after_bases/g_size:.2f}"
 
     # 2. Mapping
     bam = get_bam_stats(args.bam_stats)
