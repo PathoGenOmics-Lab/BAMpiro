@@ -68,11 +68,16 @@ ENV PATH=/opt/conda/envs/bampiro-env/bin:/opt/conda/bin:$PATH
 # reproducible and offline. Positions are in MTBC-ancestor coordinates; pathotypr is k-mer based so it is
 # reference-agnostic. Override the paths with --pathotypr_* if you supply your own.
 ENV PATHOTYPR_DATA=/opt/pathotypr
-RUN mkdir -p ${PATHOTYPR_DATA} && \
-    wget -q -O ${PATHOTYPR_DATA}/lineage_markers.tsv "https://zenodo.org/records/19210044/files/pathotypr_lineage_markers_v1.0.0.tsv?download=1" && \
-    wget -q -O ${PATHOTYPR_DATA}/dr_markers.tsv       "https://zenodo.org/records/19210044/files/pathotypr_dr_markers_v1.0.0.tsv?download=1" && \
-    wget -q -O ${PATHOTYPR_DATA}/rf_model.pathotypr   "https://zenodo.org/records/19210044/files/pathotypr_rf_model_v1.0.0.pathotypr?download=1" && \
-    wget -q -O ${PATHOTYPR_DATA}/reference.fasta      "https://zenodo.org/records/3497110/files/MTB_ancestor_reference.fasta?download=1"
+RUN mkdir -p ${PATHOTYPR_DATA} && cd ${PATHOTYPR_DATA} && \
+    wget -nv --tries=3 --timeout=60 -O lineage_markers.tsv "https://zenodo.org/records/19210044/files/pathotypr_lineage_markers_v1.0.0.tsv?download=1" && \
+    wget -nv --tries=3 --timeout=60 -O dr_markers.tsv       "https://zenodo.org/records/19210044/files/pathotypr_dr_markers_v1.0.0.tsv?download=1" && \
+    wget -nv --tries=3 --timeout=60 -O rf_model.pathotypr   "https://zenodo.org/records/19210044/files/pathotypr_rf_model_v1.0.0.pathotypr?download=1" && \
+    wget -nv --tries=3 --timeout=60 -O reference.fasta      "https://zenodo.org/records/3497110/files/MTB_ancestor_reference.fasta?download=1" && \
+    # fail the build LOUDLY if any Zenodo asset came down empty/truncated (rather than shipping a broken image)
+    for f in lineage_markers.tsv dr_markers.tsv rf_model.pathotypr reference.fasta; do \
+        test -s "$f" || { echo "ERROR: pathotypr asset '$f' failed to download (empty)"; exit 1; }; \
+    done && \
+    { head -c1 reference.fasta | grep -q '>' || { echo "ERROR: reference.fasta is not a FASTA"; exit 1; }; }
 
 # 3c. Pre-download the H37Rv snpEff database so variants can also be annotated in H37Rv / Mycobrowser
 # numbering for the report's dual amino-acid display (see qc_report.py --vcfs-h37rv). Adjust the genome
