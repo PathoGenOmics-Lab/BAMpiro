@@ -9,11 +9,13 @@
 [![Version](https://img.shields.io/badge/version-1.0.1-%23149389?style=flat-square)](CHANGELOG.md)
 [![Container](https://img.shields.io/badge/container-paururo%2Fbampiro-%232496ed?style=flat-square)](https://hub.docker.com/r/paururo/bampiro)
 [![PGO](https://img.shields.io/badge/PathoGenOmics-lab-%23E52421?style=flat-square)](https://github.com/PathoGenOmics-Lab)
+[![Docs](https://img.shields.io/badge/docs-online-%23149389?style=flat-square)](https://pathogenomics-lab.github.io/BAMpiro/)
+[![Live QC report](https://img.shields.io/badge/QC%20report-live%20demo-%23af64d1?style=flat-square)](https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html)
 
 **General bacterial short-read mapping, variant calling & lineage/DR typing.**
 **Nextflow (DSL2) · containerized · self-contained interactive QC reports.**
 
-[Quick Start](#quick-start) · [QC Report](#interactive-qc-report) · [Docs](docs/) · [Configuration](docs/configuration.md) · [Citation](#citation)
+[Docs site](https://pathogenomics-lab.github.io/BAMpiro/) · [Live QC report](https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html) · [Quick Start](#quick-start) · [Configuration](docs/configuration.md) · [Citation](#citation)
 
 </div>
 
@@ -100,6 +102,12 @@ panels** - general statistics, flagged samples, per-lineage summary (canonical
 full SNP matrix, and drug resistance - plus a machine-readable per-sample
 `qc_flags.tsv`. It is organism-agnostic, mobile-responsive, and works offline on an
 HPC login node.
+
+> [!TIP]
+> **Try it live:** open the
+> [**interactive example report**](https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html)
+> — a full 17-sample demo cohort, every panel populated, right in your browser (the
+> very same self-contained HTML each run produces).
 
 Full panel list and interactive features: [Interactive QC Report](docs/qc-report.md).
 
