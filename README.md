@@ -116,8 +116,11 @@ Full panel list and interactive features: [Interactive QC Report](docs/qc-report
 | [Outputs](docs/outputs.md) | The result file tree and the repository layout |
 | [Changelog](CHANGELOG.md) | Version history |
 
-Browse the whole set under [`docs/`](docs/), or build the searchable docs site with
-`make docs` (requires [mdbook](https://rust-lang.github.io/mdBook/)).
+Browse the whole set under [`docs/`](docs/), read it online at
+[pathogenomics-lab.github.io/BAMpiro](https://pathogenomics-lab.github.io/BAMpiro/), or
+build the searchable site locally with `make docs-serve`
+(needs [MkDocs Material](https://squidfunk.github.io/mkdocs-material/):
+`pip install -r docs/requirements.txt`).
 
 ## Why "BAMpiro"?
 

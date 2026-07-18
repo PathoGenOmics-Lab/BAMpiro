@@ -1,10 +1,11 @@
 .PHONY: docs docs-serve
 
-# Build the documentation site (HTML) into docs/book/ with mdbook.
-# The GitHub-facing Markdown lives in docs/*.md; the mdbook sources are in docs/src/.
+# Build the documentation site (HTML) into ./site with MkDocs Material.
+# The Markdown lives in docs/*.md (readable from GitHub); config is mkdocs.yml.
+# One-off setup: pip install -r docs/requirements.txt
 docs:
-	cd docs && mdbook build
+	mkdocs build --strict
 
-# Build + serve the docs locally with live reload (http://localhost:3000).
+# Build + serve the docs locally with live reload (http://127.0.0.1:8000).
 docs-serve:
-	cd docs && mdbook serve --open
+	mkdocs serve

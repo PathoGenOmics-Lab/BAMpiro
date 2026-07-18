@@ -1,7 +1,9 @@
-# Documentation
+# BAMpiro Documentation
 
-Detailed documentation for BAMpiro. Browse it here on GitHub, or build the
-[mdbook](https://rust-lang.github.io/mdBook/) locally for a searchable docs site.
+Detailed documentation for **BAMpiro** - a general bacterial short-read mapping,
+variant-calling and lineage / drug-resistance typing pipeline. Read it online at
+**[pathogenomics-lab.github.io/BAMpiro](https://pathogenomics-lab.github.io/BAMpiro/)**,
+browse the pages here on GitHub, or build the site locally (see below).
 
 ## Contents
 
@@ -10,18 +12,28 @@ Detailed documentation for BAMpiro. Browse it here on GitHub, or build the
 | [Introduction](introduction.md) | What BAMpiro is, key features, and the workflow at a glance |
 | [Installation](installation.md) | Requirements, the container, and bundled software versions |
 | [Quick Start](quickstart.md) | Run commands, the samplesheet format, and multi-run merging |
-| [Configuration](configuration.md) | The full parameter reference |
-| [Interactive QC Report](qc-report.md) | The self-contained HTML dashboard and its 21 panels |
+| [Configuration](configuration.md) | The full parameter reference and feature toggles |
+| [Troubleshooting](troubleshooting.md) | Common first-run errors and how to fix them |
+| [Interactive QC Report](qc-report.md) | The self-contained HTML dashboard and its panels |
 | [Lineage & Drug-Resistance Typing](pathotypr.md) | Pathotypr typing and dual amino-acid numbering |
+| [Tutorial](tutorial/bampiro_tutorial.ipynb) | An end-to-end walkthrough (Jupyter notebook) |
 | [Outputs](outputs.md) | The result file tree and the repository layout |
-| [Changelog](../CHANGELOG.md) | Version history |
+| [From outputs to a phylogeny](downstream.md) | Building a tree from the pipeline outputs |
+| [Changelog](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/indel-mask/CHANGELOG.md) | Version history |
 
-## Building locally
+## Building the docs locally
 
-The mdbook sources live in [`src/`](src/). With
-[mdbook](https://rust-lang.github.io/mdBook/) installed:
+The site is built with [MkDocs Material](https://squidfunk.github.io/mkdocs-material/).
+The Markdown lives in `docs/*.md` (readable straight from GitHub) and the site
+configuration is [`mkdocs.yml`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/indel-mask/mkdocs.yml)
+at the repository root.
 
 ```bash
-make docs          # build HTML → docs/book/
-make docs-serve    # build + serve with live reload
+pip install -r docs/requirements.txt
+make docs-serve    # live preview at http://127.0.0.1:8000
+make docs          # build the static site into ./site
 ```
+
+Every push to `main` / `indel-mask` that touches the docs rebuilds and publishes the
+site to GitHub Pages via
+[`.github/workflows/docs.yml`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/indel-mask/.github/workflows/docs.yml).

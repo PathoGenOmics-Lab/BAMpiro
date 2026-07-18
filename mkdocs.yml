@@ -1,0 +1,115 @@
+site_name: BAMpiro
+site_description: General bacterial short-read mapping, variant calling & lineage/DR typing
+site_author: Paula Ruiz-Rodriguez, Mireia Coscolla
+site_url: https://pathogenomics-lab.github.io/BAMpiro/
+copyright: Copyright &copy; Ruiz-Rodriguez &amp; Coscolla &middot; GPL-3.0
+
+repo_url: https://github.com/PathoGenOmics-Lab/BAMpiro
+repo_name: PathoGenOmics-Lab/BAMpiro
+edit_uri: edit/indel-mask/docs/
+
+docs_dir: docs
+
+theme:
+  name: material
+  logo: assets/bampiro2.png
+  favicon: assets/bampiro2.png
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: deep purple
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: deep purple
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.action.edit
+
+nav:
+  - Home: README.md
+  - Introduction: introduction.md
+  - User Guide:
+      - Installation: installation.md
+      - Quick Start: quickstart.md
+      - Configuration: configuration.md
+      - Troubleshooting: troubleshooting.md
+  - Analyses:
+      - Interactive QC Report: qc-report.md
+      - Lineage & Drug-Resistance Typing: pathotypr.md
+  - Tutorial: tutorial/bampiro_tutorial.ipynb
+  - Reference:
+      - Outputs: outputs.md
+      - From outputs to a phylogeny: downstream.md
+
+not_in_nav: |
+  tutorial/README.md
+
+exclude_docs: |
+  requirements.txt
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+  links:
+    not_found: warn
+    anchors: warn
+    unrecognized_links: warn
+
+plugins:
+  - search
+  - mkdocs-jupyter:
+      execute: false
+      include_source: true
+      ignore_h1_titles: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/PathoGenOmics-Lab/BAMpiro

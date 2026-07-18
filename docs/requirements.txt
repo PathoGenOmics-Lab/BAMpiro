@@ -1,0 +1,8 @@
+# Documentation site (MkDocs Material). Build with:
+#   pip install -r docs/requirements.txt
+#   mkdocs serve            # live preview at http://127.0.0.1:8000
+#   mkdocs build --strict   # build the static site into ./site
+mkdocs-material>=9.5
+mkdocs-jupyter>=0.24
+# Optional: versioned docs per release (mike deploy 1.0.1 latest --push)
+# mike>=2.0

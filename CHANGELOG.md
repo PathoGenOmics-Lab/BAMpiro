@@ -59,9 +59,11 @@ drug-resistance typing**, and a restructured documentation set. Rebranded to
 - **CRAM output** for published alignments (`--output_cram`), a selectable
   **publish mode** (`copy` / `link`), and a trimmed default output footprint.
 - **Optional region-parallel FreeBayes** for faster calling on deep samples.
-- **Documentation** - an [mdBook](https://rust-lang.github.io/mdBook/) under `docs/`
-  (introduction, installation, quick start, configuration, QC report, Pathotypr,
-  outputs) with the README slimmed to a landing page.
+- **Documentation** - a [MkDocs Material](https://squidfunk.github.io/mkdocs-material/)
+  site under `docs/` (introduction, installation, quick start, configuration,
+  troubleshooting, QC report, Pathotypr, outputs, downstream phylogeny, and an
+  end-to-end Jupyter tutorial), published to GitHub Pages, with the README slimmed to a
+  landing page.
 
 ### Changed
 

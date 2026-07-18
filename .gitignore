@@ -19,5 +19,6 @@ mappability_cache/
 __pycache__/
 *.pyc
 
-# mdbook build output
-docs/book/
+# MkDocs build output
+site/
+.cache/
