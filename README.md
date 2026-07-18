@@ -94,6 +94,17 @@ cohort (runnable without running the pipeline first).
 
 ## Interactive QC Report
 
+<p align="center">
+  <a href="https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html">
+    <img src=".github/qc_report_preview.png" alt="BAMpiro interactive QC report — click to open the live demo" width="100%" />
+  </a>
+</p>
+
+<p align="center">
+  <b><a href="https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html">▶ Open the live interactive demo report</a></b>
+  — a full 17-sample demo cohort, every panel populated, right in your browser
+</p>
+
 Every run writes a single self-contained `<samplesheet>_qc_report.html` (no internet,
 no CDN) that folds the whole cohort into one dashboard: **live-adjustable QC
 thresholds**, a **dark / light theme**, a collapsible sidebar, and **21 linked
@@ -103,30 +114,29 @@ full SNP matrix, and drug resistance - plus a machine-readable per-sample
 `qc_flags.tsv`. It is organism-agnostic, mobile-responsive, and works offline on an
 HPC login node.
 
-> [!TIP]
-> **Try it live:** open the
-> [**interactive example report**](https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html)
-> — a full 17-sample demo cohort, every panel populated, right in your browser (the
-> very same self-contained HTML each run produces).
-
-Full panel list and interactive features: [Interactive QC Report](docs/qc-report.md).
+Full panel list and interactive features: [Interactive QC Report](https://pathogenomics-lab.github.io/BAMpiro/qc-report/).
 
 ## Documentation
 
+📖 **[Read the full documentation online → pathogenomics-lab.github.io/BAMpiro](https://pathogenomics-lab.github.io/BAMpiro/)**
+— a searchable site with a pipeline diagram, a hover glossary, a hands-on Jupyter
+tutorial, and the [live QC-report demo](https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html).
+
 | Document | Description |
 | :--- | :--- |
-| [Introduction](docs/introduction.md) | What BAMpiro is, key features, and the workflow at a glance |
-| [Installation](docs/installation.md) | Requirements, the container, and bundled software versions |
-| [Quick Start](docs/quickstart.md) | Run commands, the samplesheet format, and multi-run merging |
-| [Configuration](docs/configuration.md) | The full parameter reference |
-| [Interactive QC Report](docs/qc-report.md) | The self-contained HTML dashboard and its 21 panels |
-| [Lineage & Drug-Resistance Typing](docs/pathotypr.md) | Pathotypr typing and dual amino-acid numbering |
-| [Outputs](docs/outputs.md) | The result file tree and the repository layout |
+| [Introduction](https://pathogenomics-lab.github.io/BAMpiro/introduction/) | What BAMpiro is, key features, and the workflow at a glance |
+| [Installation](https://pathogenomics-lab.github.io/BAMpiro/installation/) | Requirements, the container, and bundled software versions |
+| [Quick Start](https://pathogenomics-lab.github.io/BAMpiro/quickstart/) | Run commands, the samplesheet format, and multi-run merging |
+| [Configuration](https://pathogenomics-lab.github.io/BAMpiro/configuration/) | The full parameter reference and feature toggles |
+| [Troubleshooting](https://pathogenomics-lab.github.io/BAMpiro/troubleshooting/) | Common first-run errors and how to fix them |
+| [Interactive QC Report](https://pathogenomics-lab.github.io/BAMpiro/qc-report/) | The self-contained HTML dashboard and its panels |
+| [Lineage & Drug-Resistance Typing](https://pathogenomics-lab.github.io/BAMpiro/pathotypr/) | Pathotypr typing and dual amino-acid numbering |
+| [Tutorial](https://pathogenomics-lab.github.io/BAMpiro/tutorial/bampiro_tutorial/) | An end-to-end Jupyter walkthrough |
+| [Outputs](https://pathogenomics-lab.github.io/BAMpiro/outputs/) | The result file tree and the repository layout |
 | [Changelog](CHANGELOG.md) | Version history |
 
-Browse the whole set under [`docs/`](docs/), read it online at
-[pathogenomics-lab.github.io/BAMpiro](https://pathogenomics-lab.github.io/BAMpiro/), or
-build the searchable site locally with `make docs-serve`
+Prefer the source? Browse the Markdown under [`docs/`](docs/), or build the site
+locally with `make docs-serve`
 (needs [MkDocs Material](https://squidfunk.github.io/mkdocs-material/):
 `pip install -r docs/requirements.txt`).
 
