@@ -6,6 +6,16 @@ cohort into one interactive dashboard, plus a machine-readable
 `<samplesheet>_qc_flags.tsv` of per-sample **PASS/WARN/FAIL** verdicts. It is built
 by `bin/qc_report.py` and controlled by `--make_qc_report` (default `true`).
 
+!!! tip "See it live"
+
+    Explore a full example report built from a 17-sample demo cohort — every panel
+    populated, fully interactive (live thresholds, the exclusion basket, dark mode):
+
+    [:octicons-play-16: Open the interactive demo report](examples/qc_report_demo.html){ .md-button .md-button--primary target="_blank" rel="noopener" }
+
+    *Synthetic demo data. It opens as a standalone page — the very same self-contained
+    HTML file each real run produces.*
+
 ## Live & interactive
 
 - **Live thresholds & presets** - edit any QC cut-off (depth, breadth, missing,

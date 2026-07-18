@@ -5,6 +5,9 @@ variant-calling and lineage / drug-resistance typing pipeline. Read it online at
 **[pathogenomics-lab.github.io/BAMpiro](https://pathogenomics-lab.github.io/BAMpiro/)**,
 browse the pages here on GitHub, or build the site locally (see below).
 
+**Want a preview first?** Open the [interactive example QC report](examples/qc_report_demo.html)
+— a full 17-sample demo cohort with every panel populated.
+
 ## Contents
 
 <div class="grid cards" markdown>
