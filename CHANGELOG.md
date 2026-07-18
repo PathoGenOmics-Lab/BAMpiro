@@ -62,8 +62,8 @@ drug-resistance typing**, and a restructured documentation set. Rebranded to
 - **Documentation** - a [MkDocs Material](https://squidfunk.github.io/mkdocs-material/)
   site under `docs/` (introduction, installation, quick start, configuration,
   troubleshooting, QC report, Pathotypr, outputs, downstream phylogeny, and an
-  end-to-end Jupyter tutorial), published to GitHub Pages, with the README slimmed to a
-  landing page.
+  end-to-end Jupyter tutorial), with a GitHub Pages publishing workflow (activated once
+  the repo is public) and the README slimmed to a landing page.
 
 ### Changed
 

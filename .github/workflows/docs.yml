@@ -1,7 +1,17 @@
 name: docs
 
-# Build the MkDocs Material site and publish it to GitHub Pages.
-# One-time setup: repo Settings -> Pages -> "Build and deployment" -> Source: "GitHub Actions".
+# Builds the MkDocs Material site and validates it (mkdocs build --strict) on every
+# docs change, uploading the built site as a downloadable artifact.
+#
+# GitHub Pages publishing is intentionally GATED OFF: Pages on a *private* repo needs a
+# paid plan (Pro/Team/Enterprise), so the deploy would fail while this repo is private.
+# To turn publishing on later (no YAML edits needed):
+#   1. Make the repo public, or move to a plan that allows private Pages.
+#   2. Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
+#   3. Settings -> Secrets and variables -> Actions -> Variables:
+#      add a repository variable  ENABLE_PAGES = true
+# The deploy job below then starts publishing to
+# https://pathogenomics-lab.github.io/BAMpiro/ automatically.
 
 on:
   push:
@@ -31,12 +41,20 @@ jobs:
           python-version: "3.x"
       - run: pip install -r docs/requirements.txt
       - run: mkdocs build --strict
-      - uses: actions/upload-pages-artifact@v3
+      # Downloadable copy of the built site - works on a private repo, no Pages needed.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: site
+      # Pages-format artifact, only produced when publishing is enabled.
+      - if: vars.ENABLE_PAGES == 'true'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
   deploy:
     needs: build
+    if: vars.ENABLE_PAGES == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

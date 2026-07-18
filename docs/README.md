@@ -34,6 +34,9 @@ make docs-serve    # live preview at http://127.0.0.1:8000
 make docs          # build the static site into ./site
 ```
 
-Every push to `main` / `indel-mask` that touches the docs rebuilds and publishes the
-site to GitHub Pages via
-[`.github/workflows/docs.yml`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/indel-mask/.github/workflows/docs.yml).
+Every push to `main` / `indel-mask` that touches the docs rebuilds and validates the
+site via
+[`.github/workflows/docs.yml`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/indel-mask/.github/workflows/docs.yml)
+(and uploads it as a downloadable artifact). Publishing to GitHub Pages activates
+automatically once the repo is public and the `ENABLE_PAGES` variable is set - see the
+comments at the top of that workflow.
