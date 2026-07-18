@@ -18,6 +18,8 @@ most common first-run problems:
 | Report has no **SNP dynamics** / **epistasis** panel | need per-sample VCFs + `--metadata` with a time+group column | add the metadata columns (see [Optional metadata](qc-report.md#optional-metadata)) |
 | A sample failed with `SLURM … TIMEOUT` | the task exceeded the queue time limit | raise the time / use a longer `--qos` / partition for that step |
 
-Still stuck? Re-run with `-resume` (skips finished work) and open an
-[issue](https://github.com/PathoGenOmics-Lab/BAMpiro/issues) with the failed process
-name and the contents of its `.command.err`.
+!!! question "Still stuck?"
+
+    Re-run with `-resume` (skips finished work) and open an
+    [issue](https://github.com/PathoGenOmics-Lab/BAMpiro/issues) with the failed process
+    name and the contents of its `.command.err`.

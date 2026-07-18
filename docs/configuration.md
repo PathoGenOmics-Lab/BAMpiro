@@ -11,74 +11,78 @@ table below.
 
 **Opt-in — OFF by default, enable with `--<flag> true`:**
 
-| Flag | Turns on |
-| :--- | :--- |
-| `--run_pathotypr` | Alignment-free lineage + WHO drug-resistance typing ([pathotypr](pathotypr.md)) |
-| `--annotate_canonical` | Dual **amino-acid** numbering (re-annotate vs H37Rv) + Mycobrowser gene links |
-| `--variant_liftover` | Dual **coordinate** — the H37Rv position per variant (alignment-free k-mer liftover) |
-| `--mask_blindspots` | Mask the H37Rv Illumina blind-spots ([Zenodo 3701840](https://zenodo.org/records/3701840)) |
-| `--output_cram` | Publish alignments as CRAM instead of BAM |
-| `--report_gate` | Fail the run if any sample is flagged **FAIL** |
-| `--publish_prefilter_bam` | Also publish the pre-filter `final.bam` |
-| `--publish_virgin_allpos_vcf` | Also publish the virgin (`.raw`) per-position VCF |
+| Flag | Default | Turns on |
+| :--- | :---: | :--- |
+| `--run_pathotypr` | :octicons-x-circle-fill-16:{ .red } off | Alignment-free lineage + WHO drug-resistance typing ([pathotypr](pathotypr.md)) |
+| `--annotate_canonical` | :octicons-x-circle-fill-16:{ .red } off | Dual **amino-acid** numbering (re-annotate vs H37Rv) + Mycobrowser gene links |
+| `--variant_liftover` | :octicons-x-circle-fill-16:{ .red } off | Dual **coordinate** — the H37Rv position per variant (alignment-free k-mer liftover) |
+| `--mask_blindspots` | :octicons-x-circle-fill-16:{ .red } off | Mask the H37Rv Illumina blind-spots ([Zenodo 3701840](https://zenodo.org/records/3701840)) |
+| `--output_cram` | :octicons-x-circle-fill-16:{ .red } off | Publish alignments as CRAM instead of BAM |
+| `--report_gate` | :octicons-x-circle-fill-16:{ .red } off | Fail the run if any sample is flagged **FAIL** |
+| `--publish_prefilter_bam` | :octicons-x-circle-fill-16:{ .red } off | Also publish the pre-filter `final.bam` |
+| `--publish_virgin_allpos_vcf` | :octicons-x-circle-fill-16:{ .red } off | Also publish the virgin (`.raw`) per-position VCF |
 
 **On by default — DISABLE with `--<flag> false`:**
 
-| Flag | Turns off |
-| :--- | :--- |
-| `--make_qc_report` | The interactive HTML QC report + `qc_flags.tsv` |
-| `--make_snp_matrix` | The cohort master SNP-matrix TSV |
-| `--make_consensus` | The per-sample consensus FASTA |
-| `--exclude_repeats` | `nucmer` self-alignment repeat masking |
-| `--dynamic_read_filter` | The length-aware (mappability) read filter |
-| `--annotate_main_vcf` · `--annotate_legacy_vcfs` | snpEff annotation of the main / split VCFs |
-| `--blindspot_liftover` | Lifting the blind-spots onto a non-H37Rv reference (only relevant with `--mask_blindspots`) |
-| `--nested_output` | Nested per-sample output folders (e.g. `MP/00/09/1/`) |
-| `--publish_allpos_vcf` | Publishing the all-positions (backbone) VCF |
-| `--kraken_memory_mapping` | Reading the Kraken2 DB via mmap (RAM-sharing) |
+| Flag | Default | Turns off |
+| :--- | :---: | :--- |
+| `--make_qc_report` | :octicons-check-circle-fill-16:{ .green } on | The interactive HTML QC report + `qc_flags.tsv` |
+| `--make_snp_matrix` | :octicons-check-circle-fill-16:{ .green } on | The cohort master SNP-matrix TSV |
+| `--make_consensus` | :octicons-check-circle-fill-16:{ .green } on | The per-sample consensus FASTA |
+| `--exclude_repeats` | :octicons-check-circle-fill-16:{ .green } on | `nucmer` self-alignment repeat masking |
+| `--dynamic_read_filter` | :octicons-check-circle-fill-16:{ .green } on | The length-aware (mappability) read filter |
+| `--annotate_main_vcf` · `--annotate_legacy_vcfs` | :octicons-check-circle-fill-16:{ .green } on | snpEff annotation of the main / split VCFs |
+| `--blindspot_liftover` | :octicons-check-circle-fill-16:{ .green } on | Lifting the blind-spots onto a non-H37Rv reference (only relevant with `--mask_blindspots`) |
+| `--nested_output` | :octicons-check-circle-fill-16:{ .green } on | Nested per-sample output folders (e.g. `MP/00/09/1/`) |
+| `--publish_allpos_vcf` | :octicons-check-circle-fill-16:{ .green } on | Publishing the all-positions (backbone) VCF |
+| `--kraken_memory_mapping` | :octicons-check-circle-fill-16:{ .green } on | Reading the Kraken2 DB via mmap (RAM-sharing) |
 
 ## Example configs
 
 Two documented, ready-to-use configs live in
 [`conf/`](https://github.com/PathoGenOmics-Lab/BAMpiro/tree/indel-mask/conf) — apply either with `-c`:
 
-### M. tuberculosis (the default organism)
+=== "M. tuberculosis (default)"
 
-BAMpiro's built-in defaults are already TB-tuned, so a plain run is a valid TB run.
-[`conf/tuberculosis.config`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/indel-mask/conf/tuberculosis.config) additionally turns on the **full recommended MTBC
-feature set** — lineage + drug-resistance typing, dual H37Rv amino-acid numbering, the H37Rv coordinate
-liftover, and blind-spot masking (all bundled in the container):
+    BAMpiro's built-in defaults are already TB-tuned, so a plain run is a valid TB run.
+    [`conf/tuberculosis.config`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/indel-mask/conf/tuberculosis.config)
+    additionally turns on the **full recommended MTBC feature set** — lineage +
+    drug-resistance typing, dual H37Rv amino-acid numbering, the H37Rv coordinate
+    liftover, and blind-spot masking (all bundled in the container):
 
-```bash
-nextflow run main.nf --tsv samples.tsv --outdir results -profile standard -c conf/tuberculosis.config
-```
+    ```bash
+    nextflow run main.nf --tsv samples.tsv --outdir results -profile standard -c conf/tuberculosis.config
+    ```
 
-*(Running with no `-c` is still a valid TB run — it just leaves those optional features off.)*
+    *(Running with no `-c` is still a valid TB run — it just leaves those optional features off.)*
 
-### Another organism
+=== "Another organism"
 
-BAMpiro is organism-agnostic, but its defaults are TB-tuned (diploid calling for mixed infections + the
-MTBC-only features). Add the built-in **`generic`** profile — it sets **ploidy 1** and forces the MTBC-only
-features off — and copy the commented template [`conf/organism.config`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/indel-mask/conf/organism.config) for the rest
-(Kraken DB, a canonical numbering, gate thresholds):
+    BAMpiro is organism-agnostic, but its defaults are TB-tuned (diploid calling for
+    mixed infections + the MTBC-only features). Add the built-in **`generic`** profile —
+    it sets **ploidy 1** and forces the MTBC-only features off — and copy the commented
+    template [`conf/organism.config`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/indel-mask/conf/organism.config)
+    for the rest (Kraken DB, a canonical numbering, gate thresholds):
 
-```bash
-nextflow run main.nf --tsv samples.tsv --outdir results -profile standard,generic -c my_organism.config
-```
+    ```bash
+    nextflow run main.nf --tsv samples.tsv --outdir results -profile standard,generic -c my_organism.config
+    ```
 
-What `generic` changes versus the TB defaults:
+    What `generic` changes versus the TB defaults:
 
-| Setting | TB default | `generic` | Why |
-| :--- | :--- | :--- | :--- |
-| `freebayes_ploidy` | `2` | **`1`** | TB calls diploid to detect mixed infections; a clonal bacterium is haploid |
-| `run_pathotypr` · `variant_liftover` · `mask_blindspots` · `annotate_canonical` | *(off)* | **off** | all *M. tuberculosis*-specific (H37Rv lineage/DR, blind-spots, coordinate liftover) |
+    | Setting | TB default | `generic` | Why |
+    | :--- | :--- | :--- | :--- |
+    | `freebayes_ploidy` | `2` | **`1`** | TB calls diploid to detect mixed infections; a clonal bacterium is haploid |
+    | `run_pathotypr` · `variant_liftover` · `mask_blindspots` · `annotate_canonical` | *(off)* | **off** | all *M. tuberculosis*-specific (H37Rv lineage/DR, blind-spots, coordinate liftover) |
 
-Everything else is already generic: point the samplesheet `refFasta` / `refGff` at your genome, set
-`--kraken2_db` and the `taxId` column for your species, and the report's TB-only panels (lineage, drug
-resistance) simply **self-hide** when there is no such data. To keep a canonical amino-acid numbering for your
-organism, set `--annotate_canonical true` with `--canonical_snpeff_db` / `--canonical_label` — but note **only
-the H37Rv SnpEff DB is bundled** in the image, so for another organism either add its genome to the image and
-rebuild, or make sure a bare `canonical_snpeff_db` id can be downloaded by SnpEff at run time (needs internet).
+    Everything else is already generic: point the samplesheet `refFasta` / `refGff` at
+    your genome, set `--kraken2_db` and the `taxId` column for your species, and the
+    report's TB-only panels (lineage, drug resistance) simply **self-hide** when there is
+    no such data. To keep a canonical amino-acid numbering for your organism, set
+    `--annotate_canonical true` with `--canonical_snpeff_db` / `--canonical_label` — but
+    note **only the H37Rv SnpEff DB is bundled** in the image, so for another organism
+    either add its genome to the image and rebuild, or make sure a bare
+    `canonical_snpeff_db` id can be downloaded by SnpEff at run time (needs internet).
 
 ## All parameters
 

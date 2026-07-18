@@ -25,13 +25,19 @@ The **default** (`-profile standard`) targets the authors' SLURM cluster — it 
 `module load singularity`, and site-specific Singularity `--bind` paths. On any other machine those fail
 before the pipeline runs, so use the `local` (and, for Docker, `docker`) profiles, which drop all of that:
 
-```bash
-# Singularity/Apptainer on a single machine (no SLURM, no environment-modules):
-nextflow run main.nf --tsv samples.tsv --outdir results -profile local
+=== "Local (Singularity/Apptainer)"
 
-# Docker on a laptop:
-nextflow run main.nf --tsv samples.tsv --outdir results -profile local,docker
-```
+    On a single machine, no SLURM and no environment-modules:
+
+    ```bash
+    nextflow run main.nf --tsv samples.tsv --outdir results -profile local
+    ```
+
+=== "Docker (laptop)"
+
+    ```bash
+    nextflow run main.nf --tsv samples.tsv --outdir results -profile local,docker
+    ```
 
 `local` runs every task on the current host with the executor set to `local` and the cluster-only bind
 paths cleared. Point `--kraken2_db` at your own Kraken2 database — if it lives outside the launch directory,
@@ -85,5 +91,9 @@ for it:
 | Pathotypr typing | 4 | 8 GB | only with `--run_pathotypr` |
 | Variant calling / consensus / report | 1–4 | 2–4 GB | — |
 
-On a laptop, use a smaller Kraken2 DB (or skip a DB you don't have) so the 80 GB step
-fits; disk is roughly a few GB per sample (BAM/CRAM + VCFs + consensus).
+!!! warning "Kraken2 sets the memory ceiling (~80 GB)"
+
+    Kraken2 loads the entire database into RAM, so it is the single biggest memory
+    request in the run — an under-sized host kills it with an **OOM (exit 137)**. On a
+    laptop, use a smaller Kraken2 DB (or skip a DB you don't have) so the step fits.
+    Disk is roughly a few GB per sample (BAM/CRAM + VCFs + consensus).

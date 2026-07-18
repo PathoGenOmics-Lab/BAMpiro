@@ -68,15 +68,15 @@ otherwise any flag makes it WARN. All thresholds are `--report_*` params and are
 live-adjustable inside the HTML report.
 
 | Code | Condition | Param | Level |
-| :--- | :--- | :--- | :--- |
-| `LOW_DEPTH` | mean depth below | `--report_depth_min` | **FAIL** |
-| `LOW_BREADTH` | genome breadth below | `--report_breadth_min` | **FAIL** |
-| `HIGH_MISSING` | missing % above | `--report_missing_max` | **FAIL** |
-| `NO_DATA` | no QC metrics for the sample | — | **FAIL** |
-| `MAPPING_LOW` | mapped % below | `--report_mapping_min` | WARN |
-| `HIGH_DUP` | duplication % above | `--report_dup_max` | WARN |
-| `HIGH_IUPAC` | ambiguous/IUPAC % above | `--report_iupac_max` | WARN |
-| `TITV_LOW` | Ti/Tv below | `--report_titv_min` | WARN |
+| :--- | :--- | :--- | :---: |
+| `LOW_DEPTH` | mean depth below | `--report_depth_min` | :octicons-x-circle-fill-16:{ .red } **FAIL** |
+| `LOW_BREADTH` | genome breadth below | `--report_breadth_min` | :octicons-x-circle-fill-16:{ .red } **FAIL** |
+| `HIGH_MISSING` | missing % above | `--report_missing_max` | :octicons-x-circle-fill-16:{ .red } **FAIL** |
+| `NO_DATA` | no QC metrics for the sample | — | :octicons-x-circle-fill-16:{ .red } **FAIL** |
+| `MAPPING_LOW` | mapped % below | `--report_mapping_min` | :octicons-alert-fill-16:{ .amber } WARN |
+| `HIGH_DUP` | duplication % above | `--report_dup_max` | :octicons-alert-fill-16:{ .amber } WARN |
+| `HIGH_IUPAC` | ambiguous/IUPAC % above | `--report_iupac_max` | :octicons-alert-fill-16:{ .amber } WARN |
+| `TITV_LOW` | Ti/Tv below | `--report_titv_min` | :octicons-alert-fill-16:{ .amber } WARN |
 
 **FAIL** = a candidate for the exclusion basket (FAIL samples start pre-selected);
 **WARN** = review, usually keep. See [Downstream](downstream.md) for applying the basket.
@@ -112,7 +112,7 @@ BAMpiro/
 │   └── utils.nf             # Publish-path routing / clean publish dir
 ├── .github/dockerfile/      # Container recipe (bundles pathotypr + Zenodo panels + H37Rv snpEff DB)
 ├── conf/                    # Ready-made example configs (tuberculosis.config, organism.config)
-├── docs/                    # This documentation (mdBook source in docs/src/)
+├── docs/                    # This documentation (MkDocs Material; built via mkdocs.yml)
 ├── nextflow.config          # Global configuration & params
 └── main.nf                  # Main workflow entry point
 ```

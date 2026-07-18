@@ -36,11 +36,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so the "last updated" dates are real
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
+      # System libraries the `social` plugin needs to render link-preview cards.
+      - run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libfreetype6-dev libffi-dev libjpeg-dev libpng-dev libz-dev
       - run: pip install -r docs/requirements.txt
-      - run: mkdocs build --strict
+      - run: mkdocs build --strict   # CI=true, so social cards are generated here
       # Downloadable copy of the built site - works on a private repo, no Pages needed.
       - uses: actions/upload-artifact@v4
         with:

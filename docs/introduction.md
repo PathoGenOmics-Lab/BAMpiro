@@ -11,34 +11,93 @@ sequences, and a consolidated interactive quality-control report.
 
 ## Key features
 
-- **Universal bacterial support** - any reference genome + GFF annotation.
-- **Automated reference prep** - indexes genomes and builds SnpEff databases on the fly.
-- **Repeat masking** - `nucmer` (MUMmer4) auto-detects and excludes repetitive
-  regions from variant calling, plus a length-aware `genmap` read filter and optional
-  H37Rv Illumina blind-spot masking ([Zenodo](pathotypr.md#blind-spot-masking-h37rv-problematic-sites),
-  lifted onto any reference).
-- **Robust QC** - `FastP` cleaning and `Kraken2` taxonomic contamination checks.
-- **Variant calling** - `FreeBayes` with customizable ploidy (1 or 2) and strict filtering.
-- **Backbone generation** - "all-sites" VCFs (WT + variants) for phylogenetic supermatrices.
-- **Lineage & drug-resistance typing** - alignment-free (k-mer) MTBC lineage + WHO
-  drug-resistance genotyping with [Pathotypr](pathotypr.md), reference-agnostic and
-  bundled in the container.
-- **Interactive QC report** - a single self-contained HTML dashboard (21 panels)
-  plus a machine-readable per-sample `qc_flags.tsv`, alongside the classic MultiQC
-  report. See [Interactive QC Report](qc-report.md).
-- **Master SNP matrix** - a cohort-wide `<samplesheet>_snp_matrix.tsv` (rows = SNP
-  sites, columns = reference / annotation + per-sample allele frequency & depth) for
-  phylogenetics and downstream analysis (on by default).
-- **Flexible alignment output** - publish alignments as reference-compressed **CRAM**
-  (~40-50% smaller than BAM) via `--output_cram`; variant calling stays on BAM
-  internally and the reference FASTA is published alongside so the CRAMs are
-  self-decodable.
-- **Canonical (H37Rv) numbering** - optionally shows every variant's H37Rv
-  **coordinate** (via an alignment-free k-mer [liftover](pathotypr.md#reference-agnostic-coordinates-k-mer-liftover),
-  so it works for *any* MTBC reference) and **amino-acid** change alongside the
-  mapping-reference ones, with Mycobrowser (`Rv…`) gene links.
+<div class="grid cards" markdown>
+
+-   :material-earth:{ .lg .middle } &nbsp; **Universal bacterial support**
+
+    ---
+
+    Any reference genome + GFF annotation. References are indexed and their SnpEff
+    databases built on the fly.
+
+-   :material-content-cut:{ .lg .middle } &nbsp; **Repeat & blind-spot masking**
+
+    ---
+
+    `nucmer` (MUMmer4) excludes repeats, a length-aware `genmap` filter drops
+    unplaceable reads, plus optional [H37Rv blind-spot masking](pathotypr.md#blind-spot-masking-h37rv-problematic-sites)
+    lifted onto any reference.
+
+-   :material-broom:{ .lg .middle } &nbsp; **Robust QC**
+
+    ---
+
+    `FastP` cleaning and `Kraken2` taxonomic contamination checks on every sample.
+
+-   :material-target:{ .lg .middle } &nbsp; **Variant calling & backbone**
+
+    ---
+
+    `FreeBayes` with configurable ploidy (1 or 2) and strict filtering, plus
+    "all-sites" VCFs (WT + variants) for phylogenetic supermatrices.
+
+-   :material-dna:{ .lg .middle } &nbsp; **Lineage & drug-resistance typing**
+
+    ---
+
+    Alignment-free (k-mer) MTBC lineage + WHO drug-resistance genotyping with
+    [Pathotypr](pathotypr.md) — reference-agnostic and bundled in the container.
+
+-   :material-chart-box:{ .lg .middle } &nbsp; **Interactive QC report**
+
+    ---
+
+    One self-contained HTML dashboard (21 panels) + a machine-readable per-sample
+    `qc_flags.tsv`, alongside the classic MultiQC report. See the
+    [QC report](qc-report.md).
+
+-   :material-table-large:{ .lg .middle } &nbsp; **Master SNP matrix**
+
+    ---
+
+    A cohort-wide `snp_matrix.tsv` (rows = SNP sites, columns = reference /
+    annotation + per-sample allele frequency & depth) for phylogenetics. On by
+    default.
+
+-   :material-package-down:{ .lg .middle } &nbsp; **Flexible alignment output**
+
+    ---
+
+    Publish alignments as reference-compressed **CRAM** (~40-50% smaller than BAM)
+    via `--output_cram`; the reference FASTA is published alongside so the CRAMs
+    stay self-decodable.
+
+-   :material-map-marker-path:{ .lg .middle } &nbsp; **Canonical (H37Rv) numbering**
+
+    ---
+
+    Optionally show every variant's H37Rv **coordinate** (alignment-free k-mer
+    [liftover](pathotypr.md#reference-agnostic-coordinates-k-mer-liftover)) and
+    **amino-acid** change alongside the mapping-reference ones, with Mycobrowser
+    (`Rv…`) gene links.
+
+</div>
 
 ## Workflow summary
+
+```mermaid
+flowchart TD
+    R(["Raw reads (FastQ)"]) --> KR["Kraken2 · taxonomy / contamination"]
+    KR --> FP["FastP · trimming"]
+    FP --> PT{{"Pathotypr · lineage + DR (optional)"}}
+    FP --> BWA["bwa-mem2 · map → merge → mark duplicates → genmap read mask"]
+    BWA --> FB["FreeBayes · variants + all-sites backbone"]
+    FB --> CO["Consensus FASTA"]
+    FB --> SE["SnpEff · annotation (+ optional H37Rv pass)"]
+    CO --> RP[["Interactive QC report + master SNP matrix"]]
+    SE --> RP
+    PT --> RP
+```
 
 1. **Reference** - indexing + repeat masking + SnpEff DB building.
 2. **QC** - read validation → Kraken2 (taxonomy) → FastP (trimming).

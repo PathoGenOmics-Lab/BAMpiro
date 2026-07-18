@@ -27,10 +27,12 @@ Interim** are resistance-associated (the report and any "resistant" count use gr
 associated. `<samplesheet>_dr.tsv` columns: `sample, drug, gene, mutation, grade,
 marker_name, af, dp`.
 
-> **Responsible use.** This is a **genomic screen against the WHO catalogue, not a
-> clinical DST result.** Treat it as a flag for review, not a diagnosis; a call's
-> allele frequency (`af`) and depth (`dp`) matter, and absence of a marker is not
-> proof of susceptibility. When filtering, restrict to grades 1–2 for "resistant".
+!!! danger "Responsible use — a genomic screen, not a clinical DST"
+
+    This is a **genomic screen against the WHO catalogue, not a clinical DST result.**
+    Treat it as a flag for review, not a diagnosis; a call's allele frequency (`af`) and
+    depth (`dp`) matter, and absence of a marker is not proof of susceptibility. When
+    filtering, restrict to grades 1–2 for "resistant".
 
 The marker panels and pre-trained model (Zenodo v1.0.0, DOI
 [10.5281/zenodo.19210044](https://doi.org/10.5281/zenodo.19210044)) and the

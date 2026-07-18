@@ -9,10 +9,14 @@ non-TB template).
 
 ```bash
 nextflow run main.nf \
-    --tsv samples.tsv \
-    --outdir results_bampiro \
-    -profile standard
+    --tsv samples.tsv \         # (1)!
+    --outdir results_bampiro \  # (2)!
+    -profile standard           # (3)!
 ```
+
+1.  **Required.** Your Tab-Separated samplesheet — one row per `(sample, run, reference)`. There is no usable default.
+2.  Where results are written (the directory is created if it does not exist).
+3.  Execution profile. `standard` targets a **SLURM** cluster; use `local` (or `local,docker`) off-cluster.
 
 `--tsv` is **required** — there is no usable default samplesheet, so omitting it fails
 with `Samplesheet not found: samples_legio.tsv` (a leftover placeholder). `-profile
@@ -32,9 +36,11 @@ When it finishes, open `results_bampiro/<samplesheet>_qc_report.html` - the
 consolidated [interactive QC report](qc-report.md). See [Outputs](outputs.md) for
 the full result layout and [Configuration](configuration.md) for every parameter.
 
-> **Prefer a hands-on walkthrough?** The [Jupyter tutorial](tutorial/bampiro_tutorial.ipynb) runs the same
-> journey end-to-end and lets you explore an example cohort's outputs with
-> `pandas` / `matplotlib` — no pipeline run needed.
+!!! tip "Prefer a hands-on walkthrough?"
+
+    The [Jupyter tutorial](tutorial/bampiro_tutorial.ipynb) runs the same journey
+    end-to-end and lets you explore an example cohort's outputs with `pandas` /
+    `matplotlib` — no pipeline run needed.
 
 ## Samplesheet
 

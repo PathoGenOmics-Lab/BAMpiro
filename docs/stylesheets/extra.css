@@ -1,0 +1,16 @@
+/* Status colours for inline icons in tables (feature toggles, QC flag codes). */
+.md-typeset .green { color: #2e7d32; }
+.md-typeset .red   { color: #c62828; }
+.md-typeset .amber { color: #e08e0b; }
+
+[data-md-color-scheme="slate"] .md-typeset .green { color: #66bb6a; }
+[data-md-color-scheme="slate"] .md-typeset .red   { color: #ef5350; }
+[data-md-color-scheme="slate"] .md-typeset .amber { color: #ffb300; }
+
+/* Keep those status icons vertically centred next to the label text. */
+.md-typeset .green svg,
+.md-typeset .red svg,
+.md-typeset .amber svg { vertical-align: text-bottom; }
+
+/* Slightly tighter, evenly sized landing cards. */
+.md-typeset .grid.cards > ul > li { border-radius: 0.4rem; }

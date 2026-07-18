@@ -4,5 +4,11 @@
 #   mkdocs build --strict   # build the static site into ./site
 mkdocs-material>=9.5
 mkdocs-jupyter>=0.24
+mkdocs-git-revision-date-localized-plugin>=1.2   # "last updated" date per page
+# Social link-preview cards (the `social` plugin). Only used in CI, which also
+# installs the cairo/pango system libs; locally the plugin is disabled so these
+# are optional for `mkdocs serve`.
+pillow>=10
+cairosvg>=2.7
 # Optional: versioned docs per release (mike deploy 1.0.1 latest --push)
 # mike>=2.0
