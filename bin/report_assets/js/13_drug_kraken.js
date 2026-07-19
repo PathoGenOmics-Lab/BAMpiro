@@ -128,6 +128,8 @@ function renderDoseTx(){
   svg+='<text x="'+(labW+plotW/2)+'" y="'+(H-2)+'" text-anchor="middle" font-size="10.5" fill="'+TH.mut+'">'+esc(MET.dose.label)+'</text>';
   cats.forEach(function(c,i){
     var arr=groups[c].map(function(o){return o.d;}), cy=top+i*rowH+rowH/2, col=pal[i%pal.length];
+    var gactive=(txf&&st.metaFilter&&st.metaFilter[txf]===c);   // the group label toggles a cohort filter by that treatment
+    svg+='<rect class="dtx-glabel" data-g="'+esc(c)+'" x="0" y="'+(top+i*rowH)+'" width="'+labW+'" height="'+rowH+'" rx="4" fill="#0e8ba8" fill-opacity="'+(gactive?0.12:0)+'" style="cursor:pointer"><title>click to filter the whole report by '+esc(c)+'</title></rect>';
     if(arr.length>=2){var q1=q(arr,0.25),q3=q(arr,0.75);
       svg+='<rect x="'+X(q1).toFixed(1)+'" y="'+(cy-11)+'" width="'+Math.max(1,X(q3)-X(q1)).toFixed(1)+'" height="22" rx="3" fill="'+col+'" fill-opacity="0.14" stroke="'+col+'" stroke-opacity="0.5"/>';}
     var m=med(arr); svg+='<line x1="'+X(m).toFixed(1)+'" y1="'+(cy-12)+'" x2="'+X(m).toFixed(1)+'" y2="'+(cy+12)+'" stroke="'+col+'" stroke-width="2"/>';
@@ -136,18 +138,19 @@ function renderDoseTx(){
       dy=Math.max(-20,Math.min(20,dy));   // keep a crowded x-bin (many samples at one dose) inside its own row band
       var hi=(st.hi==o.s);                 // clickable: highlight the sample everywhere (setHi)
       svg+='<circle class="dtx-dot" data-s="'+esc(o.s)+'" cx="'+x.toFixed(1)+'" cy="'+(cy+dy).toFixed(1)+'" r="'+(hi?5.4:3.4)+'" fill="'+(o.v=='FAIL'?'#e0544f':col)+'" fill-opacity="0.92" stroke="'+(hi?TH.ink:'#fff')+'" stroke-width="'+(hi?1.6:0.6)+'" style="cursor:pointer"><title>'+esc(o.s)+' · '+esc(c)+' · dose '+o.d+' — click to highlight</title></circle>';});
-    svg+='<text x="'+(labW-8)+'" y="'+(cy-1)+'" text-anchor="end" font-size="11" fill="'+TH.ink+'">'+esc(c.length>20?c.slice(0,19)+'…':c)+'</text>'+
-      '<text x="'+(labW-8)+'" y="'+(cy+12)+'" text-anchor="end" font-size="9.5" fill="'+TH.mut+'">n='+arr.length+' · med '+shortv(m,'float')+'</text>';
+    svg+='<text x="'+(labW-8)+'" y="'+(cy-1)+'" text-anchor="end" font-size="11" font-weight="'+(gactive?'700':'400')+'" fill="'+(gactive?'#0e8ba8':TH.ink)+'" style="pointer-events:none">'+esc(c.length>20?c.slice(0,19)+'…':c)+'</text>'+
+      '<text x="'+(labW-8)+'" y="'+(cy+12)+'" text-anchor="end" font-size="9.5" fill="'+TH.mut+'" style="pointer-events:none">n='+arr.length+' · med '+shortv(m,'float')+'</text>';
   });
   svg+='</svg>';
   host.innerHTML=svg;
   Array.prototype.forEach.call(host.querySelectorAll('.dtx-dot'),function(d){d.onclick=function(){setHi(d.getAttribute('data-s'));};});
+  Array.prototype.forEach.call(host.querySelectorAll('.dtx-glabel'),function(r){r.onclick=function(){var g=r.getAttribute('data-g'); applyMetaFilter(txf,(st.metaFilter&&st.metaFilter[txf]===g)?'':g);};});
   var kw=kruskalWallis(withData.map(function(c){return groups[c].map(function(o){return o.d;});}));
   if(cap){
     if(kw){var sig=kw.p<0.05;
       cap.innerHTML='<b>Kruskal–Wallis</b> H = '+kw.H.toFixed(2)+' · p = '+pfmt(kw.p)+' · '+kw.k+' groups, N = '+kw.N+
         ' — '+(sig?'<span class="sc-sig">dose differs across treatment groups</span>':'no significant difference in dose across groups')+
-        '. <span class="krk-mut">Non-parametric rank test over the full cohort; groups with &lt; 2 dosed samples are drawn but not tested.</span>';
+        '. <span class="krk-mut">Non-parametric rank test over the full cohort; groups with &lt; 2 dosed samples are drawn but not tested. Click a group name to filter the whole report by it; click a point to highlight that sample.</span>';
     } else cap.innerHTML='<span class="krk-mut">Not enough dosed samples per group to test.</span>';
   }
 }
@@ -183,10 +186,15 @@ function renderVarDose(){
   if(!D){ if(sec)sec.style.display='none'; if(nv)nv.style.display='none'; return; }
   if(sec)sec.style.display=''; if(nv)nv.style.display='';
   var M=D.M, didx=D.didx, dose=D.dose, tests=D.tests, nsig=D.nsig;
+  var vq=(st.vardoseq||'').toLowerCase();   // search box (gene / position / amino acid), filters the view only
+  var flt=vq?tests.filter(function(t){var r=t.r;
+    return (r.gene&&r.gene.toLowerCase().indexOf(vq)>=0)||String(r.pos).indexOf(vq)>=0||(r.aa&&r.aa.toLowerCase().indexOf(vq)>=0)||(r.pos_h37rv&&(''+r.pos_h37rv).toLowerCase().indexOf(vq)>=0);}):tests;
   // display order: sortable by any column; default is |rho| desc (the memoised base order)
   function keyval(t){var k=vardoseSort.k; return k=='carriers'?t.carriers:(k=='rho'?t.rho:(k=='p'?t.p:(k=='q'?t.q:Math.abs(t.rho))));}
-  var ord=tests.slice().sort(function(a,b){var d=keyval(a)-keyval(b); if(!d)d=Math.abs(b.rho)-Math.abs(a.rho); return vardoseSort.asc?d:-d;});
-  // selected variant tracked by a stable key so it survives re-sorts
+  var ord=flt.slice().sort(function(a,b){var d=keyval(a)-keyval(b); if(!d)d=Math.abs(b.rho)-Math.abs(a.rho); return vardoseSort.asc?d:-d;});
+  if(!ord.length){ host.innerHTML='<div class="pad nd">no variant matches &#8220;'+esc(st.vardoseq)+'&#8221;</div>';
+    if(cap)cap.innerHTML='<span class="krk-mut">No variant matches the search. '+tests.length+' variant(s) were tested against dose; clear the box to see them.</span>'; return; }
+  // selected variant tracked by a stable key so it survives re-sorts / filtering
   var sel=null,selIdx=-1;
   for(var si=0;si<ord.length;si++){ if(_vkey(ord[si])===vardoseSelKey){ sel=ord[si]; selIdx=si; break; } }
   if(!sel){ sel=ord[0]; selIdx=0; vardoseSelKey=_vkey(sel); }
@@ -223,6 +231,6 @@ function renderVarDose(){
   Array.prototype.forEach.call(host.querySelectorAll('.vd-sortable'),function(h){h.onclick=function(){var sk=h.getAttribute('data-sk');
     if(vardoseSort.k==sk)vardoseSort.asc=!vardoseSort.asc; else{vardoseSort.k=sk; vardoseSort.asc=(sk=='p'||sk=='q');}  // p/q default ascending (most significant first)
     renderVarDose();};});
-  if(cap)cap.innerHTML=tests.length+' variant(s) tested against dose (&#8805; 3 carriers) · <b'+(nsig?' class="sc-sig"':'')+'>'+nsig+' significant at FDR q &#8804; 0.05</b>. <span class="krk-mut">Spearman rank correlation of per-sample allele frequency (0 where the site is reference) vs dose over the '+didx.length+' dosed samples; Benjamini–Hochberg q across all tested variants. Click a row to plot it, a header to sort, a point to highlight the sample. Complements the Dose × treatment test.</span>';
+  if(cap)cap.innerHTML=tests.length+' variant(s) tested against dose (&#8805; 3 carriers) · <b'+(nsig?' class="sc-sig"':'')+'>'+nsig+' significant at FDR q &#8804; 0.05</b>'+(vq?(' · showing <b>'+ord.length+'</b> matching &#8220;'+esc(st.vardoseq)+'&#8221;'):'')+'. <span class="krk-mut">Spearman rank correlation of per-sample allele frequency (0 where the site is reference) vs dose over the '+didx.length+' dosed samples; Benjamini–Hochberg q across all tested variants. Click a row to plot it, a header to sort, a point to highlight the sample. Complements the Dose × treatment test.</span>';
 }
 

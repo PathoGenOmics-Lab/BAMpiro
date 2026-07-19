@@ -1,6 +1,6 @@
 var extraSet={}; R.extra.forEach(function(e){extraSet[e.key]=1;R.metrics.push(e);R.defs[e.key]=R.defs[e.key]||['Auto-detected metric from the summary TSV (not a named QC metric).',''];});
 var st={sortKey:'v',asc:false,q:'',onlyFlagged:false,hidden:{},hi:null,flagFilter:null,ptype:'beeswarm',   // default view: worst QC first (a returning user's saved sort overrides this)
-        sx:'mean_depth',sy:'breadth_pct',excl:{},detail:null,colorBy:'qc',groupLin:false,ancOnly:null,linFilter:null,metaFilter:{},gtrack:'missing',maskOn:false,gsel:null,gzoom:null,gbq:'',hotq:'',pnpsq:'',colf:{},showColF:false};
+        sx:'mean_depth',sy:'breadth_pct',excl:{},detail:null,colorBy:'qc',groupLin:false,ancOnly:null,linFilter:null,metaFilter:{},gtrack:'missing',maskOn:false,gsel:null,gzoom:null,gbq:'',hotq:'',pnpsq:'',vardoseq:'',colf:{},showColF:false};
 var SGEO=null, GGEO=null;   // scatter + genome brush geometry caches (for inverse-mapping the rubber-band)
 var _thdb,_qdb,_mxdb,_cfdb;  // debounce timers: keep live inputs snappy at cohort scale (defer heavy re-renders)
 R.extra.forEach(function(e){st.hidden[e.key]=1;});

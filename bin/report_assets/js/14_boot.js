@@ -33,7 +33,7 @@ Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),functio
   if(cn)cn.onclick=function(e){e.preventDefault();Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.checked=false;st.hidden[cb.getAttribute('data-k')]=1;});renderTable();saveState();};})();
 el('q').oninput=function(e){st.q=e.target.value.toLowerCase().trim();renderTable();clearTimeout(_qdb);_qdb=setTimeout(function(){renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderTemporal();},160);};
 // per-panel gene search (Functional gene burden / Variable genes / pN-pS): filter each gene table by gene name
-[['gbq','gbq',renderGeneBurden],['hotq','hotq',renderHotspots],['pnpsq','pnpsq',renderPnps]].forEach(function(w){var inp=el(w[0]);if(inp)inp.oninput=function(e){st[w[1]]=e.target.value.trim();w[2]();};});
+[['gbq','gbq',renderGeneBurden],['hotq','hotq',renderHotspots],['pnpsq','pnpsq',renderPnps],['vardoseq','vardoseq',renderVarDose]].forEach(function(w){var inp=el(w[0]);if(inp)inp.oninput=function(e){st[w[1]]=e.target.value.trim();w[2]();};});
 el('of').onchange=function(e){st.onlyFlagged=e.target.checked;renderAll();};
 Array.prototype.forEach.call(document.querySelectorAll('#ptype button'),function(b){b.onclick=function(){st.ptype=b.getAttribute('data-t');
   Array.prototype.forEach.call(document.querySelectorAll('#ptype button'),function(x){x.classList.toggle('on',x==b);});renderPlots();};});
@@ -254,10 +254,16 @@ if(R.n_ancient){el('ancfilter').innerHTML='<span class="seg" id="ancseg"><button
   host.innerHTML='<span class="metaflt" title="filter the whole report by a samplesheet annotation column">'+
     flds.map(function(f){return '<label class="metasel">'+esc(f)+' <select data-mf="'+esc(f)+'"><option value="">all</option>'+
       vals[f].map(function(v){return '<option value="'+esc(v)+'">'+esc(v)+'</option>';}).join('')+'</select></label>';}).join('')+'</span>';
-  Array.prototype.forEach.call(host.querySelectorAll('select'),function(sel){sel.onchange=function(){
-    var f=sel.getAttribute('data-mf'); if(sel.value)st.metaFilter[f]=sel.value; else delete st.metaFilter[f];
-    sel.classList.toggle('on',!!sel.value); renderAll();};});
+  Array.prototype.forEach.call(host.querySelectorAll('select'),function(sel){sel.onchange=function(){ applyMetaFilter(sel.getAttribute('data-mf'), sel.value); };});
 })();
+// set/clear a cohort metadata filter and keep the toolbar dropdown in sync; shared by the dropdowns
+// and the clickable Dose x treatment group labels.
+function applyMetaFilter(field,val){
+  if(val)st.metaFilter[field]=val; else delete st.metaFilter[field];
+  Array.prototype.forEach.call(document.querySelectorAll('#metafilter select'),function(s){
+    if(s.getAttribute('data-mf')===field){ s.value=val||''; s.classList.toggle('on',!!val); }});
+  renderAll();
+}
 // provenance / run-manifest header (self-documenting for a citable exclusion set)
 (function(){var p=R.provenance||{},items=[];
   items.push('reference '+(p.reference||'NA')+(R.genome_len?' ('+R.genome_len.toLocaleString('en-US')+' bp)':''));
