@@ -150,3 +150,65 @@ function renderDoseTx(){
   }
 }
 
+// ---- Variant x dose: per-variant allele frequency correlated with dose (Spearman + BH-FDR) ----
+var vardoseSel=0, _vdCache, _vdDone=false;
+function _vdCompute(){   // cohort-fixed scan -> memoized: identical on every renderAll, so compute once; only the DOM render below is cheap
+  if(_vdDone)return _vdCache; _vdDone=true; _vdCache=null;
+  var M=R.snp_matrix;
+  if(!(MET.dose&&M&&M.rows&&M.rows.length&&M.samples&&M.samples.length))return null;
+  var dbys={}; R.samples.forEach(function(s){ if(s.m.dose!=null)dbys[s.s]=s.m.dose; });
+  var didx=[],dose=[]; M.samples.forEach(function(sid,i){ if(dbys[sid]!=null){didx.push(i);dose.push(dbys[sid]);} });
+  if(didx.length<6)return null;                                 // need enough dosed samples to correlate
+  var tests=[];
+  M.rows.forEach(function(r){                                   // AF absent -> 0 (reference); need >= 3 carriers
+    var af=[],carriers=0; for(var k=0;k<didx.length;k++){var c=r.cells[didx[k]],a=c?c[0]:0; af.push(a); if(a>0)carriers++;}
+    if(carriers<3)return;
+    var rho=spearman(af,dose); if(rho==null)return;             // null when the AF vector has no variance (fixed site)
+    tests.push({r:r,af:af,rho:rho,p:spearmanP(rho,didx.length),n:didx.length,carriers:carriers});
+  });
+  if(!tests.length)return null;
+  var qs=bhFDR(tests.map(function(t){return t.p;})); tests.forEach(function(t,i){t.q=qs[i];});
+  tests.sort(function(a,b){ return (Math.abs(b.rho)-Math.abs(a.rho))||(a.q-b.q); });
+  var nsig=0; tests.forEach(function(t){ if(t.q<=0.05)nsig++; });
+  _vdCache={M:M,didx:didx,dose:dose,tests:tests,nsig:nsig};
+  return _vdCache;
+}
+function renderVarDose(){
+  var host=el('vardose_body'), sec=el('vardose'), cap=el('vardose_caption'), nv=el('nav-vardose');
+  if(!host)return;
+  var D=_vdCompute();
+  if(!D){ if(sec)sec.style.display='none'; if(nv)nv.style.display='none'; return; }
+  if(sec)sec.style.display=''; if(nv)nv.style.display='';
+  var M=D.M, didx=D.didx, dose=D.dose, tests=D.tests, nsig=D.nsig;
+  if(vardoseSel>=tests.length)vardoseSel=0;
+  var sel=tests[vardoseSel];
+  // scatter of the selected variant: dose (x) vs AF (y)
+  var W=Math.min(440,Math.max(300,Math.round((host.clientWidth||760)*0.42))),Hs=250,padL=44,padB=32,padT=12,padR=12;
+  var dlo=Math.min.apply(null,dose),dhi=Math.max.apply(null,dose); if(dhi<=dlo)dhi=dlo+1;
+  function X(d){return padL+(d-dlo)/(dhi-dlo)*(W-padL-padR);}
+  function Y(a){return Hs-padB-a*(Hs-padB-padT);}
+  var svg='<svg width="'+W+'" height="'+Hs+'" style="display:block;max-width:100%">';
+  [0,0.25,0.5,0.75,1].forEach(function(t){var y=Y(t);svg+='<line x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y.toFixed(1)+'" stroke="'+TH.grid+'"/><text x="'+(padL-6)+'" y="'+(y+3).toFixed(1)+'" text-anchor="end" font-size="9" fill="'+TH.mut+'">'+t.toFixed(2).replace(/^0/,'')+'</text>';});
+  [0,0.5,1].forEach(function(t){var d=dlo+t*(dhi-dlo),x=X(d);svg+='<text x="'+x.toFixed(1)+'" y="'+(Hs-padB+13)+'" text-anchor="middle" font-size="9" fill="'+TH.mut+'">'+shortv(d,'float')+'</text>';});
+  for(var k=0;k<didx.length;k++){var x=X(dose[k]),y=Y(sel.af[k]);svg+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="3.6" fill="#0e8ba8" fill-opacity="0.82" stroke="#fff" stroke-width="0.6"><title>'+esc(M.samples[didx[k]])+' · dose '+shortv(dose[k],'float')+' · AF '+sel.af[k].toFixed(2)+'</title></circle>';}
+  svg+='<text x="'+((padL+W-padR)/2).toFixed(1)+'" y="'+(Hs-3)+'" text-anchor="middle" font-size="10" fill="'+TH.mut+'">'+esc(MET.dose.label)+'</text>'+
+    '<text x="11" y="'+((padT+Hs-padB)/2).toFixed(1)+'" text-anchor="middle" font-size="10" fill="'+TH.mut+'" transform="rotate(-90 11 '+((padT+Hs-padB)/2).toFixed(1)+')">allele frequency</text></svg>';
+  function vlabel(r){return '<b>'+esc(r.gene||r.contig)+'</b>'+geneRvTag(r.gene)+' '+refPos(r.pos,r.pos_h37rv)+' '+esc(r.ref)+'&#8594;'+esc(r.alt);}
+  function rcol(rho){return rho>0?'#c0453b':'#3f6bbf';}
+  var MAXT=200, shown=tests.slice(0,MAXT);
+  var rowsH=shown.map(function(t,i){
+    return '<tr class="vd-row'+(i===vardoseSel?' on':'')+'" data-i="'+i+'"><td class="vd-lbl">'+vlabel(t.r)+(t.r.aa?(' <span class="snpmx-aa">'+aaDual(t.r.aa,t.r.aa_h37rv)+'</span>'):'')+'</td>'+
+      '<td>'+t.carriers+'/'+t.n+'</td>'+
+      '<td class="vd-num" style="color:'+rcol(t.rho)+'">'+(t.rho>0?'+':'&#8722;')+Math.abs(t.rho).toFixed(2)+'</td>'+
+      '<td class="vd-num">'+pfmt(t.p)+'</td>'+
+      '<td class="vd-num"'+(t.q<=0.05?' style="font-weight:600"':'')+'>'+pfmt(t.q)+(t.q<=0.05?' <span class="sc-sig">*</span>':'')+'</td></tr>';
+  }).join('');
+  host.innerHTML='<div class="vd-wrap"><div class="vd-scatter">'+
+    '<div class="vd-selhdr">'+vlabel(sel.r)+(sel.r.aa?(' <span class="snpmx-aa">'+aaDual(sel.r.aa,sel.r.aa_h37rv)+'</span>'):'')+
+    '<div class="vd-selstat">Spearman &#961; = <b style="color:'+rcol(sel.rho)+'">'+(sel.rho>0?'+':'&#8722;')+Math.abs(sel.rho).toFixed(2)+'</b> · p = '+pfmt(sel.p)+' · q = '+pfmt(sel.q)+' · '+sel.carriers+'/'+sel.n+' carriers</div></div>'+svg+'</div>'+
+    '<div class="vd-tablewrap"><table class="vd-table"><thead><tr><th class="vd-lbl">Variant</th><th>carriers</th><th class="vd-num">&#961;</th><th class="vd-num">p</th><th class="vd-num">q (FDR)</th></tr></thead><tbody>'+rowsH+'</tbody></table>'+
+    (tests.length>MAXT?('<div class="krk-mut" style="padding:6px 4px">showing the top '+MAXT+' of '+tests.length+' tested variants (by |&#961;|)</div>'):'')+'</div></div>';
+  Array.prototype.forEach.call(host.querySelectorAll('.vd-row'),function(tr){tr.onclick=function(){vardoseSel=+tr.getAttribute('data-i');renderVarDose();};});
+  if(cap)cap.innerHTML=tests.length+' variant(s) tested against dose (&#8805; 3 carriers) · <b'+(nsig?' class="sc-sig"':'')+'>'+nsig+' significant at FDR q &#8804; 0.05</b>. <span class="krk-mut">Spearman rank correlation of per-sample allele frequency (0 where the site is reference) vs dose over the '+didx.length+' dosed samples; Benjamini–Hochberg q across all tested variants. Complements the Dose × treatment test.</span>';
+}
+

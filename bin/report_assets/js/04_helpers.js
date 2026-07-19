@@ -135,4 +135,7 @@ function kruskalWallis(groups){
   return {H:H,p:chiSqP(H,k-1),k:k,N:N,df:k-1};
 }
 function pfmt(p){if(p==null)return'n/a';if(p<1e-4)return'< 1e-4';if(p<1e-3)return p.toExponential(1);return p.toFixed(p<0.1?4:3);}
+// Benjamini-Hochberg FDR: p-values (input order) -> q-values (input order), monotone step-up
+function bhFDR(ps){var n=ps.length; if(!n)return[]; var idx=ps.map(function(p,i){return [p,i];}).sort(function(a,b){return a[0]-b[0];});
+  var q=new Array(n),run=1; for(var k=n-1;k>=0;k--){var qv=Math.min(1,idx[k][0]*n/(k+1)); if(qv<run)run=qv; q[idx[k][1]]=run;} return q;}
 /* ---- per-panel analytical read-outs (one insight per panel; each is standalone, computed from R) ---- */

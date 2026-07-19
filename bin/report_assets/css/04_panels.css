@@ -177,3 +177,19 @@ html.dark .dyn-search,html.dark .gsearch,html.dark .controls input[type=search]{
 .sc-corr{font-size:12px;color:var(--mut);text-align:center;margin:9px 0 2px}
 .sc-corr b{color:var(--ink,var(--label));font-variant-numeric:tabular-nums}
 .sc-sig{color:var(--accent);font-weight:600}
+
+/* Variant x dose: scatter + ranked correlation table */
+.vd-wrap{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
+.vd-scatter{flex:0 0 auto;min-width:300px}
+.vd-selhdr{font-size:12.5px;color:var(--label);margin-bottom:6px}
+.vd-selstat{font-size:11.5px;color:var(--mut);margin-top:3px;font-variant-numeric:tabular-nums}
+.vd-tablewrap{flex:1 1 340px;min-width:300px;max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.vd-table{width:100%;border-collapse:collapse;font-size:12px}
+.vd-table thead th{position:sticky;top:0;background:var(--panel);z-index:1;text-align:right;padding:7px 10px;color:var(--mut);font-weight:600;border-bottom:1px solid var(--line)}
+.vd-table th.vd-lbl{text-align:left}
+.vd-table td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:right}
+.vd-table td.vd-lbl{text-align:left}
+.vd-num{font-variant-numeric:tabular-nums}
+.vd-row{cursor:pointer}
+.vd-row:hover{background:var(--soft)}
+.vd-row.on{background:var(--hl)}

@@ -56,7 +56,7 @@ Grouped as in the sidebar:
 | **Correlation & structure** | Metric-pair scatter (box-select to basket, with a Spearman *r* + *p* read-out) · Metric correlation heatmap · QC-space PCA (+ most-unusual-samples table) · Divergence vs completeness · **Dose × treatment** (per-group dose distribution + Kruskal–Wallis test) |
 | **Genome & genes** | Consensus completeness · Genome landscape (per-position callability / variant heatmap, gene search, mask-region toggle) · Functional annotation (snpEff classes) · Functional gene burden · Variable genes (SNP-density hotspots) |
 | **Evolution** | Temporal sampling overview · Selection pN/pS (dN/dS, eskaks) · aDNA damage authentication (mapDamage) |
-| **Variants over time** | **SNP dynamics** (allele-frequency trajectories over time, per-timepoint DP bars, zoom, series filter) · **Epistasis** (co-varying variant pairs, permutation *p* + BH-FDR *q*, cards / matrix / table views) · **SNP matrix** (site × sample AF matrix, metadata column filter, TSV export) · **Drug resistance** (sample × drug WHO-grade matrix) |
+| **Variants over time** | **SNP dynamics** (allele-frequency trajectories over time, per-timepoint DP bars, zoom, series filter) · **Epistasis** (co-varying variant pairs, permutation *p* + BH-FDR *q*, cards / matrix / table views) · **SNP matrix** (site × sample AF matrix, metadata column filter, TSV export) · **Variant × dose** (per-variant AF ~ dose Spearman scan with BH-FDR) · **Drug resistance** (sample × drug WHO-grade matrix) |
 
 ## Optional inputs
 
@@ -130,3 +130,12 @@ whether dose differs across the treatment groups (a Mann–Whitney-equivalent wh
 are two groups). The test runs over the whole cohort; groups with fewer than two dosed
 samples are drawn but not tested, and the panel hides itself when there is no `dose`
 column or no treatment column.
+
+When per-sample **VCFs** are also present, a **Variant × dose** panel (under *Variants
+over time*) runs an association scan: for every variant site it correlates the per-sample
+**allele frequency** (0 where the site is reference) with dose across the dosed samples
+(**Spearman** ρ + two-sided *p*), applies a **Benjamini–Hochberg FDR** across all tested
+variants, and ranks them — so you can see which mutations track the dose while the
+multiple-testing correction keeps incidental hits in check. Click any row to plot that
+variant's allele-frequency-vs-dose scatter. Sites carried by fewer than three samples (or
+with no allele-frequency variation) are skipped.
