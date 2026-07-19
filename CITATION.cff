@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use BAMpiro, please cite it as below."
+title: "BAMpiro: bacterial short-read mapping, variant calling and lineage/drug-resistance typing"
+abstract: >-
+  A Nextflow (DSL2) pipeline for short-read bacterial / MTBC mapping, variant calling,
+  consensus, alignment-free lineage + WHO drug-resistance typing, and a single
+  self-contained interactive QC report.
+type: software
+authors:
+  - family-names: Ruiz-Rodriguez
+    given-names: Paula
+    affiliation: "I2SysBio (University of Valencia - CSIC)"
+  - family-names: Coscolla
+    given-names: Mireia
+    affiliation: "I2SysBio (University of Valencia - CSIC)"
+repository-code: "https://github.com/PathoGenOmics-Lab/BAMpiro"
+url: "https://github.com/PathoGenOmics-Lab/BAMpiro"
+license: GPL-3.0
+version: 1.0.1
+# Add `doi:` here once the release is archived on Zenodo (mints a persistent software DOI).
+keywords:
+  - bioinformatics
+  - Nextflow
+  - variant-calling
+  - Mycobacterium tuberculosis
+  - drug-resistance
+  - quality-control

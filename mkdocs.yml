@@ -1,0 +1,148 @@
+site_name: BAMpiro
+site_description: General bacterial short-read mapping, variant calling & lineage/DR typing
+site_author: Paula Ruiz-Rodriguez, Mireia Coscolla
+site_url: https://pathogenomics-lab.github.io/BAMpiro/
+copyright: Copyright &copy; Ruiz-Rodriguez &amp; Coscolla &middot; GPL-3.0
+
+repo_url: https://github.com/PathoGenOmics-Lab/BAMpiro
+repo_name: PathoGenOmics-Lab/BAMpiro
+edit_uri: edit/indel-mask/docs/
+
+docs_dir: docs
+
+theme:
+  name: material
+  logo: assets/bampiro2.png
+  favicon: assets/bampiro2.png
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: deep purple
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: deep purple
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.tooltips
+    - content.action.edit
+
+nav:
+  - Home: README.md
+  - Introduction: introduction.md
+  - Tutorials:
+      - Overview: tutorials/index.md
+      - 1. Your first run: tutorials/first-run.md
+      - 2. The samplesheet: tutorials/samplesheet.md
+      - 3. Configuring a run: tutorials/configuring-a-run.md
+      - 4. Reading the QC report: tutorials/reading-the-qc-report.md
+      - 5. Lineage & DR typing: tutorials/lineage-and-dr-typing.md
+      - 6. Building a phylogeny: tutorials/building-a-phylogeny.md
+      - "Longitudinal & within-host analysis": tutorials/longitudinal-analysis.md
+      - Running a non-TB organism: tutorials/other-organisms.md
+      - "Analysing outputs (Jupyter)": tutorial/bampiro_tutorial.ipynb
+  - User Guide:
+      - Installation: installation.md
+      - Quick Start: quickstart.md
+      - Configuration: configuration.md
+      - Troubleshooting: troubleshooting.md
+  - Analyses:
+      - Interactive QC Report: qc-report.md
+      - Lineage & Drug-Resistance Typing: pathotypr.md
+  - Reference:
+      - Outputs: outputs.md
+      - From outputs to a phylogeny: downstream.md
+
+not_in_nav: |
+  tutorial/README.md
+
+exclude_docs: |
+  requirements.txt
+  includes/
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+  links:
+    not_found: warn
+    anchors: warn
+    unrecognized_links: warn
+
+plugins:
+  - search
+  - git-revision-date-localized:
+      enable_creation_date: false
+      fallback_to_build_date: true
+      type: date
+  - mkdocs-jupyter:
+      execute: false
+      include_source: true
+      ignore_h1_titles: true
+  # Social link-preview cards. Only builds in CI (needs cairo/pango system libs);
+  # skipped locally so `mkdocs serve` needs no extra dependencies.
+  - social:
+      enabled: !ENV [CI, false]
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      auto_append:
+        - includes/abbreviations.md
+      base_path:
+        - docs
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/PathoGenOmics-Lab/BAMpiro

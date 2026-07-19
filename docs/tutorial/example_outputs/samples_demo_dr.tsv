@@ -1,0 +1,14 @@
+sample	drug	gene	mutation	grade	marker_name	af	dp
+TB-P1-d180	INH	katG	p.Ser315Thr	1) Assoc w R	katG_S315T	0.98	54
+TB-P1-d180	RIF	rpoB	p.Ser450Leu	1) Assoc w R	rpoB_S450L	0.95	52
+TB-P1-d180	INH	inhA	c.-15C>T	1) Assoc w R	inhA_-15	0.92	50
+TB-P1-d120	INH	katG	p.Ser315Thr	1) Assoc w R	katG_S315T	0.71	48
+TB-2020-C	RIF	rpoB	p.Ser450Leu	1) Assoc w R	rpoB_S450L	1.0	60
+TB-2020-C	EMB	embB	p.Met306Val	2) Assoc w R - Interim	embB_M306V	0.97	58
+TB-P2-t4	EMB	embB	p.Met306Val	2) Assoc w R - Interim	embB_M306V	0.97	55
+TB-P2-t4	INH	katG	p.Ser315Thr	1) Assoc w R	katG_S315T	0.93	53
+TB-P2-t4	FQ	gyrA	p.Ala90Val	1) Assoc w R	gyrA_A90V	0.86	51
+TB-P2-t1	PZA	pncA	p.Val125fs	1) Assoc w R	pncA_fs	0.86	40
+TB-P3-v3	STR	rpsL	p.Lys43Arg	1) Assoc w R	rpsL_K43R	0.95	47
+TB-2020-D	FQ	gyrA	p.Ala90Val	1) Assoc w R	gyrA_A90V	1.0	62
+TB-2022-F	INH	katG	p.Ser315Thr	1) Assoc w R	katG_S315T	1.0	59

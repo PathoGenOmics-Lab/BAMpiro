@@ -1,0 +1,20 @@
+reference	contig	pos	ref_allele	alt_allele	gene	effect	aa_change	TB-2019-A|AF	TB-2019-A|DP	TB-2019-B|AF	TB-2019-B|DP	TB-2020-C|AF	TB-2020-C|DP	TB-2020-D|AF	TB-2020-D|DP	TB-2021-E|AF	TB-2021-E|DP	TB-2022-F|AF	TB-2022-F|DP	TB-P1-d0|AF	TB-P1-d0|DP	TB-P1-d120|AF	TB-P1-d120|DP	TB-P1-d180|AF	TB-P1-d180|DP	TB-P1-d60|AF	TB-P1-d60|DP	TB-P2-t1|AF	TB-P2-t1|DP	TB-P2-t2|AF	TB-P2-t2|DP	TB-P2-t3|AF	TB-P2-t3|DP	TB-P2-t4|AF	TB-P2-t4|DP	TB-P3-v1|AF	TB-P3-v1|DP	TB-P3-v2|AF	TB-P3-v2|DP	TB-P3-v3|AF	TB-P3-v3|DP
+NC_000962.3	NC_000962.3	7570	C	T	gyrA	missense_variant	p.Ala90Val							1.0000	55																	0.4182	55	0.8545	55						
+NC_000962.3	NC_000962.3	100500	C	T	Rv0500	synonymous_variant	p.Ala1Ala					1.0000	55					1.0000	55	1.0000	55	1.0000	55	1.0000	55	1.0000	55														
+NC_000962.3	NC_000962.3	300500	G	A	Rv0500	synonymous_variant	p.Ala1Ala					1.0000	55					1.0000	55	1.0000	55	1.0000	55	1.0000	55	1.0000	55														
+NC_000962.3	NC_000962.3	500500	T	C	Rv0500	synonymous_variant	p.Ala1Ala									1.0000	55																			1.0000	55	1.0000	55	1.0000	55
+NC_000962.3	NC_000962.3	700500	A	G	Rv0500	synonymous_variant	p.Ala1Ala									1.0000	55																			1.0000	55	1.0000	55	1.0000	55
+NC_000962.3	NC_000962.3	761110	C	T	rpoB	missense_variant	p.His445Tyr															0.1091	55	0.3455	55																
+NC_000962.3	NC_000962.3	761155	C	T	rpoB	missense_variant	p.Ser450Leu					1.0000	55									0.5455	55	0.9455	55	0.1455	55														
+NC_000962.3	NC_000962.3	781687	A	G	rpsL	missense_variant	p.Lys43Arg									1.0000	55																			0.1091	55	0.5818	55	0.9455	55
+NC_000962.3	NC_000962.3	900500	C	A	Rv0500	synonymous_variant	p.Ala1Ala			1.0000	55			1.0000	55													1.0000	55	1.0000	55	1.0000	55	1.0000	55						
+NC_000962.3	NC_000962.3	1100500	G	T	Rv0500	synonymous_variant	p.Ala1Ala			1.0000	55			1.0000	55													1.0000	55	1.0000	55	1.0000	55	1.0000	55						
+NC_000962.3	NC_000962.3	1234567	A	G	Rv1105	synonymous_variant	p.Gly40Gly													0.1091	55	0.7273	55	0.9273	55	0.4000	55														
+NC_000962.3	NC_000962.3	1300500	A	G	Rv0500	synonymous_variant	p.Ala1Ala	1.0000	55																																
+NC_000962.3	NC_000962.3	1305000	C	T	Rv1000	synonymous_variant	p.Ala1Ala	1.0000	55																																
+NC_000962.3	NC_000962.3	1674481	C	T	inhA	upstream_gene_variant	c.-15C>T													0.0364	55	0.6545	55	0.9273	55	0.2909	55														
+NC_000962.3	NC_000962.3	2155168	G	C	katG	missense_variant	p.Ser315Thr	1.0000	55									1.0000	55	0.0182	55	0.7091	55	0.9818	55	0.3455	55			0.2000	55	0.5455	55	0.9273	55						
+NC_000962.3	NC_000962.3	2288900	G	A	pncA	frameshift_variant	p.Val125fs																					0.8545	55	0.5273	55	0.2182	55	0.0364	55						
+NC_000962.3	NC_000962.3	2500500	A	C	Rv0500	synonymous_variant	p.Ala1Ala					1.0000	55					1.0000	55	1.0000	55	1.0000	55	1.0000	55	1.0000	55														
+NC_000962.3	NC_000962.3	2726200	C	T	ahpC	upstream_gene_variant	c.-48C>T																													0.9091	55	0.4182	55	0.0545	55
+NC_000962.3	NC_000962.3	4247729	A	G	embB	missense_variant	p.Met306Val					0.9636	55															0.1455	55	0.4545	55	0.7455	55	0.9636	55						

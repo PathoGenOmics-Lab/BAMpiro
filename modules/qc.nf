@@ -51,7 +51,7 @@ process KRAKEN_FILTER_PE {
     memory '80 GB'
     
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), path(r2), val(refId), val(taxId)
@@ -65,13 +65,23 @@ process KRAKEN_FILTER_PE {
     '''
     set -euo pipefail
     prefix="!{sampleId}__!{runId}"
-    
-    # Download the KrakenTools script dynamically
-    wget -qO extract_kraken_reads.py "!{params.krakentools_url}"
+
+    # KrakenTools helper: reuse the vendored copy in bin/ if present, else fetch it (no repeat
+    # download per task once vendored, and no network dependency).
+    if [ -f "!{projectDir}/bin/extract_kraken_reads.py" ]; then
+      cp "!{projectDir}/bin/extract_kraken_reads.py" extract_kraken_reads.py
+    else
+      wget -qO extract_kraken_reads.py "!{params.krakentools_url}"
+    fi
     chmod +x extract_kraken_reads.py
 
+    # --memory-mapping (optional): share the DB in RAM across parallel tasks instead of each
+    # loading the whole DB -> much lower peak memory.
+    MM=""
+    if [[ "!{params.kraken_memory_mapping}" == "true" ]]; then MM="--memory-mapping"; fi
+
     # Run Kraken2
-    kraken2 --db !{kraken_db} --threads !{task.cpus} --paired !{r1} !{r2} \
+    kraken2 --db !{kraken_db} --threads !{task.cpus} $MM --paired !{r1} !{r2} \
       --output kraken.output --report ${prefix}.kraken.report
 
     # Filter reads based on TaxID
@@ -91,7 +101,7 @@ process KRAKEN_FILTER_SE {
     memory '80 GB'
     
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), val(refId), val(taxId)
@@ -105,11 +115,19 @@ process KRAKEN_FILTER_SE {
     '''
     set -euo pipefail
     prefix="!{sampleId}__!{runId}"
-    
-    wget -qO extract_kraken_reads.py "!{params.krakentools_url}"
+
+    # KrakenTools helper: reuse the vendored copy in bin/ if present, else fetch it.
+    if [ -f "!{projectDir}/bin/extract_kraken_reads.py" ]; then
+      cp "!{projectDir}/bin/extract_kraken_reads.py" extract_kraken_reads.py
+    else
+      wget -qO extract_kraken_reads.py "!{params.krakentools_url}"
+    fi
     chmod +x extract_kraken_reads.py
 
-    kraken2 --db !{kraken_db} --threads !{task.cpus} !{r1} \
+    MM=""
+    if [[ "!{params.kraken_memory_mapping}" == "true" ]]; then MM="--memory-mapping"; fi
+
+    kraken2 --db !{kraken_db} --threads !{task.cpus} $MM !{r1} \
       --output kraken.output --report ${prefix}.kraken.report
 
     python3 extract_kraken_reads.py -k kraken.output -r ${prefix}.kraken.report \
@@ -123,10 +141,10 @@ process KRAKEN_FILTER_SE {
 process FASTP_PE {
     tag "fastp PE: ${sampleId}"
     cpus 4
-    memory '8 GB'
+    memory { 4.GB * task.attempt }
     
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), path(r2), val(refId), val(taxId)
@@ -134,7 +152,7 @@ process FASTP_PE {
     output:
     tuple val(sampleId), val(runId), path("${sampleId}__${runId}_R1.clean.fq.gz"), path("${sampleId}__${runId}_R2.clean.fq.gz"), val(refId), val(taxId), emit: pe_reads
     tuple val(sampleId), val(runId), path("${sampleId}__${runId}_se_combined.fq.gz"), val(refId), val(taxId), emit: se_reads
-    path("${sampleId}__${runId}_fastp.json"), emit: json
+    tuple val(sampleId), path("${sampleId}__${runId}_fastp.json"), emit: json
     path("${sampleId}__${runId}_fastp.html"), emit: html
     
     shell:
@@ -166,17 +184,17 @@ process FASTP_PE {
 process FASTP_SE {
     tag "fastp SE: ${sampleId}"
     cpus 4
-    memory '8 GB'
+    memory { 4.GB * task.attempt }
     
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: 'copy', saveAs: { filename -> getSavePath(filename, params) }
+    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), val(refId), val(taxId)
     
     output:
     tuple val(sampleId), val(runId), path("${sampleId}__${runId}_SE.clean.fq.gz"), val(refId), val(taxId), emit: se_reads
-    path("${sampleId}__${runId}_fastp.json"), emit: json
+    tuple val(sampleId), path("${sampleId}__${runId}_fastp.json"), emit: json
     path("${sampleId}__${runId}_fastp.html"), emit: html
     
     shell:
@@ -195,7 +213,7 @@ process FASTP_SE {
 process MULTIQC {
     tag "MultiQC"
     // MultiQC has its own dedicated path and does not use per-sample logic
-    publishDir "${params.outdir}/multiqc", mode: 'copy'
+    publishDir "${params.outdir}/multiqc", mode: params.publish_mode
     cpus 2
     memory '4 GB'
 
@@ -225,4 +243,63 @@ process MULTIQC {
     # -n : Set dynamic output name
     multiqc . -c multiqc_config.yaml -n ${report_name}
     """
+}
+
+process DUMP_VERSIONS {
+    tag "versions"
+    cpus 1
+    memory '1 GB'
+    publishDir "${params.outdir}/pipeline_info", mode: params.publish_mode
+
+    output:
+    path "software_versions_mqc.yml", emit: mqc
+    path "software_versions.txt",     emit: txt
+
+    shell:
+    '''
+    # Provenance: record the exact tool versions from the (pinned) container plus the
+    # pipeline/Nextflow versions, so every run documents its own software environment.
+    ver() {
+        # $1 = label, $2 = prefix to strip, rest = version command
+        local raw line
+        raw=$("${@:3}" 2>&1) || raw=""
+        line=$(head -n1 <<< "$raw")
+        if [ -n "$2" ]; then line=${line#"$2"}; fi
+        line=${line#"${line%%[![:space:]]*}"}   # trim leading whitespace
+        echo "$1: ${line:-NA}"
+    }
+
+    {
+      echo "BAMpiro: !{workflow.manifest.version}"
+      echo "Nextflow: !{workflow.nextflow.version}"
+      echo "container: !{params.container}"
+      ver samtools  'samtools '          samtools  --version
+      ver bcftools  'bcftools '          bcftools  --version
+      ver freebayes 'version: '          freebayes --version
+      ver bwa-mem2  ''                   bwa-mem2  version
+      ver fastp     'fastp '             fastp     --version
+      ver kraken2   'Kraken version '    kraken2   --version
+      ver genmap    ''                   genmap    --version
+      ver snpEff    ''                   snpEff    -version
+      ver python    'Python '            python3   --version
+      ver multiqc   'multiqc, version '  multiqc   --version
+    } > software_versions.txt
+
+    # MultiQC custom-content section (files ending in _mqc.yml are auto-detected)
+    {
+      echo 'id: "software_versions"'
+      echo 'section_name: "Software Versions"'
+      echo 'section_href: "https://github.com/PathoGenOmics-Lab/BAMpiro"'
+      echo 'plot_type: "html"'
+      echo 'description: "Captured at runtime from the pipeline container."'
+      echo 'data: |'
+      echo '    <dl class="dl-horizontal">'
+      while IFS= read -r kv; do
+          k=${kv%%:*}
+          v=${kv#*: }
+          echo "        <dt>${k}</dt><dd><samp>${v}</samp></dd>"
+      done < software_versions.txt
+      echo '    </dl>'
+    } > software_versions_mqc.yml
+    '''
 }

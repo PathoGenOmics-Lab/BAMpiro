@@ -1,0 +1,19 @@
+# mycolorsTB_nature - MTBC lineage color palette (Nature-style, muted tones)
+# Desaturated, print-friendly, colorblind-conscious
+# Format: lineage<TAB>hex<TAB>description
+# Phylogenetic order: L4 → L2 → L3 → L1 → L7 → L5 → L6 → L9 → L10 → A1 → A2 → A3 → A4 → L8
+L4	#C94434	Euro-American
+L2	#3B5BA9	East Asian (Beijing)
+L3	#8B6DAF	East African-Indian (CAS)
+L1	#D44D6E	Indo-Oceanic
+L7	#D4C847	Ethiopian
+L5	#A07040	West African 1 (M. africanum)
+L6	#4A9B68	West African 2 (M. africanum)
+L9	#5CB85C	East African
+L10	#7DA094	Horn of Africa
+A1	#C4A546	Animal-adapted (M. mungi / M. suricattae / dassie / chimpanzee)
+A2	#6DB89B	Animal-adapted (M. microti / M. pinnipedii)
+A3	#7AAED4	Animal-adapted (M. orygis)
+A4	#D88EAF	Animal-adapted (M. caprae / M. bovis / BCG)
+L8	#E08B38	African Great Lakes
+M. canettii	#8C8C8C	Outgroup

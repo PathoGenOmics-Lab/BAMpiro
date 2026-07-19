@@ -1,205 +1,189 @@
+<p align="center">
+  <img src=".github/bampiro2.png" height="200" alt="BAMpiro logo" />
+</p>
 
+<div align="center">
 
-# BAMpiro 🧛‍♂️🧬
-### *General Bacterial Short Read Mapping, Variant Calling & Lineage/DR Typing Pipeline*
-__Paula Ruiz-Rodriguez<sup>1</sup>__ 
+[![License: GPL v3](https://img.shields.io/badge/license-GPL%20v3-%23af64d1?style=flat-square)](LICENSE)
+[![Nextflow](https://img.shields.io/badge/nextflow-%E2%89%A524.04.2-%2323aa62?style=flat-square)](https://www.nextflow.io/)
+[![Version](https://img.shields.io/badge/version-1.0.1-%23149389?style=flat-square)](CHANGELOG.md)
+[![Container](https://img.shields.io/badge/container-paururo%2Fbampiro-%232496ed?style=flat-square)](https://hub.docker.com/r/paururo/bampiro)
+[![PGO](https://img.shields.io/badge/PathoGenOmics-lab-%23E52421?style=flat-square)](https://github.com/PathoGenOmics-Lab)
+[![Docs](https://img.shields.io/badge/docs-online-%23149389?style=flat-square)](https://pathogenomics-lab.github.io/BAMpiro/)
+[![Live QC report](https://img.shields.io/badge/QC%20report-live%20demo-%23af64d1?style=flat-square)](https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html)
+
+**General bacterial short-read mapping, variant calling & lineage/DR typing.**
+**Nextflow (DSL2) · containerized · self-contained interactive QC reports.**
+
+[Docs site](https://pathogenomics-lab.github.io/BAMpiro/) · [Live QC report](https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html) · [Quick Start](#quick-start) · [Configuration](docs/configuration.md) · [Citation](#citation)
+
+</div>
+
+__Paula Ruiz-Rodriguez<sup>1</sup>__
 __and Mireia Coscolla<sup>1</sup>__
 <br>
-<sub> 1. I<sup>2</sup>SysBio, University of Valencia-CSIC, FISABIO Joint Research Unit Infection and Public Health, Valencia, Spain </sub>  
-
-<table>
-  <tr>
-    <td width="300">
-      <img src=".github/bampiro2.png" title="BAMpiro logo" style="width:300px; height: auto;">
-    </td>
-    <td style="padding-left: 20px;">
-      <p>
-        <strong>BAMpiro</strong> is a modular, containerized bioinformatics pipeline built with <strong>Nextflow (DSL2)</strong>. While optimized by default for <em>Mycobacterium tuberculosis</em> (TB), its architecture is <strong>agnostic</strong> and can be used to analyze <strong>any bacterial genome</strong> (e.g., <em>E. coli</em>, <em>Salmonella</em>, <em>Staphylococcus</em>) by adjusting a few parameters.
-      </p>
-      <p>The pipeline automates the workflow from raw reads to annotated variants, consensus sequences, and comprehensive quality control reports.</p>
-    </td>
-  </tr>
-</table>
-
-## Key Features
-
-* **Universal Bacterial Support:** Works with any reference genome and GFF annotation.
-* **Automated Reference Prep:** Automatically indexes genomes and builds SnpEff databases on the fly.
-* **Repeat Masking:** Uses `nucmer` to auto-detect and exclude repetitive regions from variant calling (crucial for accurate bacterial genomics).
-* **Robust QC:** `FastP` for cleaning and `Kraken2` for taxonomic contamination checks.
-* **Variant Calling:** `FreeBayes` with customizable ploidy (1 or 2) and strict filtering.
-* **Backbone Generation:** Creates "All-sites" VCFs (WT + Variants) suitable for phylogenetic tree construction.
-* **Lineage/DR SNPs Classification:** Optional integration with **Pathotypr** (Needed custom input files).
-* **Reporting:** Generates statistic logs and a dynamic **MultiQC** report.
+<sub> 1. I<sup>2</sup>SysBio, University of Valencia-CSIC, FISABIO Joint Research Unit Infection and Public Health, Valencia, Spain </sub>
 
 ---
 
-## Workflow Summary
+## What is BAMpiro?
 
-1.  **Reference:** Indexing + Repeat masking + SnpEff DB building.
-2.  **QC:** Read validation -> Kraken2 (Taxonomy) -> FastP (Trimming).
-3.  **Pathotypr:** (Optional) Rapid lineage classification from reads.
-4.  **Mapping:** `bwa-mem2` alignment -> Merge runs -> Mark Duplicates (`samtools`).
-5.  **Variants:** `FreeBayes` calling + `mpileup` for backbone generation.
-6.  **Consensus:** Fasta generation masking low-coverage/low-quality sites.
-7.  **Annotation:** `SnpEff` annotation of main and legacy VCFs.
-8.  **Stats:** Aggregation of all metrics into a single MultiQC report.
+> [!TIP]
+> **New here?** Start with the [Quick Start](docs/quickstart.md) - a run command, the
+> samplesheet format, and where to find the report. Every parameter is listed in the
+> [configuration reference](docs/configuration.md).
 
----
+**BAMpiro** is a modular, containerized **Nextflow (DSL2)** pipeline that takes raw
+bacterial short reads all the way to annotated variants, consensus sequences, and a
+single **interactive QC report**. It is tuned by default for *Mycobacterium
+tuberculosis* but is **organism-agnostic** - point it at any reference genome + GFF.
 
-## 🛠 Prerequisites
+**Main features:**
 
-* **Nextflow** (`>=24.04.2`)
-* **Singularity** or **Docker**
-* **Java** (version 11 or later)
+- Reference-agnostic mapping, variant calling (`FreeBayes`), and consensus
+- Alignment-free MTBC lineage + WHO drug-resistance typing ([Pathotypr](docs/pathotypr.md))
+- A self-contained, interactive [HTML QC report](docs/qc-report.md) with 21 panels
+- Dual amino-acid numbering (used reference + H37Rv / Mycobrowser)
+- One pinned container with every tool and marker panel built in
 
-The pipeline automatically pulls the container `docker://paururo/bambard:latest`, which contains all necessary tools (BWA, Samtools, FreeBayes, Python, etc.).
+## Features
 
----
+| Feature | Description |
+|---|---|
+| 🧬 Any bacterial genome | Reference-agnostic mapping + variant calling; TB-tuned defaults, works on any species |
+| 🧹 Repeat & mappability masking | `nucmer` repeat exclusion plus a length-aware `genmap` read filter |
+| 🧪 Variants & backbone | `FreeBayes` (ploidy 1/2) + "all-sites" VCFs for phylogenetic supermatrices |
+| 🩺 Lineage & drug resistance | Alignment-free MTBC lineage + WHO DR typing ([Pathotypr](docs/pathotypr.md)), reference-agnostic |
+| 📊 Interactive QC report | Self-contained HTML dashboard, [21 panels](docs/qc-report.md) + per-sample `qc_flags.tsv` |
+| 🔤 Dual amino-acid numbering | Protein changes in both the used reference and H37Rv/Mycobrowser numbering |
+| 📦 Containerized & reproducible | A single pinned image with every tool + bundled marker panels ([details](docs/installation.md)) |
+| ⚙️ Fully configurable | Every step exposed as a Nextflow parameter ([reference](docs/configuration.md)) |
 
-## Input Format
+## Installation
 
-Create a Tab-Separated Value (TSV) file (e.g., `samples.tsv`) with the following columns.
+Requires **Nextflow ≥ 24.04.2** and **Docker** or **Singularity**. The pipeline
+pulls a pinned `paururo/bampiro` image with every tool built in - nothing else to
+install.
 
-| Column | Description |
-| :--- | :--- |
-| `sampleId` | Unique identifier for the sample (e.g., `Sample_A`). |
-| `runId` | (Optional) Sequencing run ID. |
-| `r1` | Path to Read 1 (FastQ). |
-| `r2` | Path to Read 2 (FastQ). Leave empty for Single-End. |
-| `refId` | Identifier for the reference genome (e.g., `H37Rv`, `Ecoli_K12`). |
-| `refFasta` | Path to the reference FASTA file. |
-| `refGff` | Path to the reference GFF file (for SnpEff annotation). |
-| `taxId` | (Optional) NCBI TaxID for Kraken2 filtering (e.g., `1773` for TB, `562` for E. coli). |
-
-**Example `samples.tsv`:**
-```tsv
-sampleId	runId	r1	r2	refId	refFasta	refGff	taxId
-T00001	RUN1	/data/T1_R1.fq.gz	/data/T1_R2.fq.gz	H37Rv	/refs/tb.fa	/refs/tb.gff	1773
-ECOLI_1	RUN2	/data/EC_R1.fq.gz	/data/EC_R2.fq.gz	K12	/refs/ecoli.fa	/refs/ecoli.gff	562
+```bash
+nextflow run main.nf --tsv samples.tsv --outdir results_bampiro -profile standard
 ```
-## Usage
-By default, the pipeline assumes M. tuberculosis settings (Ploidy=2 to detect mixed infections, Pathotypr enabled).
-```
+
+Full requirements and the bundled software versions: [Installation](docs/installation.md).
+
+## Quick Start
+
+BAMpiro assumes *M. tuberculosis* settings by default (ploidy = 2 for mixed
+infections). Lineage/DR typing is **off** by default - enable it (and dual
+amino-acid numbering) with:
+
+```bash
 nextflow run main.nf \
-    --tsv samples.tsv \
-    --outdir results_bampiro \
-    -profile slurm
-```
-### Handling Multiple Runs per Sample (Merging)
-
-BAMpiro automatically handles multiple sequencing runs (e.g., different lanes or re-sequencing) for the same biological sample. 
-
-* **How to trigger merging:** Simply assign the **same `sampleId`** to multiple rows in your TSV file.
-* **The Logic:** The pipeline will process QC and Mapping for each run independently (in parallel) and then **merge** all BAM files associated with that `sampleId` before the Deduplication and Variant Calling steps.
-
-**Example of merging 2 runs into 1 sample:**
-```tsv
-sampleId    runId   r1                 r2                 refId ...
-Sample_A    Run_L1  /data/A_L1_R1.fq   /data/A_L1_R2.fq   H37Rv ...
-Sample_A    Run_L2  /data/A_L2_R1.fq   /data/A_L2_R2.fq   H37Rv ...
-```
-## Configuration Parameters
-
-You can customize the pipeline execution by providing parameters via the command line (e.g., `--threads 16`) or by modifying a config file.
-
-| Category | Parameter | Default | Description |
-| :--- | :--- | :--- | :--- |
-| **Input/Output** | `--tsv` | `samples_legio.tsv` | Path to the input sample sheet (TSV). |
-| | `--outdir` | `results_bampiro` | Directory where results will be saved. |
-| | `--threads` | `8` | Max CPUs per process (where applicable). |
-| **Pathotypr** | `--run_pathotypr` | `false` | Set to `true` to enable lineage classification. |
-| | `--pathotypr_bin` | *(path)* | Path to the Pathotypr binary executable. |
-| | `--pathotypr_markers` | *(path)* | Path to the lineage markers file. |
-| | `--pathotypr_ref` | *(path)* | Reference fasta used for Pathotypr. |
-| **QC & Filter** | `--kraken2_db` | *(path)* | Path to the Kraken2 database directory. |
-| | `--fastp_min_length` | `35` | Discard reads shorter than this length. |
-| **Mapping/Backbone**| `--allpos_min_cov` | `30` | Minimum coverage to call a site "WT" (otherwise "NC"). |
-| | `--allpos_max_depth` | `10000` | Max depth for mpileup to avoid memory issues. |
-| | `--allpos_min_bq` | `20` | Minimum base quality for backbone calling. |
-| **Variant Calling** | `--freebayes_ploidy` | `2` | Ploidy (1 for haploid, 2 for mixed/diploid). |
-| | `--freebayes_min_map_qual`| `30` | Min mapping quality to use a read. |
-| | `--freebayes_min_base_qual`| `20` | Min base quality to use a base. |
-| | `--freebayes_min_alt_frac`| `0.05` | Min fraction of alt reads to propose a variant. |
-| **VAF & Filters** | `--hom_threshold` | `0.90` | Frequency ≥ 0.90 is called **Homozygous**. |
-| | `--het_min_frac` | `0.10` | Frequency between 0.10 and 0.90 is **Heterozygous**. |
-| | `--filter_min_dp` | `30` | Minimum depth required to call a variant. |
-| | `--min_alt_fwd/rev` | `2` | Min variant supporting reads in FWD and REV strands. |
-| **Consensus** | `--make_consensus` | `true` | Generate a consensus FASTA for each sample. |
-| | `--consensus_min_dp` | `7` | Depth threshold below which a base becomes "No Call". |
-| | `--consensus_mask_char` | `X` | Character for masked/low-quality sites. |
-| | `--consensus_nocall_char`| `-` | Character for no-coverage sites (gaps). |
-| **Flags** | `--exclude_repeats` | `true` | Mask self-aligned repetitive regions from reference. |
-| | `--annotate_legacy_vcfs`| `true` | Run SnpEff on split VCFs (homo/het/indel). |
-
-## Output Structure
-The pipeline organizes results by `sampleId`. Below is a detailed breakdown of the output files using a sample named `MP00091` mapped against reference `LENS`.
-```text
-results_bampiro/
-├── multiqc/
-│   └── samples_legio_multiqc_report.html   # 📊 Aggregate Report (QC, Mapping, Variants summary)
-│
-├── references/
-│   └── LENS/                               # Processed Reference indices & SnpEff DB
-│
-└── MP00091/                                # 📁 Per-Sample Results Directory
-    │
-    ├── MP00091.LENS.final.bam              # 🧬 Merged, Coordinate-sorted, Deduplicated BAM
-    ├── MP00091.LENS.final.bam.bai          # BAM Index
-    │
-    ├── MP00091.LENS.ann.vcf.gz             # 🎯 MAIN OUTPUT: Annotated Variants (SNPs/Indels)
-    ├── MP00091.LENS.ann.vcf.gz.tbi         # Index for the main VCF
-    │
-    ├── MP00091.LENS.all.pos.vcf.gz         # 🦴 BACKBONE: VCF containing ALL positions (WT + Variants)
-    │                                       # (Ideal for phylogenetic supermatrices)
-    │
-    ├── MP00091.LENS.consensus.fasta        # 📝 Consensus Sequence (Fasta generated from VCF)
-    │
-    ├── MP00091.LENS.freebayes.raw...       # 🧪 RAW VCF: Unfiltered calls (debug/comparison)
-    ├── MP00091.LENS.var.homo.SNPs.ann...   # 📂 Split VCFs: Subset of Homozygous SNPs (Annotated)
-    ├── MP00091.LENS.var.het.SNPs.ann...    # 📂 Split VCFs: Subset of Heterozygous SNPs (Annotated)
-    ├── MP00091.LENS.var.homo.indel...      # 📂 SPLIT VCF: Homozygous Indels only
-    │
-    └── stats/                              # 📉 Statistics & Logs Folder
-        ├── MP00091.log                     # -> LEGACY summary log (Tab-separated metrics)
-        ├── MP00091.LENS.dedup.stats        # -> Samtools stats (reads mapped, coverage, etc.)
-        ├── MP00091.LENS.mask_sites.tsv     # -> Specific positions masked due to low confidence
-        ├── MP00091...fastp.html/.json      # -> Trimming quality reports
-        ├── MP00091...kraken.report         # -> Taxonomic classification report
-        ├── MP00091.LENS.snpeff.csv         # -> Variant effect statistics
-        └── Locus_to_exclude_LENS.txt       # -> List of repetitive regions excluded from calling
-```
-## Directory Layout
-```
-BAMpiro/
-├── bin/                     # Python scripts (stats_to_legacy.py, WGS_fasta_allpos.py)
-├── modules/                 # Nextflow DSL2 Modules
-│   ├── qc.nf                # FastP, Kraken, MultiQC
-│   ├── mapping.nf           # BWA, MarkDup
-│   ├── variants.nf          # FreeBayes, Backbone, Merge
-│   ├── annotation.nf        # SnpEff, Stats Legacy
-│   ├── consensus.nf         # Consensus Fasta
-│   ├── utils.nf             # Clean publish dir
-│   ├── pathotypr.nf         # Pathotypr Logic
-│   └── reference.nf         # Reference Prep
-├── nextflow.config          # Global configuration & params
-├── main.nf                  # Main workflow entry point
-└── README.md                # This file
+    --tsv samples.tsv --outdir results_bampiro -profile standard \
+    --run_pathotypr true --annotate_canonical true
 ```
 
-## 🧛‍♂️ Why "BAMpiro"?
-The name is a play on words (a pun) combining bioinformatics and folklore:
+The samplesheet is a TSV (`sampleId`, `r1`, `r2`, `refId`, `refFasta`, `refGff`, …).
+See the [Quick Start guide](docs/quickstart.md) for the full format and multi-run
+merging, and [Outputs](docs/outputs.md) for the result layout.
 
-- BAM: Stands for Binary Alignment Map. It is the standard file format for storing sequence data aligned to a reference genome. It is the "heart" of this pipeline (mapping -> variant calling).
-- Piro: Combined with "BAM", it sounds like "Vampiro" (the Spanish/Portuguese word for Vampire).
+**New to BAMpiro?** Follow the hands-on
+[**Jupyter tutorial**](docs/tutorial/bampiro_tutorial.ipynb) — install → samplesheet →
+run → explore the outputs with `pandas` / `matplotlib` on a bundled 17-sample example
+cohort (runnable without running the pipeline first).
 
-The Metaphor: Just as a vampire seeks blood to sustain itself, BAMpiro seeks BAM files (and FASTQ data) to extract vital information (variants, lineages, and stats). It is a "creature" that lives in your cluster and processes bacterial genomes.
+## Interactive QC Report
+
+<p align="center">
+  <a href="https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html">
+    <img src=".github/qc_report_preview.png" alt="BAMpiro interactive QC report — click to open the live demo" width="100%" />
+  </a>
+</p>
+
+<p align="center">
+  <b><a href="https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html">▶ Open the live interactive demo report</a></b>
+  — a full 17-sample demo cohort, every panel populated, right in your browser
+</p>
+
+Every run writes a single self-contained `<samplesheet>_qc_report.html` (no internet,
+no CDN) that folds the whole cohort into one dashboard: **live-adjustable QC
+thresholds**, a **dark / light theme**, a collapsible sidebar, and **21 linked
+panels** - general statistics, flagged samples, per-lineage summary (canonical
+*mycolorsTB* palette), QC-space PCA, genome landscape, SNP dynamics, epistasis, a
+full SNP matrix, and drug resistance - plus a machine-readable per-sample
+`qc_flags.tsv`. It is organism-agnostic, mobile-responsive, and works offline on an
+HPC login node.
+
+Full panel list and interactive features: [Interactive QC Report](https://pathogenomics-lab.github.io/BAMpiro/qc-report/).
+
+## Documentation
+
+📖 **[Read the full documentation online → pathogenomics-lab.github.io/BAMpiro](https://pathogenomics-lab.github.io/BAMpiro/)**
+— a searchable site with a pipeline diagram, a hover glossary, a step-by-step
+[**tutorial series**](https://pathogenomics-lab.github.io/BAMpiro/tutorials/), a hands-on
+Jupyter notebook, and the [live QC-report demo](https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html).
+
+> [!TIP]
+> **New here?** Follow the [**Tutorials**](https://pathogenomics-lab.github.io/BAMpiro/tutorials/) —
+> a guided path from your first run to a finished phylogeny.
+
+| Document | Description |
+| :--- | :--- |
+| [Tutorials](https://pathogenomics-lab.github.io/BAMpiro/tutorials/) | A guided, hands-on path: first run → samplesheet → configuration → reading the report → typing → phylogeny |
+| [Introduction](https://pathogenomics-lab.github.io/BAMpiro/introduction/) | What BAMpiro is, key features, and the workflow at a glance |
+| [Installation](https://pathogenomics-lab.github.io/BAMpiro/installation/) | Requirements, the container, and bundled software versions |
+| [Quick Start](https://pathogenomics-lab.github.io/BAMpiro/quickstart/) | Run commands, the samplesheet format, and multi-run merging |
+| [Configuration](https://pathogenomics-lab.github.io/BAMpiro/configuration/) | The full parameter reference and feature toggles |
+| [Troubleshooting](https://pathogenomics-lab.github.io/BAMpiro/troubleshooting/) | Common first-run errors and how to fix them |
+| [Interactive QC Report](https://pathogenomics-lab.github.io/BAMpiro/qc-report/) | The self-contained HTML dashboard and its panels |
+| [Lineage & Drug-Resistance Typing](https://pathogenomics-lab.github.io/BAMpiro/pathotypr/) | Pathotypr typing and dual amino-acid numbering |
+| [Tutorial](https://pathogenomics-lab.github.io/BAMpiro/tutorial/bampiro_tutorial/) | An end-to-end Jupyter walkthrough |
+| [Outputs](https://pathogenomics-lab.github.io/BAMpiro/outputs/) | The result file tree and the repository layout |
+| [Changelog](CHANGELOG.md) | Version history |
+
+Prefer the source? Browse the Markdown under [`docs/`](docs/), or build the site
+locally with `make docs-serve`
+(needs [MkDocs Material](https://squidfunk.github.io/mkdocs-material/):
+`pip install -r docs/requirements.txt`).
+
+## Why "BAMpiro"?
+
+The name is a play on words combining bioinformatics and folklore:
+
+- **BAM** - Binary Alignment Map, the standard format for reads aligned to a
+  reference genome; the "heart" of this pipeline (mapping → variant calling).
+- **Piro** - combined with "BAM" it sounds like *Vampiro* (Spanish/Portuguese for
+  vampire).
+
+Just as a vampire seeks blood, BAMpiro seeks BAM files (and FASTQ data) to extract
+vital information - variants, lineages, and stats. A creature that lives in your
+cluster and processes bacterial genomes.
+
+## Citation
+
+If you use BAMpiro in your research, please cite:
+
+> Ruiz-Rodriguez P, Coscollá M. **BAMpiro: a Nextflow pipeline for bacterial
+> short-read mapping, variant calling and lineage/drug-resistance typing.**
+> https://github.com/PathoGenOmics-Lab/BAMpiro
+
+```bibtex
+@software{ruiz-rodriguez_bampiro,
+  title   = {BAMpiro: bacterial short-read mapping, variant calling and lineage/drug-resistance typing},
+  author  = {Ruiz-Rodriguez, Paula and Coscoll{\'a}, Mireia},
+  url      = {https://github.com/PathoGenOmics-Lab/BAMpiro},
+  version = {1.0.1},
+  license = {GPL-3.0}
+}
+```
+
+## License
+
+[GNU General Public License v3.0](LICENSE)
 
 ---
-<h2 id="contributors" align="center">
 
-✨ [Contributors]((https://github.com/PathoGenOmics-Lab/AMAP/graphs/contributors))
-</h2>
+<h2 id="contributors" align="center">✨ <a href="https://github.com/PathoGenOmics-Lab/BAMpiro/graphs/contributors">Contributors</a></h2>
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
@@ -244,33 +228,3 @@ This project follows the [all-contributors](https://github.com/all-contributors/
 <!-- prettier-ignore-end -->
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
----  
-<h2 id="contributors" align="center">
-</h2>
-
-<div align="justify">
-
-___
-## 📦 Container Specifications (Software Versions)
-
-The Docker container (`paururo/bambard:latest`) includes the following tools:
-
-| Tool | Version | Purpose |
-| :--- | :--- | :--- |
-| **Nextflow** | `25.10.2` | Workflow management engine |
-| **Python** | `3.14.2` | Scripting and orchestration |
-| **Java (OpenJDK)** | `23.0.2` | Runtime for Nextflow, SnpEff & FastQC |
-| **BWA-MEM2** | `2.3` | High-performance read alignment |
-| **Samtools** | `1.23` | BAM/SAM processing and stats |
-| **BCFtools** | `1.23` | Variant manipulation and filtering |
-| **HTSlib** | `1.23` | C library for high-throughput sequencing data |
-| **FreeBayes** | `1.3.10` | Haplotype-based variant caller |
-| **SnpEff** | `5.4.0a` | Variant annotation and effect prediction |
-| **FastP** | `1.0.1` | Fast all-in-one read pre-processing |
-| **Kraken2** | `2.17.1` | Taxonomic classification |
-| **MultiQC** | `1.33` | Aggregate results reporting |
-| **Bedtools** | `2.31.1` | Genome arithmetic |
-| **BLAST** | `2.17.0` | Sequence alignment search |
-| **MUMmer4** | `4.0.1` | Efficient sequence alignment (used for repeat masking) |
-| **Biopython** | `1.86` | Biological computation library |
-| **Pandas** | `2.3.3` | Data analysis library |

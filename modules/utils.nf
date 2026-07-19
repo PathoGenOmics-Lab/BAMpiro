@@ -102,7 +102,31 @@ def getSavePath(filename, params) {
         lower.endsWith('.bwt')  ||
         lower.endsWith('.pac')  ||
         lower.endsWith('.sa')) {
-        return null 
+        return null
+    }
+
+    // A1b. With output_cram, CRAM is the published alignment form -> suppress the BAM/BAI
+    //      (analysis still runs on the BAM in the work dir; only publishing changes).
+    if (params.output_cram && (lower.endsWith('.bam') || lower.endsWith('.bam.bai'))) {
+        return null
+    }
+
+    // A2. Pre-filter dedup alignment: once the length-aware filter runs, filtered.* is the analysis
+    //     alignment and final.* is a ~redundant second full copy. Drop it from the outdir by
+    //     default (still kept in the work dir, so the virgin/raw branch is unaffected). When the
+    //     filter is off, final.* is the ONLY alignment and this gate does not trigger. Matches both
+    //     .final.bam(.bai) and .final.cram(.crai).
+    if ((lower.contains('.final.bam') || lower.contains('.final.cram'))
+        && params.dynamic_read_filter && !params.publish_prefilter_bam) {
+        return null
+    }
+
+    // A3. All-positions (per-position) VCFs are the consensus substrate. Gate publishing here
+    //     (hoisted OUT of the annotate block so the flags work regardless of annotate_main_vcf).
+    if (lower.contains('all.pos') && (lower.endsWith('.vcf.gz') || lower.endsWith('.vcf.gz.tbi'))) {
+        if (!params.publish_allpos_vcf) return null
+        if (lower.contains('.raw.') && !params.publish_virgin_allpos_vcf) return null
+        return name
     }
 
     // B. ANNOTATION LOGIC (Filter Raw VCFs if annotation is enabled)
@@ -113,30 +137,28 @@ def getSavePath(filename, params) {
     }
 
     if (params.annotate_main_vcf) {
-        if ((lower.endsWith('.vcf.gz') || lower.endsWith('.vcf.gz.tbi')) && 
-            !lower.contains('.ann.') && 
-            !lower.contains('.var.') && 
-            !lower.contains('freebayes.raw')) { 
-            
-            // Keep the All Positions VCF (Backbone)
-            if (lower.contains('all.pos')) {
-                return name
-            }
+        // all.pos is already handled above; here we only drop the un-annotated main/virgin VCFs
+        // (their .ann. versions are the deliverables).
+        if ((lower.endsWith('.vcf.gz') || lower.endsWith('.vcf.gz.tbi')) &&
+            !lower.contains('.ann.') &&
+            !lower.contains('.var.') &&
+            !lower.contains('freebayes.raw')) {
             return null
         }
     }
 
-    // C. STATS FOLDER
-    if (lower.endsWith('.log')    || lower.endsWith('.stats') || 
-        lower.endsWith('.json')   || lower.endsWith('.html')  || 
-        lower.endsWith('.report') || lower.endsWith('.csv')   || 
-        lower.endsWith('.tsv')    || lower.endsWith('.txt')) {
-        return "stats/${name}"
-    }
-    
-    // D. LINEAGE FOLDER (PATHOTYPR)
+    // C. LINEAGE FOLDER (PATHOTYPR) - must precede the generic stats/.tsv rule below, otherwise the
+    //    pathotypr *.tsv deliverables end in .tsv and get routed to stats/ (this block never fires).
     if (lower.contains('pathotypr') || lower.endsWith('.lineage.tsv') || lower.endsWith('.split_kmer.tsv')) {
         return "lineage/${name}"
+    }
+
+    // D. STATS FOLDER
+    if (lower.endsWith('.log')    || lower.endsWith('.stats') ||
+        lower.endsWith('.json')   || lower.endsWith('.html')  ||
+        lower.endsWith('.report') || lower.endsWith('.csv')   ||
+        lower.endsWith('.tsv')    || lower.endsWith('.txt')) {
+        return "stats/${name}"
     }
 
     // E. DEFAULT PUBLISH

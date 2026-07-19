@@ -2,7 +2,7 @@
 FROM --platform=linux/amd64 debian:bullseye-slim
 
 LABEL maintainer="paula.ruiz.rodriguez@csic.es"
-LABEL description="Self-contained Docker image for the BAMbard Nextflow pipeline (Short-Reads)"
+LABEL description="Self-contained Docker image for the BAMpiro Nextflow pipeline (Short-Reads)"
 
 WORKDIR /app
 
@@ -30,7 +30,7 @@ RUN wget -qO- https://micromamba.snakepit.net/api/micromamba/linux-64/latest \
 
 ENV MAMBA_ROOT_PREFIX=/opt/conda
 
-# 3. Create Conda environment with BAMbard tools
+# 3. Create Conda environment with BAMpiro tools
 # Channels: conda-forge (general), bioconda (bioinformatics)
 # Tools:
 # - nextflow: Workflow manager
@@ -41,8 +41,9 @@ ENV MAMBA_ROOT_PREFIX=/opt/conda
 # - snpeff: Annotation
 # - kraken2: Decontamination
 # - multiqc: Reporting
+# - pathotypr: alignment-free MTBC lineage + WHO drug-resistance genotyping (k-mer, reference-agnostic)
 # - python=3.12: Latest stable python requested
-RUN micromamba create -n bambard-env -c conda-forge -c bioconda -y \
+RUN micromamba create -n bampiro-env -c conda-forge -c bioconda -y \
     'python' \
     'openjdk' \
     'nextflow' \
@@ -51,18 +52,41 @@ RUN micromamba create -n bambard-env -c conda-forge -c bioconda -y \
     'samtools' \
     'freebayes' \
     'bcftools' \
+    'genmap' \
+    'mummer4' \
     'snpeff' \
     'kraken2' \
     'multiqc' \
+    'pathotypr' \
     'pandas' \
     'biopython' \
     && micromamba clean --all --yes
 
-# 4. Set PATH to include the new environment binaries globally
-# This ensures that calling 'bwa' or 'nextflow' works directly
-ENV PATH=/opt/conda/envs/bambard-env/bin:/opt/conda/bin:$PATH
+# Put the env binaries on PATH up front so the RUN steps below (snpEff, pathotypr) can find them.
+ENV PATH=/opt/conda/envs/bampiro-env/bin:/opt/conda/bin:$PATH
 
-# 5. Pipeline Setup
+# 3b. Bundle the pathotypr marker panels + pre-trained model from Zenodo (v1.0.0, pinned) so runs are
+# reproducible and offline. Positions are in MTBC-ancestor coordinates; pathotypr is k-mer based so it is
+# reference-agnostic. Override the paths with --pathotypr_* if you supply your own.
+ENV PATHOTYPR_DATA=/opt/pathotypr
+RUN mkdir -p ${PATHOTYPR_DATA} && cd ${PATHOTYPR_DATA} && \
+    wget -nv --tries=3 --timeout=60 -O lineage_markers.tsv "https://zenodo.org/records/19210044/files/pathotypr_lineage_markers_v1.0.0.tsv?download=1" && \
+    wget -nv --tries=3 --timeout=60 -O dr_markers.tsv       "https://zenodo.org/records/19210044/files/pathotypr_dr_markers_v1.0.0.tsv?download=1" && \
+    wget -nv --tries=3 --timeout=60 -O rf_model.pathotypr   "https://zenodo.org/records/19210044/files/pathotypr_rf_model_v1.0.0.pathotypr?download=1" && \
+    wget -nv --tries=3 --timeout=60 -O reference.fasta      "https://zenodo.org/records/3497110/files/MTB_ancestor_reference.fasta?download=1" && \
+    # fail the build LOUDLY if any Zenodo asset came down empty/truncated (rather than shipping a broken image)
+    for f in lineage_markers.tsv dr_markers.tsv rf_model.pathotypr reference.fasta; do \
+        test -s "$f" || { echo "ERROR: pathotypr asset '$f' failed to download (empty)"; exit 1; }; \
+    done && \
+    { head -c1 reference.fasta | grep -q '>' || { echo "ERROR: reference.fasta is not a FASTA"; exit 1; }; }
+
+# 3c. Pre-download the H37Rv snpEff database so variants can also be annotated in H37Rv / Mycobrowser
+# numbering for the report's dual amino-acid display (see qc_report.py --vcfs-h37rv). Adjust the genome
+# name if snpEff renames it. This needs network at build time only.
+RUN snpEff download -v Mycobacterium_tuberculosis_h37rv || \
+    echo "WARN: could not pre-fetch the H37Rv snpEff DB; build it manually or set the correct genome name"
+
+# 4. Pipeline Setup
 # Create directory structure
 WORKDIR /pipeline
 

@@ -8,13 +8,18 @@ nextflow.enable.dsl=2
 */
 
 // --- MODULE IMPORTS ---
-include { PREPARE_REFERENCE; SNPEFF_BUILD_DB } from './modules/reference'
-include { VALIDATE_RAW_READS_PE; VALIDATE_RAW_READS_SE; KRAKEN_FILTER_PE; KRAKEN_FILTER_SE; FASTP_PE; FASTP_SE; MULTIQC } from './modules/qc'
+include { PREPARE_REFERENCE; SNPEFF_BUILD_DB; BUILD_MAPPABILITY } from './modules/reference'
+include { VALIDATE_RAW_READS_PE; VALIDATE_RAW_READS_SE; KRAKEN_FILTER_PE; KRAKEN_FILTER_SE; FASTP_PE; FASTP_SE; MULTIQC; DUMP_VERSIONS } from './modules/qc'
 include { RUN_PATHOTYPR_PE; RUN_PATHOTYPR_SE } from './modules/pathotypr'
-include { MAPPING_PE; MAPPING_SE; MERGE_AND_MARKDUP } from './modules/mapping'
-include { CALL_FREEBAYES; CALL_BACKBONE; MERGE_VCFS } from './modules/variants'
+include { MAPPING_PE; MAPPING_SE; MERGE_AND_MARKDUP; FILTER_READS } from './modules/mapping'
+include { CALL_FREEBAYES; CALL_BACKBONE; MERGE_VCFS; CALL_FREEBAYES_RAW } from './modules/variants'
 include { CONSENSUS_FASTA } from './modules/consensus'
-include { ANNOTATE_LEGACY_VCF; ANNOTATE_MAIN_VCF; GENERATE_LEGACY_STATS } from './modules/annotation'
+// Aliases for the parallel virgin (unmasked) consensus path (a DSL2 process runs once per name)
+include { CALL_BACKBONE as CALL_BACKBONE_RAW; MERGE_VCFS as MERGE_VCFS_RAW } from './modules/variants'
+include { CONSENSUS_FASTA as CONSENSUS_FASTA_RAW } from './modules/consensus'
+include { ANNOTATE_LEGACY_VCF; ANNOTATE_MAIN_VCF; ANNOTATE_CANONICAL; GENERATE_LEGACY_STATS } from './modules/annotation'
+include { COLLECT_SUMMARY; COLLECT_DR; LIFT_VARIANTS; QC_REPORT; SNP_MATRIX } from './modules/report'
+include { cleanStr; nullish; sanitizeId } from './modules/utils'
 
 /* ----------------------------- Configuration Logic ----------------------------- */
 
@@ -26,25 +31,7 @@ def tsv_name = file(params.tsv).simpleName
 def multiqc_report_filename = "${tsv_name}_multiqc_report"
 
 /* ----------------------------- Helpers ----------------------------- */
-
-def cleanStr = { v ->
-    if (v == null) return null
-    v.toString().replace('\r','').trim()
-}
-
-def nullish = { v ->
-    if (v == null) return true
-    def s = cleanStr(v)
-    if (!s) return true
-    def sl = s.toLowerCase()
-    return (s == "." || sl == "na" || sl == "n/a" || sl == "null")
-}
-
-def sanitizeId = { v ->
-    def s = cleanStr(v)
-    if (!s) return s
-    s.replaceAll(/[^A-Za-z0-9_.-]+/, "_")
-}
+// cleanStr / nullish / sanitizeId are shared with the modules; imported from modules/utils.nf above.
 
 def inferRunId = { r1 ->
     def name = new File(r1).getName()
@@ -59,68 +46,95 @@ def SAMPLE_PUBLISH_DIR = { sid -> "${final_outdir}/${sid}" }
 /* ----------------------------- TSV Parsing ----------------------------- */
 
 def tsvFile = new File(params.tsv as String)
-if (!tsvFile.exists()) throw new RuntimeException("TSV not found: ${params.tsv}")
+if (!tsvFile.exists()) throw new RuntimeException("Samplesheet not found: ${params.tsv}")
 
 def lines = tsvFile.readLines()
-if (lines.size() < 2) throw new RuntimeException("TSV has no data rows: ${params.tsv}")
+if (lines.size() < 2) throw new RuntimeException("Samplesheet has a header but no data rows: ${params.tsv}")
 
 def header = lines[0].replace('\r','').split('\t')*.trim()
 def col = [:]
 header.eachWithIndex { h,i -> col[h]=i }
 
+// Validate the WHOLE samplesheet before running anything, collecting every problem so the
+// user can fix them all in one pass instead of rerunning after each first error.
+def errors = []
+
 ['sampleId','r1','refId','refFasta','refGff'].each { req ->
-    if (!col.containsKey(req)) throw new RuntimeException("TSV missing required column: ${req}")
+    if (!col.containsKey(req)) errors << "header is missing the required column '${req}'"
+}
+if (errors) {
+    log.error "Samplesheet ${params.tsv} is unusable:\n" + errors.collect{ "  - ${it}" }.join('\n')
+    throw new RuntimeException("Samplesheet header invalid (${errors.size()} problem(s)); see the list above.")
 }
 
 def refMap    = [:]
-def refGffMap = [:] 
+def refGffMap = [:]
 def expectedMap = [:].withDefault{0}
+def seenRuns = [:].withDefault{0}
 def peList = []
 def seList = []
 def hasTax = false
 
-lines.drop(1).each { raw ->
+lines.drop(1).eachWithIndex { raw, idx ->
+    def rowNum = idx + 2   // header is line 1, so the first data row is line 2
     def line = raw.replace('\r','')
     if (!line.trim()) return
     if (line.startsWith('#')) return
 
-    def p = line.split('\t', -1)
+    // split(-1) only keeps trailing empties when the tabs are physically present; pad short rows so a
+    // row that omits trailing columns becomes empty fields (reported below) instead of crashing on an
+    // out-of-bounds Java-array read.
+    def p = line.split('\t', -1).toList()
+    while (p.size() < header.size()) p << ''
 
-    def sampleId = cleanStr(p[col.sampleId])
+    def sampleId = sanitizeId(p[col.sampleId])
     def r1Str    = cleanStr(p[col.r1])
     def r2Str    = col.containsKey('r2') ? cleanStr(p[col.r2]) : null
-    def refId    = cleanStr(p[col.refId])
+    def refId    = sanitizeId(p[col.refId])
     def refFasta = cleanStr(p[col.refFasta])
     def refGff   = cleanStr(p[col.refGff])
     def taxId    = col.containsKey('taxId') ? cleanStr(p[col.taxId]) : null
     def runId    = col.containsKey('runId') ? cleanStr(p[col.runId]) : null
 
-    if (!sampleId) throw new RuntimeException("Empty sampleId in TSV line: ${raw}")
-    if (!r1Str)    throw new RuntimeException("Empty r1 for sampleId=${sampleId}")
-    if (!refId)    throw new RuntimeException("Empty refId for sampleId=${sampleId}")
-    if (!refFasta) throw new RuntimeException("Empty refFasta for sampleId=${sampleId}")
-    if (!refGff)   throw new RuntimeException("Empty refGff for sampleId=${sampleId}")
+    // Required fields: record every missing one for this row, then skip the row.
+    def missingCols = []
+    if (!sampleId) missingCols << 'sampleId'
+    if (!r1Str)    missingCols << 'r1'
+    if (!refId)    missingCols << 'refId'
+    if (!refFasta) missingCols << 'refFasta'
+    if (!refGff)   missingCols << 'refGff'
+    if (missingCols) { errors << "row ${rowNum}: empty required field(s): ${missingCols.join(', ')}"; return }
 
     if (nullish(r2Str)) r2Str = null
     def mode = (r2Str ? "PE" : "SE")
 
-    if (taxId != null && (taxId == "" || taxId == ".")) taxId = null
+    if (nullish(taxId)) taxId = null   // treat NA / N/A / null / . / blank as "no taxId" (as r2 already does)
     if (taxId != null) hasTax = true
 
     if (!runId) runId = inferRunId(r1Str)
     runId = sanitizeId(runId)
     if (!runId) runId = "run"
 
-    if (!new File(r1Str).exists()) throw new RuntimeException("R1 not found: ${r1Str}")
-    if (mode == "PE" && !new File(r2Str).exists()) throw new RuntimeException("R2 not found: ${r2Str}")
-    if (!new File(refFasta).exists()) throw new RuntimeException("refFasta not found: ${refFasta}")
-    if (!new File(refGff).exists())   throw new RuntimeException("refGff not found: ${refGff}")
+    // Guarantee a unique run token per (sampleId, refId): lane-split inputs with no runId column
+    // infer the same basename for every lane -> identical BAM names collide in the merge group.
+    def runKey = "${sampleId}||${refId}||${runId}"
+    def runN = (seenRuns[runKey] = seenRuns[runKey] + 1)
+    if (runN > 1) runId = "${runId}_${runN}"
+
+    // Input files: record every missing path for this row, then skip the row.
+    def missingFiles = []
+    if (!new File(r1Str).exists()) missingFiles << "r1=${r1Str}"
+    if (mode == "PE" && !new File(r2Str).exists()) missingFiles << "r2=${r2Str}"
+    if (!new File(refFasta).exists()) missingFiles << "refFasta=${refFasta}"
+    if (!new File(refGff).exists())   missingFiles << "refGff=${refGff}"
+    if (missingFiles) { errors << "row ${rowNum} (sample ${sampleId}): file(s) not found: ${missingFiles.join('; ')}"; return }
 
     if (!refMap.containsKey(refId)) {
         refMap[refId] = refFasta
         refGffMap[refId] = refGff
-    } else {
-        if (refMap[refId] != refFasta) throw new RuntimeException("refId ${refId} has multiple refFasta paths")
+    } else if (refMap[refId] != refFasta) {
+        errors << "row ${rowNum}: refId '${refId}' points to a different refFasta than an earlier row (${refMap[refId]} vs ${refFasta})"
+        return
     }
 
     def key = "${sampleId}||${refId}"
@@ -133,6 +147,14 @@ lines.drop(1).each { raw ->
     }
 }
 
+if (errors) {
+    log.error "Samplesheet ${params.tsv} has ${errors.size()} problem(s):\n" + errors.collect{ "  - ${it}" }.join('\n')
+    throw new RuntimeException("Samplesheet validation failed with ${errors.size()} problem(s); fix the rows listed above and rerun.")
+}
+if (peList.isEmpty() && seList.isEmpty()) {
+    throw new RuntimeException("Samplesheet ${params.tsv} produced no usable samples (every data row was blank or commented out).")
+}
+
 // Check if Kraken DB exists
 def KRAKEN_ENABLED = false
 if (params.kraken2_db && hasTax) {
@@ -141,14 +163,9 @@ if (params.kraken2_db && hasTax) {
     else log.warn "Kraken DB not found at: ${params.kraken2_db} -> Kraken disabled"
 }
 
-// Check consensus script
-if (params.make_consensus) {
-    // Note: Script is now looked for in 'bin/', handled by Nextflow automatically
-}
-
 log.info """
 ================================================================
- BAMpiro Pipeline ðŸ§›â€â™‚ï¸
+ BAMpiro Pipeline 🧛‍♂️🧬
 ================================================================
 TSV              : ${params.tsv}
 Output Absolute  : ${final_outdir}
@@ -207,8 +224,9 @@ workflow {
     def fastp_pe = FASTP_PE(pe_final)
     def fastp_se = FASTP_SE(se_final)
     
-    // 4. Pathotypr (Optional Lineage Classification)
-    def patho_results = Channel.empty()
+    // 4. Pathotypr (Optional lineage + drug-resistance typing; k-mer, reference-agnostic)
+    def patho_results    = Channel.empty()   // lineage summary per sample
+    def patho_dr_results = Channel.empty()   // drug-resistance summary per sample
 
     if (params.run_pathotypr) {
         // Reshape channels for Pathotypr
@@ -219,6 +237,7 @@ workflow {
             patho_pe_ch,
             file(params.pathotypr_ref),
             file(params.pathotypr_markers),
+            file(params.pathotypr_dr_markers),
             params.pathotypr_bin
         )
 
@@ -226,11 +245,13 @@ workflow {
             patho_se_ch,
             file(params.pathotypr_ref),
             file(params.pathotypr_markers),
+            file(params.pathotypr_dr_markers),
             params.pathotypr_bin
         )
-        
-        // Combine summaries for later statistics
-        patho_results = run_pe.summary.mix(run_se.summary)
+
+        // Combine summaries for later statistics / the QC report
+        patho_results    = run_pe.summary.mix(run_se.summary)
+        patho_dr_results = run_pe.dr_mutations.mix(run_se.dr_mutations)
     }
 
     // 5. Mapping (BWA)
@@ -260,41 +281,82 @@ workflow {
     def final_bams = MERGE_AND_MARKDUP(bams_grouped)
 
     // 6. Variant Calling
-    def vbase = final_bams.final_bam.map { sId, rId, bam, bai, ref_fa, exclude_txt -> tuple(sId, rId, bam, bai, ref_fa, exclude_txt) }
-    
+    // Optional length-aware read filter: drop reads too short to map uniquely at their locus
+    // (short-read false positives in near-repeats), then call/consensus on the filtered BAM.
+    // Feature off -> call on the dedup BAM unchanged.
+    def vbase
+    def filter_stats = Channel.empty()
+    if (params.dynamic_read_filter) {
+        def mapp = BUILD_MAPPABILITY( ref_bundle.bundle.map { rId, fa, idx, excl -> tuple(rId, fa) } )
+        def track_bed = mapp.track.join(mapp.repeat_bed, by: 0)                    // (rId, npz, repeat_bed)
+        def filt_in = final_bams.final_bam
+            .map { sId, rId, bam, bai, fa, excl -> tuple(rId, sId, bam, bai, fa, excl) }
+            .combine(track_bed, by: 0)                                             // fan the per-reference track+bed to each sample
+            .map { rId, sId, bam, bai, fa, excl, npz, bed -> tuple(sId, rId, bam, bai, fa, excl, npz, bed) }
+        def filt = FILTER_READS(filt_in)
+        vbase = filt.filtered_bam                                                  // exclude_txt now = nucmer + genmap repeats
+        filter_stats = filt.stats
+    } else {
+        vbase = final_bams.final_bam
+    }
+
     // Run FreeBayes and Backbone parallel
     def fb_out = CALL_FREEBAYES(vbase)
     def bb_in  = vbase.map { sId, rId, bam, bai, ref_fa, exclude_txt -> tuple(sId, rId, bam, bai, ref_fa) }
     def bb_out = CALL_BACKBONE(bb_in)
     
-    // Merge specific variants with backbone for All-Positions VCF
+    // Merge specific variants with backbone for All-Positions VCF (outLabel "" = masked path)
     def merge_in = fb_out.snps.join(bb_out.backbone, by: [0,1]).join(bb_out.header, by: [0,1])
+        .map { sId, rId, sv, st, bv, bt, hdr -> tuple(sId, rId, sv, st, bv, bt, hdr, "") }
     def vcf_ch = MERGE_VCFS(merge_in)
 
     // 7. Consensus Generation (Optional)
+    def masked_consensus = Channel.empty()   // captured for the cohort QC report (section 11)
     if (params.make_consensus) {
         // Prepare inputs: VCF + Reference + Mask sites
         // Note: Script is called from bin/ directly in the module
-        def refmeta = final_bams.final_bam.map { sId, rId, bam, bai, ref_fa, exclude_txt -> tuple(sId, rId, ref_fa, exclude_txt) }
+        // refmeta from vbase so the masked consensus gets the combined (nucmer + genmap) exclude
+        def refmeta = vbase.map { sId, rId, bam, bai, ref_fa, exclude_txt -> tuple(sId, rId, ref_fa, exclude_txt) }
         def allpos_mask = vcf_ch.allpos.join(fb_out.mask_sites, by: [0,1])
-        def cons_in = allpos_mask.join(refmeta, by: [0,1]).map { sId, rId, vcf_gz, tbi, mask, ref_fa, exclude_txt -> tuple(sId, rId, vcf_gz, tbi, mask, ref_fa, exclude_txt) }
-        
-        CONSENSUS_FASTA(cons_in)
+        def cons_in = allpos_mask.join(refmeta, by: [0,1]).map { sId, rId, vcf_gz, tbi, mask, ref_fa, exclude_txt -> tuple(sId, rId, vcf_gz, tbi, mask, ref_fa, exclude_txt, "") }
+
+        masked_consensus = CONSENSUS_FASTA(cons_in).fasta
+
+        // 7b. Virgin (unmasked) consensus from the ORIGINAL dedup BAM, in parallel with the masked one.
+        if (params.keep_virgin_consensus && params.dynamic_read_filter) {
+            def raw_bb_in = final_bams.final_bam.map { sId, rId, bam, bai, ref_fa, excl -> tuple(sId, rId, bam, bai, ref_fa) }
+            def bb_raw = CALL_BACKBONE_RAW(raw_bb_in)
+            // Virgin SNPs: re-call FreeBayes on the raw bam (shows pre-filter variants) or reuse masked SNPs.
+            def raw_snps = params.virgin_full_freebayes ? CALL_FREEBAYES_RAW(final_bams.final_bam).snps : fb_out.snps
+            def merge_raw = raw_snps.join(bb_raw.backbone, by: [0,1]).join(bb_raw.header, by: [0,1])
+                .map { sId, rId, sv, st, bv, bt, hdr -> tuple(sId, rId, sv, st, bv, bt, hdr, ".raw") }
+            def vcf_raw = MERGE_VCFS_RAW(merge_raw)
+            def refmeta_raw = final_bams.final_bam.map { sId, rId, bam, bai, ref_fa, excl -> tuple(sId, rId, ref_fa, excl) }
+            def cons_raw = vcf_raw.allpos.join(fb_out.mask_sites, by: [0,1]).join(refmeta_raw, by: [0,1])
+                .map { sId, rId, vcf_gz, tbi, mask, ref_fa, excl -> tuple(sId, rId, vcf_gz, tbi, mask, ref_fa, excl, ".raw") }
+            CONSENSUS_FASTA_RAW(cons_raw)
+        }
     }
 
     // 8. Annotation
     // Annotate Legacy split VCFs (Homo/Het/Indel/Raw)
+    def freebayes_ann = Channel.empty()   // annotated freebayes.raw (AD + snpEff ANN) -> SNP dynamics
     if (params.annotate_legacy_vcfs) {
         def leg_inputs = Channel.empty()
             .mix(fb_out.homo_snp.map   { sId, rId, vcf -> tuple(rId, sId, "var.homo.SNPs", vcf) })
             .mix(fb_out.het_snp.map    { sId, rId, vcf -> tuple(rId, sId, "var.het.SNPs", vcf) })
             .mix(fb_out.homo_indel.map { sId, rId, vcf -> tuple(rId, sId, "var.homo.indel", vcf) })
             .mix(fb_out.raw_fb.map     { sId, rId, vcf, tbi -> tuple(rId, sId, "freebayes.raw", vcf) })
-        
+
         def ann_leg_in = leg_inputs.combine(snpeff_db.db, by: 0)
             .map { rId, sId, lbl, vcf, cfg, dat -> tuple(sId, rId, lbl, vcf, cfg, dat) }
-        
-        ANNOTATE_LEGACY_VCF(ann_leg_in)
+
+        def ann_leg = ANNOTATE_LEGACY_VCF(ann_leg_in)
+        // Keep the annotated freebayes VCF: it carries per-alt AD (true AF) AND gene/effect (ANN),
+        // so the dynamics panel gets continuous allele frequencies without losing gene annotation.
+        freebayes_ann = ann_leg.out
+            .filter { sId, rId, vcf, tbi -> vcf.name.contains('freebayes.raw') }
+            .map { sId, rId, vcf, tbi -> vcf }
     }
 
     // Annotate Main VCF
@@ -321,26 +383,23 @@ workflow {
         tuple(rId, fai_file)
     }
 
-    // Prepare FastP JSONs (grouped by sample)
-    def json_ch = fastp_pe.json.mix(fastp_se.json)
-        .map { json -> 
-            def meta = json.name.split('__') 
-            tuple(meta[0], json) // [sId, json]
-        }
-        .groupTuple()
-        .map { sId, jsons -> tuple(sId, jsons[0]) } // Take first JSON if multiple
+    // Prepare FastP JSONs (grouped by sample). A multi-lane sample has one JSON per lane; pass them ALL
+    // so GENERATE_LEGACY_STATS aggregates read counts (SUM) and quality rates (read/base-weighted) instead
+    // of silently keeping a single lane. Grouped on the real sampleId val (do NOT re-derive it from the
+    // filename: a sampleId containing '__' would be truncated by split('__')). Sorted for a stable -resume.
+    def json_ch = fastp_pe.json.mix(fastp_se.json)   // [sId, json]
+        .groupTuple()                                 // -> [sId, [json_lane1, json_lane2, ...]]
+        .map { sId, jsons -> tuple(sId, jsons.toSorted { it.name }) }
 
-    // Prepare BAM Stats
-    def bam_stats_ch = final_bams.stats.map { stats ->
-        def name_parts = stats.name.tokenize('.')
-        def sId = name_parts[0]
-        def rId = name_parts[1]
-        tuple(sId, rId, stats)
-    }
+    // BAM stats already carry (sampleId, refId) as vals -- do NOT re-parse the filename with
+    // tokenize('.'), which truncates any dotted refId (e.g. NC_000962.3) and breaks the join.
+    def bam_stats_ch = final_bams.stats // [sId, rId, stats]
 
     // Join logic for Stats
     def vcf_bam_joined = vcf_for_stats.join(bam_stats_ch, by: [0,1]) // [sId, rId, vcf, stats]
-    def vcf_bam_fastp = vcf_bam_joined.join(json_ch, by: 0) // [sId, rId, vcf, stats, json]
+    // combine (not join) on sampleId: one json per sample must fan out to EVERY (sample,ref)
+    // row, else a sample mapped to >1 reference silently loses all but one reference's stats.
+    def vcf_bam_fastp = vcf_bam_joined.combine(json_ch, by: 0) // [sId, rId, vcf, stats, json]
 
     // Join with Reference Index (Using COMBINE to reuse reference)
     def ready_no_patho = vcf_bam_fastp
@@ -371,16 +430,81 @@ workflow {
         .filter { it != null }
 
     
-    GENERATE_LEGACY_STATS(final_stats_input)
+    def legacy_stats = GENERATE_LEGACY_STATS(final_stats_input)
 
     // 10. MultiQC Report
-    // Collect all relevant metrics from previous processes
+    // Collect all relevant metrics from previous processes.
+    // FastP JSONs and Kraken reports are reference-independent (QC of the raw reads), so a sample
+    // mapped to >1 reference emits identically-named copies from parallel tasks. Deduplicate by
+    // filename before collecting, otherwise MultiQC hits a fatal input-name collision.
+    def fastp_json_mqc = fastp_pe.json.mix(fastp_se.json).map { sId, json -> json }.unique { it.name }
+    def kraken_mqc     = ch_kraken_reports.unique { it.name }
+    // Provenance: dump the container's tool versions once and surface them in the report.
+    def versions_mqc   = DUMP_VERSIONS().mqc
     def qc_collection = Channel.empty()
-        .mix(fastp_pe.json.mix(fastp_se.json)) // FastP
-        .mix(final_bams.stats)                 // Samtools
-        .mix(ch_kraken_reports)                // Kraken
-        .mix(ch_snpeff_stats)                  // SnpEff
+        .mix(fastp_json_mqc)                          // FastP
+        .mix(final_bams.stats.map { s, r, st -> st }) // Samtools (drop the (sId,rId) key -> bare path)
+        .mix(kraken_mqc)                              // Kraken
+        .mix(ch_snpeff_stats)                         // SnpEff
+        .mix(filter_stats)                            // Length-aware read filter (drop rate)
+        .mix(versions_mqc)                            // Software versions
         .collect()
 
     MULTIQC(qc_collection, multiqc_report_filename)
+
+    // 11. Cohort-level outputs (QC report + master SNP matrix).
+    // Per-sample annotated VCFs, shared by both: prefer the annotated freebayes VCF (per-alt AD ->
+    // continuous AF + gene/effect); fall back to the annotated main VCF (GT-based AF) if legacy
+    // annotation is off. reference name(s) the samples were mapped against.
+    def report_vcfs = (params.annotate_legacy_vcfs ? freebayes_ann
+                                                   : vcf_for_stats.map { sId, rId, vcf -> vcf })
+                      .collect().ifEmpty([])
+    def ref_name = refMap.keySet().join(',')
+
+    // 11a. Consolidated QC report: aggregate every per-sample legacy log into one summary TSV, then
+    // render the self-contained interactive HTML + PASS/WARN/FAIL flags.
+    if (params.make_qc_report) {
+        def all_logs = legacy_stats.legacy_log.collect()
+        def summ = COLLECT_SUMMARY(all_logs, tsv_name)
+        def cons_files = masked_consensus.map { sId, rId, fa -> fa }.collect().ifEmpty([])
+        // Reference-level extras (cohort report -> take the reference bundle; single-ref is the norm):
+        // GFF enables the per-gene SNP-density panel, the nucmer/repeat BED the masked-regions panel.
+        def report_ref  = refGffMap.keySet().toList().first()   // deterministic: the first reference
+        def report_gff  = file(refGffMap[report_ref])
+        def report_mask = ref_bundle.bundle.filter { rId, fa, idx, excl -> rId == report_ref }
+                                           .map { rId, fa, idx, excl -> excl }.first()
+        // Provenance footer: pinned container digest + reference(s).
+        def provenance  = (["container=${params.container}"] + refMap.keySet().collect { "reference=${it}" })
+                          .collect { "\"${it}\"" }.join(' ')
+        // SNP dynamics: the samplesheet is the metadata source (auto-detects time/group columns; the
+        // panel self-hides if absent).
+        def report_meta = file(params.tsv)
+        // Drug-resistance calls (pathotypr DR run -> one run TSV); NO_FILE when pathotypr is off.
+        def dr_report = params.run_pathotypr
+            ? COLLECT_DR(patho_dr_results.map { sId, f -> f }.collect().ifEmpty([]), tsv_name).dr
+            : file("NO_FILE")
+        // Canonical-reference-annotated VCFs for the dual amino-acid numbering (off unless annotate_canonical).
+        // vcf_for_stats is the per-sample (sId,rId,vcf) channel; its positions match report_vcfs, so the
+        // report's sample+position merge finds each variant's canonical amino-acid change.
+        def report_vcfs_h37rv = params.annotate_canonical
+            ? ANNOTATE_CANONICAL(vcf_for_stats, params.canonical_snpeff_db).out
+                             .map { sId, vcf -> vcf }.collect().ifEmpty([])
+            : file("NO_FILE")
+        // Kraken2 per-sample reports (deduped) -> Taxonomic composition panel; empty when Kraken is off.
+        def report_kraken = ch_kraken_reports.unique { it.name }.collect().ifEmpty([])
+        // Alignment-free canonical COORDINATE per variant via pathotypr (alternative to the --vcfs-h37rv path):
+        // lift the run's variant positions (mapping-reference coords) onto H37Rv and hand the map to the report.
+        def report_ref_fa = ref_bundle.bundle.filter { rId, fa, idx, excl -> rId == report_ref }
+                                             .map { rId, fa, idx, excl -> fa }.first()
+        def pos_liftover  = params.variant_liftover
+            ? LIFT_VARIANTS(report_vcfs, report_ref_fa, report_ref, tsv_name).map
+            : file("NO_FILE")
+        QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
+                  report_meta, report_vcfs, report_vcfs_h37rv, pos_liftover, dr_report, report_kraken, provenance, tsv_name)
+    }
+
+    // 11b. Master SNP matrix: rows = SNP sites, columns = reference/annotation + per-sample AF & depth.
+    if (params.make_snp_matrix) {
+        SNP_MATRIX(report_vcfs, ref_name, tsv_name)
+    }
 }

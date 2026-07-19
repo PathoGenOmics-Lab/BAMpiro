@@ -1,0 +1,10 @@
+gene	high	moderate	low	modifier	dominant_effect	n_samples	total_impactful	start	end
+katG	0	6	1	0	missense_variant	6	6	2153889	2156111
+rpoB	0	5	0	1	missense_variant	5	5	759807	763325
+embB	0	4	0	0	missense_variant	7	4	4246514	4249810
+pncA	2	1	0	0	frameshift_variant	8	3	2288681	2289241
+gyrA	0	3	0	0	missense_variant	7	3	7302	9818
+rpsL	0	3	0	0	missense_variant	8	3	781560	781934
+inhA	0	0	1	3	upstream_gene_variant	3	0	1674202	1675011
+ahpC	0	0	0	2	upstream_gene_variant	4	0	2726088	2726780
+ethA	1	1	0	0	stop_gained	3	2	4326004	4327473

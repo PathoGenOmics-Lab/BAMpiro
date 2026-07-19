@@ -11,14 +11,15 @@ process PREPARE_REFERENCE {
 
     // We keep custom logic here because we NEED to publish the index files (.fai, .bwt, etc.),
     // which the global 'getSavePath' function would filter out.
-    publishDir "${params.outdir}/references/${refId}", mode: 'copy', saveAs: { filename ->
-        // Only hide the raw copy of reference.fa to save space (since we have the original input)
-        if (filename == "reference.fa") return null
+    publishDir "${params.outdir}/references/${refId}", mode: params.publish_mode, saveAs: { filename ->
+        // Hide the raw copy of reference.fa to save space (the original input already exists),
+        // BUT keep it when publishing CRAM so the outputs are self-decodable.
+        if (filename == "reference.fa" && !params.output_cram) return null
         return filename
     }
 
     cpus 4
-    memory '16 GB'
+    memory '8 GB'
 
     input:
     tuple val(refId), path(fasta)
@@ -90,13 +91,90 @@ process PREPARE_REFERENCE {
                END { if (NR>0) print c, cs, ce, "", "" }' \
         >> "$out"
     fi
+
+    # H37Rv Illumina "blind spots" (Zenodo 3701840): add them to the exclusion. The BED is 0-based
+    # half-open in NC_000962.3 coords; rewrite to the exclusion's 1-based-inclusive coords (start+1, end)
+    # and to THIS reference's contig name. Opt-in and only correct for an H37Rv-coordinate reference
+    # (H37Rv / the MTBC ancestor share coordinates). Flows to variant calling, consensus and the report.
+    if [[ "!{params.mask_blindspots}" == "true" && -s "!{params.blindspot_bed}" ]]; then
+        CONTIG=$(head -1 reference.fa | sed 's/^>//; s/[[:space:]].*//')
+        if [[ "!{params.blindspot_liftover}" == "true" && -s "!{params.canonical_ref}" ]]; then
+            # Whole-genome anchor-chain liftover of the H37Rv blind-spots onto THIS reference, so the mask is
+            # correct without assuming shared coordinates: every position is placed by interpolation between
+            # flanking unique anchors (handles SNP sites + indels; anchor-desert positions drop, never mis-map).
+            python3 !{projectDir}/bin/pathotypr_liftover.py lift "!{params.blindspot_bed}" "!{params.canonical_ref}" reference.fa \
+                --out-bed bs_lifted.bed --contig "$CONTIG" --kmer-size 21 --global-chain --sample 10
+            awk 'BEGIN{OFS="\t"} $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {print $1, $2+1, $3, "blindspot", ""}' bs_lifted.bed >> "$out"
+        else
+            # reference already shares H37Rv coordinates: append the blind-spots directly (contig rewrite + 1-based)
+            awk -v C="$CONTIG" 'BEGIN{OFS="\t"} $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {print C, $2+1, $3, "blindspot", ""}' "!{params.blindspot_bed}" >> "$out"
+        fi
+    fi
+    '''
+}
+
+
+process BUILD_MAPPABILITY {
+    // Length-aware mappability track: for each position, the smallest read length at
+    // which the k-mer starting there is genome-unique (min_unique_len). Feeds FILTER_READS.
+    tag "Mappability: ${refId}"
+
+    // storeDir persists the track and SKIPS this (expensive) step if it already exists -> computed
+    // once per reference across runs. Keyed by refId + the genmap params + the reference size, so
+    // swapping the FASTA for a given refId (different genome / added-removed contigs) recomputes it
+    // instead of silently reusing a stale track. NOTE: a same-byte-size edit (e.g. a single-base
+    // substitution) won't change the key -- clear the dir manually in that rare case.
+    storeDir "${params.mappability_dir}/${refId}_k${params.genmap_min_k}-${params.genmap_max_k}_s${params.genmap_step}_E${params.genmap_errors}r${params.genmap_error_rate}_tp${params.genmap_tail_policy}_inf${params.genmap_infinity}_sz${ref_fa.size()}"
+
+    cpus 8
+    memory '16 GB'
+
+    input:
+    tuple val(refId), path(ref_fa)
+
+    output:
+    tuple val(refId), path("${refId}.min_unique_len.npz"), emit: track
+    tuple val(refId), path("Locus_to_exclude_mappability_${refId}.txt"), emit: repeat_bed
+
+    shell:
+    '''
+    set -euo pipefail
+    samtools faidx !{ref_fa}
+
+    # genmap refuses to write into an existing index dir (matters on -resume / retry)
+    rm -rf gmidx
+    genmap index -F !{ref_fa} -I gmidx
+
+    # (k,E)-mappability sweep across candidate read lengths; value 1 == unique (both strands).
+    # E is fixed (genmap_errors) unless genmap_error_rate>0, in which case it scales with k.
+    BGS=""
+    for K in $(seq !{params.genmap_min_k} !{params.genmap_step} !{params.genmap_max_k}); do
+        if [ "!{params.genmap_error_rate}" != "0" ]; then
+            E=$(python3 -c "print(max(1, round(${K} * !{params.genmap_error_rate})))")
+        else
+            E=!{params.genmap_errors}
+        fi
+        genmap map -K ${K} -E ${E} -T !{task.cpus} -I gmidx -O map_K${K} -bg
+        BGS="${BGS} ${K}:map_K${K}.bedgraph"
+    done
+
+    # Collapse the sweep into one uint16 per-contig min_unique_len array (65535 = never unique),
+    # and emit the always-repetitive interior as a 1-based BED for consensus masking.
+    python3 !{projectDir}/bin/build_min_unique_len.py \
+        --fai !{ref_fa}.fai \
+        --bedgraphs ${BGS} \
+        --sentinel !{params.genmap_infinity} \
+        --tail-policy !{params.genmap_tail_policy} \
+        --mask-bed Locus_to_exclude_mappability_!{refId}.txt \
+        --mask-window !{params.genmap_max_k} \
+        --out-prefix !{refId}
     '''
 }
 
 
 process SNPEFF_BUILD_DB {
     tag "SnpEff DB: ${refId}"
-    publishDir "${params.outdir}/references/${refId}/snpeff", mode: 'copy'
+    publishDir "${params.outdir}/references/${refId}/snpeff", mode: params.publish_mode
     cpus 1
     memory '8 GB'
     
