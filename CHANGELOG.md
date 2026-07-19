@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [Semantic Versioning](https://semver.org/).
 
-## [1.0.1] - 2026-07-16
+## [1.0.1] - 2026-07-19
 
 Headline: a consolidated **interactive QC report**, alignment-free **lineage &
 drug-resistance typing**, and a restructured documentation set. Rebranded to
@@ -64,6 +64,18 @@ drug-resistance typing**, and a restructured documentation set. Rebranded to
   troubleshooting, QC report, Pathotypr, outputs, downstream phylogeny, and an
   end-to-end Jupyter tutorial), with a GitHub Pages publishing workflow (activated once
   the repo is public) and the README slimmed to a landing page.
+- **Metadata-driven cohort filtering & dose analyses** in the report - samplesheet
+  categorical columns (e.g. `treatment`) drive a report-wide cohort filter; a numeric
+  `dose` column becomes a first-class metric (scatter axes + correlation matrix, with a
+  Spearman *r* / *p* read-out), plus two new panels: **Dose × treatment** (per-treatment
+  dose distribution + a Kruskal-Wallis rank test) and **Variant × dose** (per-variant
+  allele-frequency-vs-dose Spearman scan with Benjamini-Hochberg FDR).
+- **Guided tutorial series** on the docs site - a step-by-step *Tutorials* section (first
+  run, samplesheet, configuring a run, reading the QC report, lineage & DR typing, building
+  a phylogeny, longitudinal analysis, running a non-TB organism) alongside the runnable
+  Jupyter notebook.
+- **Live example QC report** - a self-contained demo report published on the docs site so
+  the interactive dashboard can be explored before running the pipeline.
 
 ### Changed
 
