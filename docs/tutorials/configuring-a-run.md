@@ -136,6 +136,29 @@ Two things are easy to confuse. The interactive QC report lets you drag the cut-
 
 The gate thresholds (`--report_depth_min`, `--report_breadth_min`, `--report_missing_max`, and so on) are listed in full under [Configuration](../configuration.md). You'll see exactly how each one flags a sample in the next tutorial.
 
+## 6. Resuming & monitoring a run
+
+Runs are long, and clusters kill jobs. Nextflow caches every finished task in the `work/` directory, so you rarely have to start over.
+
+- **Resume** — if a run fails or you cancel it, re-run the **exact same command** with `-resume` added. Nextflow reuses the completed tasks and only recomputes what's actually needed:
+
+    ```bash
+    nextflow run main.nf --tsv samples.tsv --outdir results -profile local,docker -resume
+    ```
+
+- **Execution reports** — add these Nextflow flags to profile the run (handy for right-sizing CPU / memory / time requests on a cluster):
+
+    ```bash
+    nextflow run main.nf --tsv samples.tsv --outdir results -profile standard \
+      -with-report report.html -with-trace trace.txt -with-timeline timeline.html
+    ```
+
+    `-with-report` is an HTML resource-usage summary, `-with-trace` a per-task TSV, and `-with-timeline` a Gantt-style timeline.
+
+!!! note "Keep `work/`… until you're done"
+
+    `-resume` only works while the `work/` directory survives — clean it (`nextflow clean` or `rm -rf work`) **after** a run finishes and you've collected your `--outdir` results, not before.
+
 ## What's next
 
 You've tuned a run for your environment and organism. Next, learn to read what it produced → [Reading the QC report](reading-the-qc-report.md).

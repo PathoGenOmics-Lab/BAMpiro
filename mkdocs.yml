@@ -61,6 +61,7 @@ nav:
       - 4. Reading the QC report: tutorials/reading-the-qc-report.md
       - 5. Lineage & DR typing: tutorials/lineage-and-dr-typing.md
       - 6. Building a phylogeny: tutorials/building-a-phylogeny.md
+      - "Longitudinal & within-host analysis": tutorials/longitudinal-analysis.md
       - Running a non-TB organism: tutorials/other-organisms.md
       - "Analysing outputs (Jupyter)": tutorial/bampiro_tutorial.ipynb
   - User Guide:

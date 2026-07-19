@@ -49,6 +49,13 @@ one you need. For exhaustive detail, every tutorial links back to the reference 
 
     Take the pipeline outputs and the QC exclusion set through to a tree.
 
+-   :material-chart-timeline-variant:{ .lg .middle } &nbsp; **[Longitudinal & within-host analysis](longitudinal-analysis.md)**
+
+    ---
+
+    Track allele frequencies over time and find co-varying variants — SNP dynamics and
+    epistasis for a longitudinal cohort.
+
 -   :material-bacteria:{ .lg .middle } &nbsp; **[Running a non-TB organism](other-organisms.md)**
 
     ---

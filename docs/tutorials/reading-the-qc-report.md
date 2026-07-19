@@ -73,7 +73,24 @@ The sidebar groups every panel; panels with no data hide themselves. In brief:
 
 Every panel carries an **(i) info popover** explaining its method and caveats — click it whenever you are unsure what a plot means. The full catalogue lives in the [Interactive QC Report](../qc-report.md) reference.
 
-## 6. The dose analyses
+!!! tip "Longitudinal cohorts"
+
+    If your samples span timepoints, **SNP dynamics** and **Epistasis** turn into a within-host
+    evolution story — see [Longitudinal & within-host analysis](longitudinal-analysis.md).
+
+## 6. Spotting contamination (Kraken2)
+
+Before mapping, BAMpiro screens every sample's reads with **Kraken2**; the **Taxonomic composition** panel (under *Overview*) shows the breakdown per sample, sorted **worst-first**: the **primary** taxon %, the largest **contaminants**, and the **unclassified** fraction.
+
+A clean sample is almost entirely one taxon. Warning signs:
+
+- **Low primary %** — the executive summary flags samples below **90 % primary** as *possibly contaminated*.
+- **A large secondary taxon** — co-infection, cross-contamination, or the wrong reference for these reads.
+- **High unclassified %** — material absent from the Kraken2 database (a divergent or novel organism), or a mismatched reference.
+
+Basket obviously contaminated samples for exclusion alongside the QC failures. If a whole batch shows the *same* contaminant, suspect a shared lab / reagent source rather than the biology.
+
+## 7. The dose analyses
 
 If your metadata has a numeric **`dose`** column, two extra panels light up.
 
