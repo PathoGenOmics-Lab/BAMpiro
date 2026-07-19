@@ -230,6 +230,34 @@ var colfCb=el('colf'); if(colfCb)colfCb.onchange=function(){st.showColF=colfCb.c
 if(R.n_ancient){el('ancfilter').innerHTML='<span class="seg" id="ancseg"><button class="on" data-a="">all</button><button data-a="mod">modern</button><button data-a="anc">aDNA <span class="k">'+R.n_ancient+'</span></button></span>';
   Array.prototype.forEach.call(document.querySelectorAll('#ancseg button'),function(b){b.onclick=function(){st.ancOnly=b.getAttribute('data-a')||null;
     Array.prototype.forEach.call(document.querySelectorAll('#ancseg button'),function(x){x.classList.toggle('on',x==b);});renderAll();};});}
+// samplesheet-metadata cohort filter: one dropdown per categorical annotation column (site,
+// treatment, ...), restricting the whole report to an exact value. Time/group columns (the
+// dynamics axes) and the lineage column (its own Lineages filter) are left out; every field
+// still appears as a SNP-matrix header level regardless.
+(function(){
+  var host=el('metafilter'), meta=R.sample_meta; if(!host)return;
+  if(!(meta&&meta.fields&&meta.fields.length))return;
+  var skip={}; if(meta.time_field)skip[meta.time_field]=1; if(meta.group_field)skip[meta.group_field]=1;
+  var has=function(o,k){return Object.prototype.hasOwnProperty.call(o,k);};   // avoid prototype-chain hits (toString, constructor, ...)
+  // the lineage column is left out by NAME (its own Lineages filter owns it) and/or by value — the
+  // samplesheet may label lineages differently from the QC-assigned ones (sub-lineages, "Beijing", ...).
+  function isLinName(f){return /^(lineage|linaje|lineage_?id|sub_?lineage)$/i.test(f);}
+  function isLinValues(f){var seen=false; for(var i=0;i<R.samples.length;i++){var v=(meta.rows[R.samples[i].s]||{})[f];
+    if(v&&v!=='NA'&&v!=='.'&&v!=='-'){ if(!has(LINCOL,v))return false; seen=true; }} return seen;}
+  var vals={}, flds=meta.fields.filter(function(f){
+    if(skip[f]||isLinName(f)||isLinValues(f))return false;
+    var seen={},list=[]; R.samples.forEach(function(s){var v=(meta.rows[s.s]||{})[f];
+      if(v&&v!=='NA'&&v!=='.'&&v!=='-'&&!has(seen,v)){seen[v]=1;list.push(v);}});
+    vals[f]=list.sort(); return list.length>=2&&list.length<=12;
+  });
+  if(!flds.length)return;
+  host.innerHTML='<span class="metaflt" title="filter the whole report by a samplesheet annotation column">'+
+    flds.map(function(f){return '<label class="metasel">'+esc(f)+' <select data-mf="'+esc(f)+'"><option value="">all</option>'+
+      vals[f].map(function(v){return '<option value="'+esc(v)+'">'+esc(v)+'</option>';}).join('')+'</select></label>';}).join('')+'</span>';
+  Array.prototype.forEach.call(host.querySelectorAll('select'),function(sel){sel.onchange=function(){
+    var f=sel.getAttribute('data-mf'); if(sel.value)st.metaFilter[f]=sel.value; else delete st.metaFilter[f];
+    sel.classList.toggle('on',!!sel.value); renderAll();};});
+})();
 // provenance / run-manifest header (self-documenting for a citable exclusion set)
 (function(){var p=R.provenance||{},items=[];
   items.push('reference '+(p.reference||'NA')+(R.genome_len?' ('+R.genome_len.toLocaleString('en-US')+' bp)':''));

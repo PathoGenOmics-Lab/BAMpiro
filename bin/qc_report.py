@@ -880,7 +880,12 @@ def parse_sample_meta(path):
         out[s] = {h: (r[i].strip() if i < len(r) else '') for i, h in fields}
     if not out:
         return None
-    return {'fields': [h for _, h in fields], 'rows': out}
+    # tag the time / group columns (dynamics axes) so the report can leave them out of the
+    # cohort metadata filter — they stay as SNP-matrix header levels either way.
+    time_field = next((h for _, h in fields if _DYN_TIME_RE.search(h.replace(' ', '_'))), None)
+    group_field = next((h for _, h in fields if _DYN_GROUP_RE.search(h.replace(' ', '_'))), None)
+    return {'fields': [h for _, h in fields], 'rows': out,
+            'time_field': time_field, 'group_field': group_field}
 
 
 def parse_metadata(path):

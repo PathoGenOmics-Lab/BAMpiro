@@ -27,12 +27,18 @@ function fillIcons(root){Array.prototype.forEach.call((root||document).querySele
 function fmt(v,k){if(v==null)return'NA';if(k=='int')return Math.round(v).toLocaleString('en-US');if(k=='pct')return v.toFixed(1);return v.toFixed(2);}
 function shortv(v,k){if(v==null)return'';if(k=='int')return Math.round(v).toLocaleString('en-US');return (+v).toPrecision(3);}
 function el(id){return document.getElementById(id);}
+function metaFilterActive(){for(var f in st.metaFilter){if(st.metaFilter[f])return true;} return false;}
+function metaMatch(s){   // AND across the active samplesheet-metadata cohort filters
+  if(!metaFilterActive())return true;
+  var mr=(R.sample_meta&&R.sample_meta.rows&&R.sample_meta.rows[s.s])||{};
+  for(var f in st.metaFilter){if(st.metaFilter[f]&&mr[f]!==st.metaFilter[f])return false;} return true;}
 function visible(){return R.samples.filter(function(s){
   if(st.onlyFlagged&&s.v=='PASS')return false;
   if(st.flagFilter&&s.f.indexOf(st.flagFilter)<0)return false;
   if(st.ancOnly=='anc'&&!s.anc)return false;
   if(st.ancOnly=='mod'&&s.anc)return false;
   if(st.linFilter&&s.lineage!=st.linFilter)return false;
+  if(!metaMatch(s))return false;
   if(st.q&&s.s.toLowerCase().indexOf(st.q)<0)return false; return true;});}
 // Per-column filters for the General Statistics table (table-scoped; do NOT touch the global visible()
 // so the plots stay driven by the global filters). A filter string is a numeric operator/range on numeric
@@ -59,11 +65,12 @@ function colMatch(s){if(!st.showColF)return true;   // filters apply only while 
   var pv=colFilterVal(s,k); if(!colMatchOne(raw,pv[0],pv[1]))return false;} return true;}
 function colAnyActive(){if(!st.showColF)return false; for(var k in st.colf){if(st.colf[k]&&st.colf[k].trim())return true;} return false;}
 // any row filter active (used to surface a "clear filters" affordance so users never lose track of why rows vanished)
-function anyFilterActive(){return !!(st.q||st.onlyFlagged||st.flagFilter||st.linFilter||st.ancOnly||colAnyActive());}
+function anyFilterActive(){return !!(st.q||st.onlyFlagged||st.flagFilter||st.linFilter||st.ancOnly||metaFilterActive()||colAnyActive());}
 function clearAllFilters(){
-  st.q=''; st.onlyFlagged=false; st.flagFilter=null; st.linFilter=null; st.ancOnly=null; st.colf={};
+  st.q=''; st.onlyFlagged=false; st.flagFilter=null; st.linFilter=null; st.ancOnly=null; st.metaFilter={}; st.colf={};
   var q=el('q'); if(q)q.value=''; var of=el('of'); if(of)of.checked=false;
   Array.prototype.forEach.call(document.querySelectorAll('#ancseg button'),function(x){x.classList.toggle('on',(x.getAttribute('data-a')||'')=='');});
+  Array.prototype.forEach.call(document.querySelectorAll('#metafilter select'),function(sel){sel.value='';sel.classList.remove('on');});
   renderAll();
 }
 function dotColor(s){return st.colorBy=='lineage'?linColor(s.lineage):VCOL[s.v];}

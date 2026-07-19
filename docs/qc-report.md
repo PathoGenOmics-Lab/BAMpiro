@@ -22,6 +22,11 @@ by `bin/qc_report.py` and controlled by `--make_qc_report` (default `true`).
   duplication, mapping, IUPAC, Ti/Tv, SNP-z, heteroplasmy, mixed-lineage) and the
   whole report re-flags instantly. Presets: *gate defaults*, *strict (modern WGS)*,
   *lenient (aDNA / low-cov)*.
+- **Filter by metadata** - when the samplesheet carries categorical annotation columns
+  (`treatment`, `site`, `ward`…), the toolbar shows a dropdown per column that restricts
+  the whole QC view - the sample table, the distribution / QC-space plots, and the genome
+  & gene panels - to one value, exactly like the lineage and flag filters. The time and
+  group (dynamics) columns and the lineage column are left out (lineage has its own filter).
 - **Collapsible table-of-contents sidebar** with scroll-spy; panels with no data
   hide themselves (and their nav link).
 - **Per-section (i) info popovers** explaining each analysis and its caveats.
@@ -87,11 +92,12 @@ there is nothing to configure — add a column and the matching panel reacts.
 | **sample id** | `sample`, `sample_id`, `name`, `gid`, `strain`, `isolate`… | Keys the metadata to each sample's VCF / stats (falls back to the first column). |
 | **time** | `timepoint`, `day`, `date`, `week`, `month`, `hour`, `passage`, `generation`, `visit`, `tp`, `t0`… | The x-axis of the **SNP dynamics** trajectories. |
 | **group / series** | `group`, `patient`, `series`, `host`, `subject`, `cluster`, `experiment`, `donor`, `case`, `replicate`, `chain`, `samples`… | Connects samples into one longitudinal series (a trajectory set per group) for **SNP dynamics** and **epistasis**. |
-| **any other column** | `site`, `lineage`, `region`, `ward`, `batch`… | Adds detail with no special meaning. |
+| **any other column** | `treatment`, `site`, `region`, `ward`, `batch`… | A categorical annotation - becomes a **cohort filter** dropdown in the toolbar (restrict the whole QC view to one value) and a SNP-matrix header level. |
 
 **Every** annotation column — including the time and group ones — also becomes a
 **column-header level** in the **SNP matrix** (filter the matrix by it, hover a header
-for its value); the time and group columns *additionally* drive the dynamics. The
+for its value); the time and group columns *additionally* drive the dynamics, and each
+plain categorical column *additionally* becomes a **cohort filter** in the toolbar. The
 pipeline's own file/reference columns (`r1`, `r2`, `reffasta`, `refgff`, `refid`,
 `taxid`, `runid`) are ignored, so a normal BAMpiro samplesheet works unchanged. The
 SNP-dynamics / epistasis panels appear only when the metadata has **both** a time and
@@ -100,13 +106,14 @@ a group column *and* per-sample VCFs are present; the SNP matrix needs the VCFs 
 Example `--metadata` TSV (tab-separated; the demo cohort):
 
 ```tsv
-sample      samples   timepoint   site      lineage
-TB-P1-d0    TB-P1     0           Madrid    L2
-TB-P1-d60   TB-P1     60          Madrid    L2
-TB-P1-d180  TB-P1     180         Madrid    L2
-TB-2020-C   .         .           Sevilla   L4
+sample      samples   timepoint   site      treatment     lineage
+TB-P1-d0    TB-P1     0           Madrid    HRZE          L2
+TB-P1-d60   TB-P1     60          Madrid    HRZE          L2
+TB-P1-d180  TB-P1     180         Madrid    HRZE          L2
+TB-2020-C   .         .           Sevilla   MDR regimen   L4
 ```
 
 Here `samples` is the group (the longitudinal patient series *TB-P1*), `timepoint` is
-the time axis, and `site` + `lineage` become SNP-matrix header levels; the singleton
-`TB-2020-C` (no series) simply has no dynamics trajectory.
+the time axis, `treatment` and `site` become cohort filters (and SNP-matrix header
+levels), and `lineage` gets its canonical palette; the singleton `TB-2020-C` (no series)
+simply has no dynamics trajectory.
