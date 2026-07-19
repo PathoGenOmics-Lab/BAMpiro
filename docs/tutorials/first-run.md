@@ -11,6 +11,21 @@ You only need two things on your machine — the container carries every bioinfo
 - **Nextflow** `>= 24.04.2` (which needs **Java 17+**)
 - **Docker** *or* **Singularity / Apptainer**
 
+!!! tip "Installing Nextflow in a conda environment"
+
+    The cleanest way to get Nextflow — **and the Java it needs** — without touching your system is a
+    dedicated **conda / mamba** environment:
+
+    ```bash
+    conda create -n bampiro -c conda-forge -c bioconda nextflow
+    conda activate bampiro
+    nextflow -version   # confirm it is >= 24.04.2
+    ```
+
+    Bioconda pulls in a compatible Java for you. Activate this environment whenever you run BAMpiro.
+    (The official installer `curl -s https://get.nextflow.io | bash` also works, but you must already
+    have Java 17+ on your `PATH`.)
+
 !!! note "The container does the heavy lifting"
 
     On the first run, BAMpiro automatically pulls its pinned image
