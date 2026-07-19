@@ -73,6 +73,10 @@ Run the pipeline, pointing `--tsv` at your samplesheet and `--outdir` at where r
     host, use `local` (or `local,docker`) as above, or the run fails before it
     starts. See [Running without SLURM](../installation.md#running-without-slurm).
 
+    Running on **your own cluster**? You'll also need to bind your files into the
+    Singularity container so tasks can read them — see
+    [On an HPC cluster](configuring-a-run.md#on-an-hpc-cluster-make-your-files-visible-to-the-container).
+
 Nextflow prints a live table of processes as they run. Behind that table it QCs and trims your reads, screens for contamination, aligns to the reference, masks repeats and low-mappability regions, calls and annotates variants, builds a consensus, and folds everything into one report.
 
 If a step goes red, the [Troubleshooting](../troubleshooting.md) page covers the common first-run errors (a frequent one on small machines is Kraken2 running out of memory).
