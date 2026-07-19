@@ -137,5 +137,8 @@ over time*) runs an association scan: for every variant site it correlates the p
 (**Spearman** ρ + two-sided *p*), applies a **Benjamini–Hochberg FDR** across all tested
 variants, and ranks them — so you can see which mutations track the dose while the
 multiple-testing correction keeps incidental hits in check. Click any row to plot that
-variant's allele-frequency-vs-dose scatter. Sites carried by fewer than three samples (or
-with no allele-frequency variation) are skipped.
+variant's allele-frequency-vs-dose scatter, click a column header to re-sort (by ρ, *p*,
+*q* or carrier count), and click a point to highlight that sample across the whole report.
+Sites carried by fewer than three samples (or with no allele-frequency variation) are
+skipped. Both this panel and **Dose × treatment** carry an info **(i)** with the full
+method note (as every analysis panel does).

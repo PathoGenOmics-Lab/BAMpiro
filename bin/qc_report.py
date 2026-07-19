@@ -1415,6 +1415,19 @@ SECTION_INFO = {
             "NOT a clinical drug-susceptibility result.",
     "flagged": "The samples the current thresholds flag as WARN / FAIL and the specific reason for each. This "
                "is the actionable QC summary; adjust the thresholds above to re-flag the whole report.",
+    "dosetx": "The per-sample dose (a numeric samplesheet column) split by treatment group, drawn as a box (IQR "
+              "+ median) with the individual samples, plus a Kruskal-Wallis rank test of whether dose differs "
+              "across the treatment groups (a Mann-Whitney-equivalent when there are two groups). The test runs "
+              "over the whole cohort, independent of the live filters; groups with fewer than two dosed samples "
+              "are drawn but not tested. Click a point to highlight that sample across the report. Descriptive, "
+              "not a claim about efficacy.",
+    "vardose": "An association scan: for every variant site, the per-sample allele frequency (0 where the site is "
+               "reference) is rank-correlated with dose across the dosed samples (Spearman rho + two-sided p), and "
+               "a Benjamini-Hochberg FDR q is computed across all tested variants so the multiple testing is "
+               "controlled. The table ranks the variants; click a row to plot its allele-frequency-vs-dose scatter, "
+               "click a column header to re-sort, and click a point to highlight that sample. Sites with fewer than "
+               "three carriers or no allele-frequency variation are skipped. A screen for dose-associated variants, "
+               "NOT proof of causation.",
 }
 
 

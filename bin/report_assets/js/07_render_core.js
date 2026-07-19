@@ -178,7 +178,7 @@ function renderScatter(){
     ticks+dots+
     '<text x="'+(pad+plot/2)+'" y="'+(H-6)+'" font-size="11" fill="'+TH.mut+'" text-anchor="middle">'+esc(xm.label)+'</text>'+
     '<text x="12" y="'+(pad+ph/2)+'" font-size="11" fill="'+TH.mut+'" text-anchor="middle" transform="rotate(-90 12 '+(pad+ph/2)+')">'+esc(ym.label)+'</text></svg>'+
-    '<div class="sc-corr">'+corrCap+'</div>'+
+    '<div class="sc-corr" title="Spearman rank correlation between the two selected axes over the samples currently in view, with a two-sided p-value (Student-t approximation) and the sample count. Descriptive; not corrected for multiple comparisons.">'+corrCap+'</div>'+
     colorLegend();
   SGEO={pad:pad,plot:plot,ph:ph,H:H,xr:xr,yr:yr,xk:xk,yk:yk};   // for the rubber-band select inverse-mapping
   var scsvg=el('scsvg'); if(scsvg){var ov=document.createElementNS('http://www.w3.org/2000/svg','rect');

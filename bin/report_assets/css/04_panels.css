@@ -193,3 +193,5 @@ html.dark .dyn-search,html.dark .gsearch,html.dark .controls input[type=search]{
 .vd-row{cursor:pointer}
 .vd-row:hover{background:var(--soft)}
 .vd-row.on{background:var(--hl)}
+.vd-table th.vd-sortable{cursor:pointer;user-select:none;white-space:nowrap}
+.vd-table th.vd-sortable:hover{color:var(--accent)}

@@ -134,12 +134,14 @@ function renderDoseTx(){
     var seen={};
     groups[c].forEach(function(o){var x=X(o.d),key=Math.round(x/6),off=((seen[key]=(seen[key]||0)+1)-1),dy=((off%2)?1:-1)*Math.ceil(off/2)*5;
       dy=Math.max(-20,Math.min(20,dy));   // keep a crowded x-bin (many samples at one dose) inside its own row band
-      svg+='<circle cx="'+x.toFixed(1)+'" cy="'+(cy+dy).toFixed(1)+'" r="3.4" fill="'+(o.v=='FAIL'?'#e0544f':col)+'" fill-opacity="0.92" stroke="#fff" stroke-width="0.6"><title>'+esc(o.s)+' · '+esc(c)+' · dose '+o.d+'</title></circle>';});
+      var hi=(st.hi==o.s);                 // clickable: highlight the sample everywhere (setHi)
+      svg+='<circle class="dtx-dot" data-s="'+esc(o.s)+'" cx="'+x.toFixed(1)+'" cy="'+(cy+dy).toFixed(1)+'" r="'+(hi?5.4:3.4)+'" fill="'+(o.v=='FAIL'?'#e0544f':col)+'" fill-opacity="0.92" stroke="'+(hi?TH.ink:'#fff')+'" stroke-width="'+(hi?1.6:0.6)+'" style="cursor:pointer"><title>'+esc(o.s)+' · '+esc(c)+' · dose '+o.d+' — click to highlight</title></circle>';});
     svg+='<text x="'+(labW-8)+'" y="'+(cy-1)+'" text-anchor="end" font-size="11" fill="'+TH.ink+'">'+esc(c.length>20?c.slice(0,19)+'…':c)+'</text>'+
       '<text x="'+(labW-8)+'" y="'+(cy+12)+'" text-anchor="end" font-size="9.5" fill="'+TH.mut+'">n='+arr.length+' · med '+shortv(m,'float')+'</text>';
   });
   svg+='</svg>';
   host.innerHTML=svg;
+  Array.prototype.forEach.call(host.querySelectorAll('.dtx-dot'),function(d){d.onclick=function(){setHi(d.getAttribute('data-s'));};});
   var kw=kruskalWallis(withData.map(function(c){return groups[c].map(function(o){return o.d;});}));
   if(cap){
     if(kw){var sig=kw.p<0.05;
@@ -151,7 +153,8 @@ function renderDoseTx(){
 }
 
 // ---- Variant x dose: per-variant allele frequency correlated with dose (Spearman + BH-FDR) ----
-var vardoseSel=0, _vdCache, _vdDone=false;
+var vardoseSelKey=null, vardoseSort={k:'ar',asc:false}, _vdCache, _vdDone=false;
+function _vkey(t){return t.r.pos+'|'+t.r.alt;}
 function _vdCompute(){   // cohort-fixed scan -> memoized: identical on every renderAll, so compute once; only the DOM render below is cheap
   if(_vdDone)return _vdCache; _vdDone=true; _vdCache=null;
   var M=R.snp_matrix;
@@ -180,9 +183,14 @@ function renderVarDose(){
   if(!D){ if(sec)sec.style.display='none'; if(nv)nv.style.display='none'; return; }
   if(sec)sec.style.display=''; if(nv)nv.style.display='';
   var M=D.M, didx=D.didx, dose=D.dose, tests=D.tests, nsig=D.nsig;
-  if(vardoseSel>=tests.length)vardoseSel=0;
-  var sel=tests[vardoseSel];
-  // scatter of the selected variant: dose (x) vs AF (y)
+  // display order: sortable by any column; default is |rho| desc (the memoised base order)
+  function keyval(t){var k=vardoseSort.k; return k=='carriers'?t.carriers:(k=='rho'?t.rho:(k=='p'?t.p:(k=='q'?t.q:Math.abs(t.rho))));}
+  var ord=tests.slice().sort(function(a,b){var d=keyval(a)-keyval(b); if(!d)d=Math.abs(b.rho)-Math.abs(a.rho); return vardoseSort.asc?d:-d;});
+  // selected variant tracked by a stable key so it survives re-sorts
+  var sel=null,selIdx=-1;
+  for(var si=0;si<ord.length;si++){ if(_vkey(ord[si])===vardoseSelKey){ sel=ord[si]; selIdx=si; break; } }
+  if(!sel){ sel=ord[0]; selIdx=0; vardoseSelKey=_vkey(sel); }
+  // scatter of the selected variant: dose (x) vs AF (y); points click through to highlight the sample
   var W=Math.min(440,Math.max(300,Math.round((host.clientWidth||760)*0.42))),Hs=250,padL=44,padB=32,padT=12,padR=12;
   var dlo=Math.min.apply(null,dose),dhi=Math.max.apply(null,dose); if(dhi<=dlo)dhi=dlo+1;
   function X(d){return padL+(d-dlo)/(dhi-dlo)*(W-padL-padR);}
@@ -190,25 +198,31 @@ function renderVarDose(){
   var svg='<svg width="'+W+'" height="'+Hs+'" style="display:block;max-width:100%">';
   [0,0.25,0.5,0.75,1].forEach(function(t){var y=Y(t);svg+='<line x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y.toFixed(1)+'" stroke="'+TH.grid+'"/><text x="'+(padL-6)+'" y="'+(y+3).toFixed(1)+'" text-anchor="end" font-size="9" fill="'+TH.mut+'">'+t.toFixed(2).replace(/^0/,'')+'</text>';});
   [0,0.5,1].forEach(function(t){var d=dlo+t*(dhi-dlo),x=X(d);svg+='<text x="'+x.toFixed(1)+'" y="'+(Hs-padB+13)+'" text-anchor="middle" font-size="9" fill="'+TH.mut+'">'+shortv(d,'float')+'</text>';});
-  for(var k=0;k<didx.length;k++){var x=X(dose[k]),y=Y(sel.af[k]);svg+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="3.6" fill="#0e8ba8" fill-opacity="0.82" stroke="#fff" stroke-width="0.6"><title>'+esc(M.samples[didx[k]])+' · dose '+shortv(dose[k],'float')+' · AF '+sel.af[k].toFixed(2)+'</title></circle>';}
+  for(var k=0;k<didx.length;k++){var sid=M.samples[didx[k]],hi=(st.hi==sid),x=X(dose[k]),y=Y(sel.af[k]);
+    svg+='<circle class="vd-dot" data-s="'+esc(sid)+'" cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+(hi?5.4:3.6)+'" fill="#0e8ba8" fill-opacity="0.82" stroke="'+(hi?TH.ink:'#fff')+'" stroke-width="'+(hi?1.6:0.6)+'" style="cursor:pointer"><title>'+esc(sid)+' · dose '+shortv(dose[k],'float')+' · AF '+sel.af[k].toFixed(2)+' — click to highlight</title></circle>';}
   svg+='<text x="'+((padL+W-padR)/2).toFixed(1)+'" y="'+(Hs-3)+'" text-anchor="middle" font-size="10" fill="'+TH.mut+'">'+esc(MET.dose.label)+'</text>'+
     '<text x="11" y="'+((padT+Hs-padB)/2).toFixed(1)+'" text-anchor="middle" font-size="10" fill="'+TH.mut+'" transform="rotate(-90 11 '+((padT+Hs-padB)/2).toFixed(1)+')">allele frequency</text></svg>';
   function vlabel(r){return '<b>'+esc(r.gene||r.contig)+'</b>'+geneRvTag(r.gene)+' '+refPos(r.pos,r.pos_h37rv)+' '+esc(r.ref)+'&#8594;'+esc(r.alt);}
   function rcol(rho){return rho>0?'#c0453b':'#3f6bbf';}
-  var MAXT=200, shown=tests.slice(0,MAXT);
-  var rowsH=shown.map(function(t,i){
-    return '<tr class="vd-row'+(i===vardoseSel?' on':'')+'" data-i="'+i+'"><td class="vd-lbl">'+vlabel(t.r)+(t.r.aa?(' <span class="snpmx-aa">'+aaDual(t.r.aa,t.r.aa_h37rv)+'</span>'):'')+'</td>'+
-      '<td>'+t.carriers+'/'+t.n+'</td>'+
+  var MAXT=200, shown=ord.slice(0,MAXT);
+  var rowsH=shown.map(function(t){var k=_vkey(t);
+    return '<tr class="vd-row'+(k===vardoseSelKey?' on':'')+'" data-k="'+esc(k)+'"><td class="vd-lbl">'+vlabel(t.r)+(t.r.aa?(' <span class="snpmx-aa">'+aaDual(t.r.aa,t.r.aa_h37rv)+'</span>'):'')+'</td>'+
+      '<td class="vd-num">'+t.carriers+'/'+t.n+'</td>'+
       '<td class="vd-num" style="color:'+rcol(t.rho)+'">'+(t.rho>0?'+':'&#8722;')+Math.abs(t.rho).toFixed(2)+'</td>'+
       '<td class="vd-num">'+pfmt(t.p)+'</td>'+
       '<td class="vd-num"'+(t.q<=0.05?' style="font-weight:600"':'')+'>'+pfmt(t.q)+(t.q<=0.05?' <span class="sc-sig">*</span>':'')+'</td></tr>';
   }).join('');
+  function th(sk,lbl,cls){var on=(vardoseSort.k==sk),ar=on?(vardoseSort.asc?' &#9650;':' &#9660;'):''; return '<th class="vd-sortable'+(cls?(' '+cls):'')+'" data-sk="'+sk+'"'+(on?' style="color:var(--accent)"':'')+'>'+lbl+ar+'</th>';}
   host.innerHTML='<div class="vd-wrap"><div class="vd-scatter">'+
     '<div class="vd-selhdr">'+vlabel(sel.r)+(sel.r.aa?(' <span class="snpmx-aa">'+aaDual(sel.r.aa,sel.r.aa_h37rv)+'</span>'):'')+
     '<div class="vd-selstat">Spearman &#961; = <b style="color:'+rcol(sel.rho)+'">'+(sel.rho>0?'+':'&#8722;')+Math.abs(sel.rho).toFixed(2)+'</b> · p = '+pfmt(sel.p)+' · q = '+pfmt(sel.q)+' · '+sel.carriers+'/'+sel.n+' carriers</div></div>'+svg+'</div>'+
-    '<div class="vd-tablewrap"><table class="vd-table"><thead><tr><th class="vd-lbl">Variant</th><th>carriers</th><th class="vd-num">&#961;</th><th class="vd-num">p</th><th class="vd-num">q (FDR)</th></tr></thead><tbody>'+rowsH+'</tbody></table>'+
-    (tests.length>MAXT?('<div class="krk-mut" style="padding:6px 4px">showing the top '+MAXT+' of '+tests.length+' tested variants (by |&#961;|)</div>'):'')+'</div></div>';
-  Array.prototype.forEach.call(host.querySelectorAll('.vd-row'),function(tr){tr.onclick=function(){vardoseSel=+tr.getAttribute('data-i');renderVarDose();};});
-  if(cap)cap.innerHTML=tests.length+' variant(s) tested against dose (&#8805; 3 carriers) · <b'+(nsig?' class="sc-sig"':'')+'>'+nsig+' significant at FDR q &#8804; 0.05</b>. <span class="krk-mut">Spearman rank correlation of per-sample allele frequency (0 where the site is reference) vs dose over the '+didx.length+' dosed samples; Benjamini–Hochberg q across all tested variants. Complements the Dose × treatment test.</span>';
+    '<div class="vd-tablewrap"><table class="vd-table"><thead><tr><th class="vd-lbl">Variant</th>'+th('carriers','carriers','vd-num')+th('rho','&#961;','vd-num')+th('p','p','vd-num')+th('q','q (FDR)','vd-num')+'</tr></thead><tbody>'+rowsH+'</tbody></table>'+
+    (ord.length>MAXT?('<div class="krk-mut" style="padding:6px 4px">showing the top '+MAXT+' of '+ord.length+' tested variants</div>'):'')+'</div></div>';
+  Array.prototype.forEach.call(host.querySelectorAll('.vd-row'),function(tr){tr.onclick=function(){vardoseSelKey=tr.getAttribute('data-k');renderVarDose();};});
+  Array.prototype.forEach.call(host.querySelectorAll('.vd-dot'),function(d){d.onclick=function(){setHi(d.getAttribute('data-s'));};});
+  Array.prototype.forEach.call(host.querySelectorAll('.vd-sortable'),function(h){h.onclick=function(){var sk=h.getAttribute('data-sk');
+    if(vardoseSort.k==sk)vardoseSort.asc=!vardoseSort.asc; else{vardoseSort.k=sk; vardoseSort.asc=(sk=='p'||sk=='q');}  // p/q default ascending (most significant first)
+    renderVarDose();};});
+  if(cap)cap.innerHTML=tests.length+' variant(s) tested against dose (&#8805; 3 carriers) · <b'+(nsig?' class="sc-sig"':'')+'>'+nsig+' significant at FDR q &#8804; 0.05</b>. <span class="krk-mut">Spearman rank correlation of per-sample allele frequency (0 where the site is reference) vs dose over the '+didx.length+' dosed samples; Benjamini–Hochberg q across all tested variants. Click a row to plot it, a header to sort, a point to highlight the sample. Complements the Dose × treatment test.</span>';
 }
 
