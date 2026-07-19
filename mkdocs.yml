@@ -53,6 +53,15 @@ theme:
 nav:
   - Home: README.md
   - Introduction: introduction.md
+  - Tutorials:
+      - Overview: tutorials/index.md
+      - 1. Your first run: tutorials/first-run.md
+      - 2. The samplesheet: tutorials/samplesheet.md
+      - 3. Configuring a run: tutorials/configuring-a-run.md
+      - 4. Reading the QC report: tutorials/reading-the-qc-report.md
+      - 5. Lineage & DR typing: tutorials/lineage-and-dr-typing.md
+      - 6. Building a phylogeny: tutorials/building-a-phylogeny.md
+      - "Analysing outputs (Jupyter)": tutorial/bampiro_tutorial.ipynb
   - User Guide:
       - Installation: installation.md
       - Quick Start: quickstart.md
@@ -61,7 +70,6 @@ nav:
   - Analyses:
       - Interactive QC Report: qc-report.md
       - Lineage & Drug-Resistance Typing: pathotypr.md
-  - Tutorial: tutorial/bampiro_tutorial.ipynb
   - Reference:
       - Outputs: outputs.md
       - From outputs to a phylogeny: downstream.md

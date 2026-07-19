@@ -119,11 +119,17 @@ Full panel list and interactive features: [Interactive QC Report](https://pathog
 ## Documentation
 
 📖 **[Read the full documentation online → pathogenomics-lab.github.io/BAMpiro](https://pathogenomics-lab.github.io/BAMpiro/)**
-— a searchable site with a pipeline diagram, a hover glossary, a hands-on Jupyter
-tutorial, and the [live QC-report demo](https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html).
+— a searchable site with a pipeline diagram, a hover glossary, a step-by-step
+[**tutorial series**](https://pathogenomics-lab.github.io/BAMpiro/tutorials/), a hands-on
+Jupyter notebook, and the [live QC-report demo](https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html).
+
+> [!TIP]
+> **New here?** Follow the [**Tutorials**](https://pathogenomics-lab.github.io/BAMpiro/tutorials/) —
+> a guided path from your first run to a finished phylogeny.
 
 | Document | Description |
 | :--- | :--- |
+| [Tutorials](https://pathogenomics-lab.github.io/BAMpiro/tutorials/) | A guided, hands-on path: first run → samplesheet → configuration → reading the report → typing → phylogeny |
 | [Introduction](https://pathogenomics-lab.github.io/BAMpiro/introduction/) | What BAMpiro is, key features, and the workflow at a glance |
 | [Installation](https://pathogenomics-lab.github.io/BAMpiro/installation/) | Requirements, the container, and bundled software versions |
 | [Quick Start](https://pathogenomics-lab.github.io/BAMpiro/quickstart/) | Run commands, the samplesheet format, and multi-run merging |
