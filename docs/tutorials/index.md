@@ -49,6 +49,13 @@ one you need. For exhaustive detail, every tutorial links back to the reference 
 
     Take the pipeline outputs and the QC exclusion set through to a tree.
 
+-   :material-bacteria:{ .lg .middle } &nbsp; **[Running a non-TB organism](other-organisms.md)**
+
+    ---
+
+    Not tuberculosis? The `generic` profile, your own reference, and which TB-specific
+    features to switch off.
+
 -   :material-notebook:{ .lg .middle } &nbsp; **[Analysing outputs (Jupyter)](../tutorial/bampiro_tutorial.ipynb)**
 
     ---

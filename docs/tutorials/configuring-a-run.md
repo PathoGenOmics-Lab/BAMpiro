@@ -69,6 +69,12 @@ nextflow run main.nf --tsv samples.tsv --outdir results -profile local,docker,ge
 
 The `generic` profile sets `freebayes_ploidy 1` (a clonal bacterium is haploid) and forces the *M. tuberculosis*-specific features off. The report's TB-only panels (lineage, drug resistance) simply self-hide when there's no such data. The commented template [`conf/organism.config`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/indel-mask/conf/organism.config) covers the rest.
 
+!!! tip "Not working with TB?"
+
+    The dedicated tutorial [**Running a non-TB organism**](other-organisms.md) walks through
+    the whole thing end to end — your reference, the `generic` profile, keeping the typing off,
+    tuning thresholds, and a worked *E. coli* example.
+
 ## 4. Turn on the MTBC features
 
 For a TB cohort like the bundled 17-sample demo, the built-in defaults already give you a valid run. To add the full recommended MTBC feature set, switch on lineage/DR typing and dual amino-acid numbering:
