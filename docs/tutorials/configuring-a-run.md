@@ -32,6 +32,40 @@ A `-profile` tells Nextflow *where* and *how* to run each task. The default (`st
 
     Kraken2 loads its whole database into RAM and is the single biggest request in the run — an under-sized host kills it with an OOM (exit 137). On a laptop, point `--kraken2_db` at a smaller database. See [Resource requirements](../installation.md#resource-requirements).
 
+### On an HPC cluster: make your files visible to the container
+
+On a cluster BAMpiro runs each task through **Singularity / Apptainer**, and a container only sees the host paths that are **bound** into it. Nextflow auto-mounts the work and launch directories, but your **reads, references and Kraken2 database usually live elsewhere on a shared filesystem** — so the container can't read them and tasks fail with *"No such file or directory"* even though the paths are correct on the login node.
+
+The default `standard` profile carries the *authors'* site-specific bind paths (e.g. `/scr/…`, `/storage/…/kraken2`) and a `--qos=short` SLURM option — none of which exist on your cluster. Replace them with **your** paths in a small config and pass it with `-c`:
+
+```groovy title="cluster.config"
+singularity {
+    // every host directory your samplesheet paths + --kraken2_db sit under,
+    // comma-separated, no spaces (parent dirs are fine — /data covers /data/*):
+    runOptions = '--bind /scratch/me/reads,/data/refs,/shared/kraken2'
+}
+
+process {
+    executor       = 'slurm'                   // your scheduler
+    clusterOptions = '--qos=normal'            // your QoS / partition / account
+    beforeScript   = 'module load singularity' // however your site provides Singularity
+}
+```
+
+```bash
+nextflow run main.nf --tsv samples.tsv --outdir results -profile standard -c cluster.config
+```
+
+!!! tip "Binding without a config file"
+
+    For a one-off you can set the binds straight from the environment instead:
+
+    ```bash
+    export NXF_SINGULARITY_RUN_OPTIONS="--bind /scratch/me/reads,/data/refs,/shared/kraken2"
+    ```
+
+    Bind **parent** directories so every file underneath is visible. See [Installation](../installation.md) for the site-specific defaults you are overriding.
+
 ## 2. Set parameters
 
 Any parameter can be set on the command line with a `--` prefix, for example:
