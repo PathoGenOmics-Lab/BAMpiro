@@ -167,11 +167,18 @@ function renderScatter(){
     ticks+='<line x1="'+gx+'" y1="'+pad+'" x2="'+gx+'" y2="'+(H-pad)+'" stroke="'+TH.grid+'"/><line x1="'+pad+'" y1="'+gy+'" x2="'+(pad+plot)+'" y2="'+gy+'" stroke="'+TH.grid+'"/>'+
     '<text x="'+gx+'" y="'+(H-pad+13)+'" font-size="9" fill="#94a3b8" text-anchor="middle">'+shortv(xr[0]+t*(xr[1]-xr[0]),xm.kind)+'</text>'+
     '<text x="'+(pad-6)+'" y="'+(gy+3)+'" font-size="9" fill="#94a3b8" text-anchor="end">'+shortv(yr[0]+t*(yr[1]-yr[0]),ym.kind)+'</text>';});
+  // Spearman rho + two-sided p over the samples IN VIEW (matches the correlation-matrix scoping); a
+  // quantitative read-out for any axis pair (e.g. a dose metric vs a QC metric).
+  var cx=[],cy=[]; rows.forEach(function(s){if(vis[s.s]){cx.push(s.m[xk]);cy.push(s.m[yk]);}});
+  var rho=spearman(cx,cy), pv=spearmanP(rho,cx.length);
+  var corrCap=(cx.length>=4)?('Spearman &rho; = <b>'+(rho==null?'n/a':(rho>0?'':'−')+Math.abs(rho).toFixed(2))+'</b> &middot; p = '+pfmt(pv)+' &middot; n = '+cx.length+((pv!=null&&pv<0.05)?' <span class="sc-sig">significant</span>':''))
+    :('n = '+cx.length+' — need &ge; 4 samples in view for a correlation');
   host.innerHTML='<svg width="'+S+'" height="'+H+'" id="scsvg" style="display:block;max-width:100%;margin:0 auto">'+
     '<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(pad+plot)+'" y2="'+(H-pad)+'" stroke="'+TH.axis+'"/><line x1="'+pad+'" y1="'+pad+'" x2="'+pad+'" y2="'+(H-pad)+'" stroke="'+TH.axis+'"/>'+
     ticks+dots+
     '<text x="'+(pad+plot/2)+'" y="'+(H-6)+'" font-size="11" fill="'+TH.mut+'" text-anchor="middle">'+esc(xm.label)+'</text>'+
     '<text x="12" y="'+(pad+ph/2)+'" font-size="11" fill="'+TH.mut+'" text-anchor="middle" transform="rotate(-90 12 '+(pad+ph/2)+')">'+esc(ym.label)+'</text></svg>'+
+    '<div class="sc-corr">'+corrCap+'</div>'+
     colorLegend();
   SGEO={pad:pad,plot:plot,ph:ph,H:H,xr:xr,yr:yr,xk:xk,yk:yk};   // for the rubber-band select inverse-mapping
   var scsvg=el('scsvg'); if(scsvg){var ov=document.createElementNS('http://www.w3.org/2000/svg','rect');

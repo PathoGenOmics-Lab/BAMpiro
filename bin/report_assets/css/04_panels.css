@@ -172,3 +172,8 @@ table.snpmx tbody tr:hover td.snpmx-info{background:var(--soft)}
 html.dark .dyn-search,html.dark .gsearch,html.dark .controls input[type=search]{
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236f7f92' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E");
   background-repeat:no-repeat;background-position:11px 50%;background-size:15px}   /* re-assert: the html.dark `background:var(--soft)` shorthand above resets repeat, tiling the glyph */
+
+/* scatter correlation read-out (Spearman rho + p) and the dose x treatment significance tag */
+.sc-corr{font-size:12px;color:var(--mut);text-align:center;margin:9px 0 2px}
+.sc-corr b{color:var(--ink,var(--label));font-variant-numeric:tabular-nums}
+.sc-sig{color:var(--accent);font-weight:600}

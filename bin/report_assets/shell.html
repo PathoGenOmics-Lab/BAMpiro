@@ -7,7 +7,7 @@
 <nav id="toc" aria-label="Contents">
 <div class="toc-brand"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</div>
 <div class="toc-group"><div class="toc-gh">Overview<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#exec">Summary</a><a class="toc-link" href="#gstats">Stats</a><a class="toc-link" href="#flagged">Flagged</a><a class="toc-link" href="#linsum" id="nav-lin">Lineages</a><a class="toc-link" href="#dist">Distributions</a><a class="toc-link" href="#kraken" id="nav-kraken">Kraken</a></div></div>
-<div class="toc-group"><div class="toc-gh">Correlation &amp; structure<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#corr">Correlations</a><a class="toc-link" href="#corrmatrix">Corr matrix</a><a class="toc-link" href="#qcpca" id="nav-pca">QC space</a><a class="toc-link" href="#divcomp" id="nav-divcomp">Divergence</a></div></div>
+<div class="toc-group"><div class="toc-gh">Correlation &amp; structure<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#corr">Correlations</a><a class="toc-link" href="#corrmatrix">Corr matrix</a><a class="toc-link" href="#qcpca" id="nav-pca">QC space</a><a class="toc-link" href="#divcomp" id="nav-divcomp">Divergence</a><a class="toc-link" href="#dosetx" id="nav-dosetx">Dose &#215; Tx</a></div></div>
 <div class="toc-group"><div class="toc-gh">Genome &amp; genes<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#cons">Consensus</a><a class="toc-link" href="#genome" id="nav-genome">Genome</a><a class="toc-link" href="#function" id="nav-function">Function</a><a class="toc-link" href="#geneburden" id="nav-geneburden">Gene burden</a><a class="toc-link" href="#hotspots" id="nav-hot">Variable genes</a></div></div>
 <div class="toc-group"><div class="toc-gh">Evolution<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#temporal" id="nav-temporal">Temporal</a><a class="toc-link" href="#pnps" id="nav-pnps">pN/pS</a><a class="toc-link" href="#adna" id="nav-adna">aDNA</a></div></div>
 <div class="toc-group"><div class="toc-gh">Variants over time<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#dynamics" id="nav-dyn">SNP dynamics</a><a class="toc-link" href="#epistasis" id="nav-epi">Epistasis</a><a class="toc-link" href="#snpmatrix" id="nav-snpmx">SNP matrix</a><a class="toc-link" href="#drug" id="nav-drug">Drug resistance</a></div></div>
@@ -76,6 +76,10 @@
 <div class="panel" id="divcompPanel"><div id="divcomp_body" class="pad"></div>
 <div class="legend" id="divcomp_quadn"></div>
 <div class="hot-note" id="divcomp_caption"></div></div></section>
+<section id="dosetx"><h2>Dose &#215; treatment <span class="c">- per-treatment dose distribution and a Kruskal&#8211;Wallis test of whether dose differs across treatment groups (whole cohort)</span>
+<button class="exp-h" data-panel="dosetxPanel" data-render="dosetx" style="margin-left:auto"><span data-ic="maximize"></span>full</button></h2>
+<div class="panel" id="dosetxPanel"><div id="dosetx_body" class="pad"></div>
+<div class="hot-note" id="dosetx_caption"></div></div></section>
 <section id="cons"><h2>Consensus completeness <span class="c">- callable / IUPAC / missing per sample, worst first</span>
 <label class="dyn-zoom" title="Resize the per-sample bars" style="margin-left:auto"><span><span data-ic="search" data-ic-cls="sort"></span>&#8211;/+</span><input type="range" id="conszoom" min="18" max="56" step="2" value="26"></label></h2>
 <div class="panel"><div id="stacks" style="max-height:60vh;overflow:auto"></div>

@@ -1,4 +1,4 @@
-function renderAll(){renderExec();renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderEpistasis();renderSnpMatrix();renderDrug();renderKraken();renderFlags();renderCuration();renderInsights();}
+function renderAll(){renderExec();renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderDoseTx();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderEpistasis();renderSnpMatrix();renderDrug();renderKraken();renderFlags();renderCuration();renderInsights();}
 
 // ---- static wiring ----
 el('meta').textContent=R.samples.length+' samples · '+R.generated;
@@ -293,7 +293,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.exp-h'),function(b){b.o
   var willExpand=!panel.classList.contains('expanded'); collapseExpanded();
   if(willExpand){panel.classList.add('expanded');document.body.classList.add('has-expanded');b.innerHTML=icon('minimize')+'close';}
   var rn=b.getAttribute('data-render');
-  setTimeout(function(){if(rn=='genome')renderGenome();else if(rn=='plots')renderPlots();else if(rn=='scatter')renderScatter();else if(rn=='corr')renderCorr();else if(rn=='pca')renderQCspace();else if(rn=='divcomp')renderRefBias();else if(rn=='function')renderFunction();else if(rn=='geneburden')renderGeneBurden();else if(rn=='hotspots')renderHotspots();else if(rn=='pnps')renderPnps();else if(rn=='table')renderTable();},20);};});
+  setTimeout(function(){if(rn=='genome')renderGenome();else if(rn=='plots')renderPlots();else if(rn=='scatter')renderScatter();else if(rn=='corr')renderCorr();else if(rn=='pca')renderQCspace();else if(rn=='divcomp')renderRefBias();else if(rn=='function')renderFunction();else if(rn=='geneburden')renderGeneBurden();else if(rn=='hotspots')renderHotspots();else if(rn=='pnps')renderPnps();else if(rn=='dosetx')renderDoseTx();else if(rn=='table')renderTable();},20);};});
 if(el('expClose'))el('expClose').onclick=collapseExpanded;
 document.addEventListener('keydown',function(e){if(e.key=='Escape')collapseExpanded();});
 // per-sample detail modal close (button, backdrop, Esc)

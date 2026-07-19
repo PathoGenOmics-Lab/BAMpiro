@@ -53,7 +53,7 @@ Grouped as in the sidebar:
 | Group | Panels |
 | :--- | :--- |
 | **Overview** | **Executive summary** (cohort health & headline findings at a glance — the first panel) · General statistics (value-coloured, sortable, filterable, TSV export) · **Flagged samples** (worst-first, each failing margin shown inline) · Per-lineage summary (canonical *mycolorsTB* palette) · Distributions (beeswarm / bar / histogram) · **Taxonomic composition** (Kraken2: primary taxon / contaminants / unclassified, worst-first) |
-| **Correlation & structure** | Metric-pair scatter (box-select to basket) · Metric correlation heatmap · QC-space PCA (+ most-unusual-samples table) · Divergence vs completeness |
+| **Correlation & structure** | Metric-pair scatter (box-select to basket, with a Spearman *r* + *p* read-out) · Metric correlation heatmap · QC-space PCA (+ most-unusual-samples table) · Divergence vs completeness · **Dose × treatment** (per-group dose distribution + Kruskal–Wallis test) |
 | **Genome & genes** | Consensus completeness · Genome landscape (per-position callability / variant heatmap, gene search, mask-region toggle) · Functional annotation (snpEff classes) · Functional gene burden · Variable genes (SNP-density hotspots) |
 | **Evolution** | Temporal sampling overview · Selection pN/pS (dN/dS, eskaks) · aDNA damage authentication (mapDamage) |
 | **Variants over time** | **SNP dynamics** (allele-frequency trajectories over time, per-timepoint DP bars, zoom, series filter) · **Epistasis** (co-varying variant pairs, permutation *p* + BH-FDR *q*, cards / matrix / table views) · **SNP matrix** (site × sample AF matrix, metadata column filter, TSV export) · **Drug resistance** (sample × drug WHO-grade matrix) |
@@ -93,6 +93,7 @@ there is nothing to configure — add a column and the matching panel reacts.
 | **time** | `timepoint`, `day`, `date`, `week`, `month`, `hour`, `passage`, `generation`, `visit`, `tp`, `t0`… | The x-axis of the **SNP dynamics** trajectories. |
 | **group / series** | `group`, `patient`, `series`, `host`, `subject`, `cluster`, `experiment`, `donor`, `case`, `replicate`, `chain`, `samples`… | Connects samples into one longitudinal series (a trajectory set per group) for **SNP dynamics** and **epistasis**. |
 | **any other column** | `treatment`, `site`, `region`, `ward`, `batch`… | A categorical annotation - becomes a **cohort filter** dropdown in the toolbar (restrict the whole QC view to one value) and a SNP-matrix header level. |
+| **dose** | `dose`, `dosis` | A **numeric** column - becomes a first-class metric (selectable on the scatter axes + the correlation matrix, with a Spearman *r* + *p* read-out) and drives the **Dose × treatment** test. |
 
 **Every** annotation column — including the time and group ones — also becomes a
 **column-header level** in the **SNP matrix** (filter the matrix by it, hover a header
@@ -106,14 +107,26 @@ a group column *and* per-sample VCFs are present; the SNP matrix needs the VCFs 
 Example `--metadata` TSV (tab-separated; the demo cohort):
 
 ```tsv
-sample      samples   timepoint   site      treatment     lineage
-TB-P1-d0    TB-P1     0           Madrid    HRZE          L2
-TB-P1-d60   TB-P1     60          Madrid    HRZE          L2
-TB-P1-d180  TB-P1     180         Madrid    HRZE          L2
-TB-2020-C   .         .           Sevilla   MDR regimen   L4
+sample      samples   timepoint   site      treatment     dose   lineage
+TB-P1-d0    TB-P1     0           Madrid    HRZE          360    L2
+TB-P1-d60   TB-P1     60          Madrid    HRZE          360    L2
+TB-P1-d180  TB-P1     180         Madrid    HRZE          450    L2
+TB-2020-C   .         .           Sevilla   MDR regimen   740    L4
 ```
 
 Here `samples` is the group (the longitudinal patient series *TB-P1*), `timepoint` is
 the time axis, `treatment` and `site` become cohort filters (and SNP-matrix header
-levels), and `lineage` gets its canonical palette; the singleton `TB-2020-C` (no series)
-simply has no dynamics trajectory.
+levels), `dose` becomes a numeric metric, and `lineage` gets its canonical palette; the
+singleton `TB-2020-C` (no series) simply has no dynamics trajectory.
+
+### Dose × treatment and quantitative metadata
+
+A numeric **`dose`** column is treated as a quantitative variable rather than a category.
+It becomes a first-class **metric** — pick it on either **Correlations** scatter axis (or
+in the **Metric correlation** matrix) to get a Spearman *r* with a two-sided *p*-value
+against any QC or genomic metric — and it powers a dedicated **Dose × treatment** panel:
+a per-treatment dose distribution (box + points) with a **Kruskal–Wallis** rank test of
+whether dose differs across the treatment groups (a Mann–Whitney-equivalent when there
+are two groups). The test runs over the whole cohort; groups with fewer than two dosed
+samples are drawn but not tested, and the panel hides itself when there is no `dose`
+column or no treatment column.

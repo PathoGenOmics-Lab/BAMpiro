@@ -96,3 +96,57 @@ function renderDrug(){
   draw();
 }
 
+// ---- Dose x treatment: per-group dose distribution + Kruskal-Wallis test (whole cohort) ----
+function renderDoseTx(){
+  var host=el('dosetx_body'), sec=el('dosetx'), cap=el('dosetx_caption'), nv=el('nav-dosetx');
+  if(!host)return;
+  function hide(){ if(sec)sec.style.display='none'; if(nv)nv.style.display='none'; }
+  var meta=R.sample_meta, txf=meta&&meta.tx_field;
+  if(!(MET.dose&&txf)){ hide(); return; }                        // need a dose metric AND a treatment column
+  var groups={}, order=[];
+  R.samples.forEach(function(s){                                 // whole cohort (independent of the live filter)
+    var d=s.m.dose; if(d==null)return;
+    var tx=(meta.rows[s.s]||{})[txf]; if(!tx||tx==='NA'||tx==='.'||tx==='-')return;
+    if(!Object.prototype.hasOwnProperty.call(groups,tx)){groups[tx]=[];order.push(tx);}
+    groups[tx].push({s:s.s,d:d,v:s.v});
+  });
+  var cats=order.filter(function(c){return groups[c].length>=1;});
+  var withData=cats.filter(function(c){return groups[c].length>=2;});
+  if(cats.length<2||withData.length<2){ hide(); return; }        // need >=2 groups with enough dosed samples
+  if(sec)sec.style.display=''; if(nv)nv.style.display='';
+  var allD=[]; cats.forEach(function(c){groups[c].forEach(function(o){allD.push(o.d);});});
+  var lo=Math.min.apply(null,allD), hi=Math.max.apply(null,allD); if(hi<=lo)hi=lo+1;
+  var W=Math.max(360,(host.clientWidth||760)), labW=Math.min(160,Math.round(W*0.26)), rp=14,
+      plotW=W-labW-rp, rowH=54, top=10, H=top+cats.length*rowH+30;
+  function X(d){return labW+(d-lo)/(hi-lo)*plotW;}
+  var pal=['#0e8ba8','#a855c9','#e0a11f','#2ea36b','#e0544f','#6b7280'];
+  function srt(a){return a.slice().sort(function(x,y){return x-y;});}
+  function med(a){var so=srt(a),n=so.length;return n%2?so[(n-1)/2]:(so[n/2-1]+so[n/2])/2;}
+  function q(a,p){var so=srt(a),i=(so.length-1)*p,l=Math.floor(i),h=Math.ceil(i);return l==h?so[l]:so[l]+(so[h]-so[l])*(i-l);}
+  var svg='<svg width="'+W+'" height="'+H+'" style="display:block;max-width:100%">';
+  [0,0.25,0.5,0.75,1].forEach(function(f){var x=labW+f*plotW; svg+='<line x1="'+x.toFixed(1)+'" y1="'+top+'" x2="'+x.toFixed(1)+'" y2="'+(top+cats.length*rowH).toFixed(1)+'" stroke="'+TH.grid+'"/><text x="'+x.toFixed(1)+'" y="'+(H-14)+'" text-anchor="middle" font-size="9.5" fill="'+TH.mut+'">'+shortv(lo+f*(hi-lo),'float')+'</text>';});
+  svg+='<text x="'+(labW+plotW/2)+'" y="'+(H-2)+'" text-anchor="middle" font-size="10.5" fill="'+TH.mut+'">'+esc(MET.dose.label)+'</text>';
+  cats.forEach(function(c,i){
+    var arr=groups[c].map(function(o){return o.d;}), cy=top+i*rowH+rowH/2, col=pal[i%pal.length];
+    if(arr.length>=2){var q1=q(arr,0.25),q3=q(arr,0.75);
+      svg+='<rect x="'+X(q1).toFixed(1)+'" y="'+(cy-11)+'" width="'+Math.max(1,X(q3)-X(q1)).toFixed(1)+'" height="22" rx="3" fill="'+col+'" fill-opacity="0.14" stroke="'+col+'" stroke-opacity="0.5"/>';}
+    var m=med(arr); svg+='<line x1="'+X(m).toFixed(1)+'" y1="'+(cy-12)+'" x2="'+X(m).toFixed(1)+'" y2="'+(cy+12)+'" stroke="'+col+'" stroke-width="2"/>';
+    var seen={};
+    groups[c].forEach(function(o){var x=X(o.d),key=Math.round(x/6),off=((seen[key]=(seen[key]||0)+1)-1),dy=((off%2)?1:-1)*Math.ceil(off/2)*5;
+      dy=Math.max(-20,Math.min(20,dy));   // keep a crowded x-bin (many samples at one dose) inside its own row band
+      svg+='<circle cx="'+x.toFixed(1)+'" cy="'+(cy+dy).toFixed(1)+'" r="3.4" fill="'+(o.v=='FAIL'?'#e0544f':col)+'" fill-opacity="0.92" stroke="#fff" stroke-width="0.6"><title>'+esc(o.s)+' · '+esc(c)+' · dose '+o.d+'</title></circle>';});
+    svg+='<text x="'+(labW-8)+'" y="'+(cy-1)+'" text-anchor="end" font-size="11" fill="'+TH.ink+'">'+esc(c.length>20?c.slice(0,19)+'…':c)+'</text>'+
+      '<text x="'+(labW-8)+'" y="'+(cy+12)+'" text-anchor="end" font-size="9.5" fill="'+TH.mut+'">n='+arr.length+' · med '+shortv(m,'float')+'</text>';
+  });
+  svg+='</svg>';
+  host.innerHTML=svg;
+  var kw=kruskalWallis(withData.map(function(c){return groups[c].map(function(o){return o.d;});}));
+  if(cap){
+    if(kw){var sig=kw.p<0.05;
+      cap.innerHTML='<b>Kruskal–Wallis</b> H = '+kw.H.toFixed(2)+' · p = '+pfmt(kw.p)+' · '+kw.k+' groups, N = '+kw.N+
+        ' — '+(sig?'<span class="sc-sig">dose differs across treatment groups</span>':'no significant difference in dose across groups')+
+        '. <span class="krk-mut">Non-parametric rank test over the full cohort; groups with &lt; 2 dosed samples are drawn but not tested.</span>';
+    } else cap.innerHTML='<span class="krk-mut">Not enough dosed samples per group to test.</span>';
+  }
+}
+

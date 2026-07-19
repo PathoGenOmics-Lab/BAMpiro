@@ -108,4 +108,31 @@ function insBox(title, narrHTML, chips){
   return '<div class="insight"><div class="ins-h"><span class="ins-title">'+INS_ICON+esc(title)+'</span></div><div class="ins-narr">'+narrHTML+'</div>'+ch+'</div>';
 }
 function _range(vals){var a=vals.filter(function(v){return v!=null;}); return a.length?[Math.min.apply(null,a),Math.max.apply(null,a)]:null;}
+// ---- significance tails (ES5, Numerical-Recipes style): chi-square (KW) + Student-t (Spearman) ----
+function _gammln(x){var c=[76.18009172947146,-86.50532032941677,24.01409824083091,-1.231739572450155,0.1208650973866179e-2,-0.5395239384953e-5];
+  var y=x,t=x+5.5;t-=(x+0.5)*Math.log(t);var s=1.000000000190015;for(var j=0;j<6;j++){y++;s+=c[j]/y;}return -t+Math.log(2.5066282746310005*s/x);}
+function _gser(a,x){var ap=a,sum=1/a,del=sum;for(var n=0;n<300;n++){ap++;del*=x/ap;sum+=del;if(Math.abs(del)<Math.abs(sum)*1e-13)break;}return sum*Math.exp(-x+a*Math.log(x)-_gammln(a));}
+function _gcf(a,x){var b=x+1-a,c=1e300,d=1/b,h=d;for(var i=1;i<300;i++){var an=-i*(i-a);b+=2;d=an*d+b;if(Math.abs(d)<1e-300)d=1e-300;c=b+an/c;if(Math.abs(c)<1e-300)c=1e-300;d=1/d;var del=d*c;h*=del;if(Math.abs(del-1)<1e-13)break;}return Math.exp(-x+a*Math.log(x)-_gammln(a))*h;}
+function chiSqP(x,df){if(!(x>0)||df<1)return 1;var a=df/2,y=x/2;return y<a+1?1-_gser(a,y):_gcf(a,y);}   // upper-tail p
+function _betacf(a,b,x){var qab=a+b,qap=a+1,qam=a-1,c=1,d=1-qab*x/qap;if(Math.abs(d)<1e-300)d=1e-300;d=1/d;var h=d;
+  for(var m=1;m<300;m++){var m2=2*m,aa=m*(b-m)*x/((qam+m2)*(a+m2));d=1+aa*d;if(Math.abs(d)<1e-300)d=1e-300;c=1+aa/c;if(Math.abs(c)<1e-300)c=1e-300;d=1/d;h*=d*c;
+    aa=-(a+m)*(qab+m)*x/((a+m2)*(qap+m2));d=1+aa*d;if(Math.abs(d)<1e-300)d=1e-300;c=1+aa/c;if(Math.abs(c)<1e-300)c=1e-300;d=1/d;var del=d*c;h*=del;if(Math.abs(del-1)<1e-13)break;}return h;}
+function betai(a,b,x){if(x<=0)return 0;if(x>=1)return 1;var bt=Math.exp(_gammln(a+b)-_gammln(a)-_gammln(b)+a*Math.log(x)+b*Math.log(1-x));
+  return x<(a+1)/(a+b+2)?bt*_betacf(a,b,x)/a:1-bt*_betacf(b,a,1-x)/b;}
+function studentP(t,df){if(df<1)return 1;return betai(df/2,0.5,df/(df+t*t));}   // two-sided p for Student-t
+function spearmanP(r,n){if(r==null||n<3)return null;if(Math.abs(r)>=1)return 0;var t=r*Math.sqrt((n-2)/(1-r*r));return studentP(t,n-2);}
+// Kruskal-Wallis across >=2 groups (arrays of numbers), tie-corrected -> {H,p,k,N,df}; null if too little data
+function kruskalWallis(groups){
+  var vals=[],gi=[]; groups.forEach(function(g,i){g.forEach(function(v){vals.push(v);gi.push(i);});});
+  var N=vals.length,k=groups.length; if(k<2||N<3)return null;
+  var ranks=rankvec(vals),Rsum=[],ns=[],i,j; for(i=0;i<k;i++){Rsum[i]=0;ns[i]=0;}
+  for(j=0;j<N;j++){Rsum[gi[j]]+=ranks[j];ns[gi[j]]++;}
+  var H=0; for(i=0;i<k;i++){if(ns[i]>0)H+=Rsum[i]*Rsum[i]/ns[i];}
+  H=12/(N*(N+1))*H-3*(N+1);
+  var so=vals.slice().sort(function(a,b){return a-b;}),tsum=0,t=1;   // tie correction
+  for(j=1;j<=so.length;j++){if(j<so.length&&so[j]===so[j-1])t++;else{if(t>1)tsum+=t*t*t-t;t=1;}}
+  var C=1-tsum/(N*N*N-N); if(C<=0)C=1; H=H/C;
+  return {H:H,p:chiSqP(H,k-1),k:k,N:N,df:k-1};
+}
+function pfmt(p){if(p==null)return'n/a';if(p<1e-4)return'< 1e-4';if(p<1e-3)return p.toExponential(1);return p.toFixed(p<0.1?4:3);}
 /* ---- per-panel analytical read-outs (one insight per panel; each is standalone, computed from R) ---- */

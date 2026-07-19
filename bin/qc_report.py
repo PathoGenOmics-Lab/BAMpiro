@@ -42,6 +42,7 @@ REPO_URL = "https://github.com/PathoGenOmics-Lab/BAMpiro"   # surfaced in the re
 
 # metric definitions + typical acceptable ranges (surfaced as in-report help)
 DEFS = {
+    "dose": ["Per-sample dose from the samplesheet (a numeric annotation, not a QC metric). Feeds the scatter/correlation axes and the dose x treatment test.", ""],
     "raw_reads": ["Read pairs/reads before trimming.", "context-dependent"],
     "trimmed_reads": ["Reads after fastp quality/adapter trimming.", ""],
     "read_length": ["Mean read length after trimming.", ""],
@@ -827,6 +828,8 @@ _DYN_SAMPLE_RE = re.compile(r'^(sample_?id|sampleid|sample|name|gid|strain|isola
 _DYN_TIME_RE   = re.compile(r'(passage|pase|timepoint|time_?point|^time$|^day$|date|week|month|hour|generation|^tp$|visit|^t\d*$)', re.I)
 _DYN_GROUP_RE  = re.compile(r'(group|series|patient|host|subject|cluster|experiment|^line$|replicate|chain|pair|lineage_?id|donor|case|animal|^samples$)', re.I)
 _DYN_NONSYN    = re.compile(r'missense|stop_gained|stop_lost|start_lost|frameshift|inframe|splice|initiator', re.I)
+_DOSE_RE       = re.compile(r'^(dose|dosis)$', re.I)                           # a numeric annotation -> a metric, not a categorical level
+_TX_RE         = re.compile(r'(treatment|tratamiento|regimen|therapy|^arm$)', re.I)   # the categorical column the dose x treatment test groups by
 
 
 def _dyn_open(path):
@@ -866,8 +869,10 @@ def parse_sample_meta(path):
     if not header:
         return None
     si = next((i for i, h in enumerate(header) if _DYN_SAMPLE_RE.match(h.strip())), 0)
+    # the dose column (if any) is a numeric metric, not a categorical annotation -> keep it out of fields
     fields = [(i, h) for i, h in enumerate(header)
-              if i != si and h.strip() and h.strip().lower() not in _META_SKIP]
+              if i != si and h.strip() and h.strip().lower() not in _META_SKIP
+              and not _DOSE_RE.match(h.strip())]
     if not fields:
         return None
     out = {}
@@ -880,12 +885,50 @@ def parse_sample_meta(path):
         out[s] = {h: (r[i].strip() if i < len(r) else '') for i, h in fields}
     if not out:
         return None
-    # tag the time / group columns (dynamics axes) so the report can leave them out of the
-    # cohort metadata filter — they stay as SNP-matrix header levels either way.
+    # tag the time / group columns (dynamics axes) and the treatment column (dose x treatment test)
+    # so the report can route each correctly; they all stay as SNP-matrix header levels either way.
     time_field = next((h for _, h in fields if _DYN_TIME_RE.search(h.replace(' ', '_'))), None)
     group_field = next((h for _, h in fields if _DYN_GROUP_RE.search(h.replace(' ', '_'))), None)
+    tx_field = next((h for _, h in fields if _TX_RE.search(h.replace(' ', '_'))), None)
     return {'fields': [h for _, h in fields], 'rows': out,
-            'time_field': time_field, 'group_field': group_field}
+            'time_field': time_field, 'group_field': group_field, 'tx_field': tx_field}
+
+
+def parse_dose(path):
+    """{sample: float} for a numeric samplesheet column named 'dose'/'dosis' (a quantitative
+    annotation exposed as a report metric). {} if the file or column is absent / non-numeric."""
+    if not path or not os.path.exists(path):
+        return {}
+    header, rows = None, []
+    try:
+        with _dyn_open(path) as fh:
+            for line in fh:
+                if not line.strip() or line.startswith('#'):
+                    continue
+                cells = line.rstrip('\n').split('\t')
+                if header is None:
+                    header = [c.strip() for c in cells]
+                    continue
+                rows.append(cells)
+    except OSError:
+        return {}
+    if not header:
+        return {}
+    si = next((i for i, h in enumerate(header) if _DYN_SAMPLE_RE.match(h.strip())), 0)
+    di = next((i for i, h in enumerate(header) if _DOSE_RE.match(h.strip())), None)
+    if di is None:
+        return {}
+    out = {}
+    for r in rows:
+        if si >= len(r) or di >= len(r):
+            continue
+        s = r[si].strip()
+        if not s or s in out:
+            continue
+        v = to_float(r[di].strip())
+        if v is not None:
+            out[s] = v
+    return out
 
 
 def parse_metadata(path):
@@ -1496,6 +1539,11 @@ def main():
     EFF_KEYS = ["eff_missense", "eff_synonymous", "eff_stop_gained", "eff_stop_lost", "eff_start_lost",
                 "eff_frameshift", "eff_inframe_indel", "eff_splice", "eff_intergenic", "eff_regulatory"]
     extra_metrics = discover_extra_metrics(summ)
+    # a numeric 'dose' samplesheet column becomes a first-class (hidden-by-default) metric so it
+    # can go on the scatter axes + correlation matrix and drive the dose x treatment test.
+    dose_map = parse_dose(args.metadata)
+    if dose_map:
+        extra_metrics = extra_metrics + [{"key": "dose", "label": "Dose", "kind": "float", "dir": "neu"}]
     extra_keys = [e["key"] for e in extra_metrics]
     jsamples, counts = [], {"PASS": 0, "WARN": 0, "FAIL": 0}
     for sid, m in summ.items():
@@ -1518,7 +1566,8 @@ def main():
                                                     ("indel", parse_profile(m.get("indel_profile")))) if v is not None}
                                  or None),
                          "ann_db_error": (clean_str(m.get("ann_db_error")) == "yes"),
-                         "m": {k: to_float(m.get(k)) for k in metric_keys + extra_keys + EFF_KEYS}})
+                         "m": dict({k: to_float(m.get(k)) for k in metric_keys + extra_keys + EFF_KEYS},
+                                   **({"dose": dose_map.get(sid)} if dose_map else {}))})
 
     lineages = sorted({s["lineage"] for s in jsamples if s["lineage"]})
     n_ancient = sum(1 for s in jsamples if s["anc"])
@@ -1567,9 +1616,11 @@ def main():
                     _v["pos_h37rv"] = "%s:%s" % (args.aa2_label, _lift[_p])
     _sample_meta = parse_sample_meta(args.metadata)   # shared by the dynamics filter and the SNP matrix header
     _dynamics = build_dynamics(parse_metadata(args.metadata), _variants, _sample_meta)   # feeds dynamics + epistasis
+    # front-load 'dose' so it survives the correlation matrix's top-N view
+    dist_keys = (["dose"] + DIST) if dose_map else DIST
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     payload = {"generated": now, "version": clean_str(args.version) or "", "repo_url": REPO_URL,
-               "counts": counts, "thresholds": thr, "dist": DIST,
+               "counts": counts, "thresholds": thr, "dist": dist_keys,
                "genome_len": genome_len, "snp_density_ok": snp_density_ok, "defs": DEFS, "nbins": NBINS,
                "genes": parse_gff(args.gff), "lin_colors": parse_lineage_colors(args.lineage_colors),
                "gene_map": build_gene_map(args.gff), "aa2_label": args.aa2_label,
