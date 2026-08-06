@@ -178,61 +178,12 @@ process CALL_BACKBONE {
         n1=\$(wc -l < mpileup_nobaq.txt); n2=\$(wc -l < mpileup_baq.txt)
         if [ "\$n1" -ne "\$n2" ]; then echo "ERROR: mpileup line counts differ (\$n1 vs \$n2) -- truncated stream" >&2; exit 1; fi
         paste mpileup_nobaq.txt mpileup_baq.txt \\
-        | awk -v MINCOV=!{params.allpos_min_cov} -v GAPDP=!{params.consensus_min_dp} -v OFS="\\t" '
-            function count_bases(s,   i,n,c,num){
-              RO_G=0; AO_G=0; i=1; n=length(s)
-              while(i<=n){
-                c=substr(s,i,1)
-                if(c=="^"){ i+=2 }                                    # ^ + mapping-quality char (read start)
-                else if(c=="\$"){ i++ }                               # read end
-                else if(c=="+"||c=="-"){                              # indel: skip sign + count + that many bases
-                  i++; num=""
-                  while(i<=n && substr(s,i,1) ~ /[0-9]/){ num=num substr(s,i,1); i++ }
-                  i+=(num+0)
-                }
-                else if(c=="."||c==","){ RO_G++; i++ }                # match to reference
-                else if(c ~ /[ACGTacgt]/){ AO_G++; i++ }             # mismatch = alt observation
-                else{ i++ }                                          # * (del), <>, N, etc. -> ignore
-              }
-            }
-            {
-              chrom=\$1; pos=\$2; ref=\$3; dp=(\$4+0); dp_baq=(\$10+0);
-              count_bases(\$5)                                        # RO/AO from the no-BAQ pileup (real base evidence)
-              wt=(dp>=MINCOV?1:0);
-              nc=(dp>=MINCOV?0:1);
-              gt=(dp>=MINCOV?"0":"./.");
-              flt=(dp>GAPDP && dp_baq<=GAPDP)?"baq_dropout":".";
-              info="ADP="dp";WT="wt";HET=0;HOM=0;NC="nc;
-              print chrom, pos, ".", ref, ".", ".", flt, info, "GT:DP:AD", gt":"dp":"RO_G","AO_G
-            }' | cat header_template.txt - | bgzip -@ !{task.cpus} -c > backbone.vcf.gz
+        | awk -v MINCOV=!{params.allpos_min_cov} -v GAPDP=!{params.consensus_min_dp} -v BAQ=1 \\
+              -v OFS="\\t" -f !{projectDir}/bin/backbone_allpos.awk | cat header_template.txt - | bgzip -@ !{task.cpus} -c > backbone.vcf.gz
     else
         samtools mpileup -aa -f !{ref_fa} -Q !{params.allpos_min_bq} -d !{params.allpos_max_depth} !{bam} \\
-            | awk -v MINCOV=!{params.allpos_min_cov} -v OFS="\\t" '
-                function count_bases(s,   i,n,c,num){
-                  RO_G=0; AO_G=0; i=1; n=length(s)
-                  while(i<=n){
-                    c=substr(s,i,1)
-                    if(c=="^"){ i+=2 }
-                    else if(c=="\$"){ i++ }
-                    else if(c=="+"||c=="-"){
-                      i++; num=""
-                      while(i<=n && substr(s,i,1) ~ /[0-9]/){ num=num substr(s,i,1); i++ }
-                      i+=(num+0)
-                    }
-                    else if(c=="."||c==","){ RO_G++; i++ }
-                    else if(c ~ /[ACGTacgt]/){ AO_G++; i++ }
-                    else{ i++ }
-                  }
-                }
-                {
-                  chrom=\$1; pos=\$2; ref=\$3; dp=(\$4+0);
-                  count_bases(\$5)
-                  wt=(dp>=MINCOV?1:0);
-                  nc=(dp>=MINCOV?0:1);
-                  gt=(dp>=MINCOV?"0":"./.");
-                  info="ADP="dp";WT="wt";HET=0;HOM=0;NC="nc;
-                  print chrom, pos, ".", ref, ".", ".", ".", info, "GT:DP:AD", gt":"dp":"RO_G","AO_G
-                }' | cat header_template.txt - | bgzip -@ !{task.cpus} -c > backbone.vcf.gz
+            | awk -v MINCOV=!{params.allpos_min_cov} -v BAQ=0 \\
+                  -v OFS="\\t" -f !{projectDir}/bin/backbone_allpos.awk | cat header_template.txt - | bgzip -@ !{task.cpus} -c > backbone.vcf.gz
     fi
 
     safe_tabix backbone.vcf.gz
