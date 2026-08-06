@@ -63,14 +63,6 @@ process ANNOTATE_LEGACY_VCF {
     set -euo pipefail
     
     # Function to safely index VCFs, handling potential empty files
-    safe_tabix () {
-      local gz="\$1"; local idx="\${gz}.tbi"
-      set +e; tabix -f -p vcf "\$gz"; st=\$?; set -e
-      if [ \$st -ne 0 ]; then 
-        # Check if file has variants or is just header
-        if zgrep -vq '^#' "\$gz"; then exit \$st; else : > "\$idx"; fi
-      fi
-    }
 
     # SnpEff requires the data directory structure to be present locally
     if [ ! -e data ]; then ln -s !{data_dir} data; fi
@@ -114,11 +106,6 @@ process ANNOTATE_MAIN_VCF {
     """
     set -euo pipefail
     
-    safe_tabix () {
-      local gz="\$1"; local idx="\${gz}.tbi"
-      set +e; tabix -f -p vcf "\$gz"; st=\$?; set -e
-      if [ \$st -ne 0 ]; then if zgrep -vq '^#' "\$gz"; then exit \$st; else : > "\$idx"; fi; fi
-    }
 
     # Link SnpEff database directory
     if [ ! -e data ]; then ln -s !{data_dir} data; fi
