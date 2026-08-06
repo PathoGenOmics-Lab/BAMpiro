@@ -23,6 +23,16 @@ include { cleanStr; nullish; sanitizeId } from './modules/utils'
 
 /* ----------------------------- Configuration Logic ----------------------------- */
 
+// Checked first: everything below dereferences params.tsv, so without this the user gets
+// "Argument of `file()` function cannot be null" instead of being told what to pass.
+if (!params.tsv) {
+    throw new RuntimeException(
+        "--tsv is required: a Tab-Separated samplesheet with one row per (sample, run, reference).\n" +
+        "  Columns: sampleId, runId, r1, r2, refId, refFasta, refGff, taxId\n" +
+        "  Example: nextflow run main.nf --tsv samples.tsv --outdir results -profile local,docker\n" +
+        "  See docs/tutorials/samplesheet.md")
+}
+
 def final_outdir = file(params.outdir).toAbsolutePath().toString()
 
 // Logic to extract the base name of the TSV (e.g., "samples.tsv" -> "samples")
@@ -166,13 +176,19 @@ if (params.kraken2_db && hasTax) {
     else log.warn "Kraken DB not found at: ${params.kraken2_db} -> Kraken disabled"
 }
 
+// Executor and profile are shown because WHERE the run lands is the easiest thing to get wrong:
+// with no -profile everything runs on the current host, which on a cluster is the login node.
 log.info """
 ================================================================
- BAMpiro Pipeline 🧛‍♂️🧬
+ BAMpiro Pipeline 🧛‍♂️🧬  v${workflow.manifest.version}
 ================================================================
 TSV              : ${params.tsv}
 Output Absolute  : ${final_outdir}
 Report Name      : ${multiqc_report_filename}.html
+Profile(s)       : ${workflow.profile}
+Executor         : ${workflow.session.config.navigate('process.executor') ?: 'local'}
+Container        : ${params.container}
+Kraken2          : ${KRAKEN_ENABLED ? params.kraken2_db : 'disabled'}
 Annotate Legacy  : ${params.annotate_legacy_vcfs}
 Run Pathotypr    : ${params.run_pathotypr}
 ================================================================
