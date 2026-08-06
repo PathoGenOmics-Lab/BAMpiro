@@ -25,7 +25,10 @@ BEGIN { OFS = "\t" }
   }
 
   # Depth falls back through FORMAT/DP, then RO+AO, then 1 so the consensus never divides by zero.
-  if (dp == 0) { n = split($9, fmt, ":"); m = split($10, dat, ":"); for (i = 1; i <= n; i++) if (fmt[i] == "DP") dp = dat[i] }
+  # `+ 0` matters: FORMAT/DP may be ".", and without the coercion the comparisons below are string
+  # comparisons that "." fails, so every fallback is skipped and ADP=. reaches the consensus, which
+  # reads it as zero depth and turns a called SNP into a gap.
+  if (dp == 0) { n = split($9, fmt, ":"); m = split($10, dat, ":"); for (i = 1; i <= n; i++) if (fmt[i] == "DP") dp = dat[i] + 0 }
   if (dp == 0) dp = ro + ao
   if (dp == 0) dp = 1
 

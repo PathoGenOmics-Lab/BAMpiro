@@ -99,16 +99,14 @@ class TestDepth:
         [f] = run([row("RO=4;AO=6,3", "1/1")], tmp_path=tmp_path)
         assert info_of(f)["ADP"] == "10"
 
-    def test_a_missing_format_depth_lands_in_adp_verbatim(self, tmp_path):
-        """BUG PIN: a '.' in FORMAT/DP is copied straight into ADP.
-
-        `dat[i]` is a string, so the following `dp == 0` is a string comparison that '.' fails,
-        and all three numeric fallbacks are skipped. Downstream `get_dp` reads the '.' as 0 and
-        the position becomes a no-call, so a called SNP silently turns into a gap. Probably
-        unreachable in production because the upstream filter requires FMT/DP >= filter_min_dp.
-        """
+    def test_a_missing_format_depth_still_yields_a_numeric_depth(self, tmp_path):
+        """A '.' in FORMAT/DP must not reach ADP: the consensus reads it as zero depth and gaps."""
         [f] = run([row("RO=3;AO=7", "0/1", ".")], tmp_path=tmp_path)
-        assert info_of(f)["ADP"] == "."
+        assert info_of(f)["ADP"] == "10", "ADP must fall through to RO+AO, not carry a '.'"
+
+    def test_an_empty_format_depth_also_falls_through(self, tmp_path):
+        [f] = run([row("RO=0;AO=0", "0/1", ".")], tmp_path=tmp_path)
+        assert info_of(f)["ADP"] == "1"
 
 
 class TestGenotype:
