@@ -32,6 +32,12 @@ process COLLECT_SUMMARY {
     # guarantee it exists (header only) so the channel/QC_REPORT always have a file.
     [ -f ${basename}_gene_burden.tsv ] || printf 'gene\\thigh\\tmoderate\\tlow\\tmodifier\\tdominant_effect\\tn_samples\\ttotal_impactful\\tstart\\tend\\n' > ${basename}_gene_burden.tsv
     """
+
+    stub:
+    """
+    touch ${basename}_summary.tsv
+    touch ${basename}_gene_burden.tsv
+    """
 }
 
 process COLLECT_DR {
@@ -51,6 +57,11 @@ process COLLECT_DR {
     """
     set -euo pipefail
     python3 ${projectDir}/bin/collect_dr.py -o ${basename}_dr.tsv ${dr_mutations}
+    """
+
+    stub:
+    """
+    touch ${basename}_dr.tsv
     """
 }
 
@@ -85,6 +96,11 @@ process LIFT_VARIANTS {
     else
         printf 'src_pos\\ttgt_pos\\n' > ${basename}_pos_liftover.tsv
     fi
+    """
+
+    stub:
+    """
+    printf 'src_pos\\ttgt_pos\\n' > ${basename}_pos_liftover.tsv
     """
 }
 
@@ -124,9 +140,10 @@ process QC_REPORT {
     MASK_ARG=""; [ -s "${mask_bed}" ] && MASK_ARG="--mask-bed ${mask_bed}"
     MD_ARG=""; [ -s "${metadata}" ] && MD_ARG="--metadata ${metadata}"
     VCF_ARG=""; [ -n "${vcfs}" ] && VCF_ARG="--vcfs ${vcfs}"
-    VH_ARG="";  case "${vcfs_h37rv}" in ""|NO_FILE) ;; *) VH_ARG="--vcfs-h37rv ${vcfs_h37rv}";; esac
-    PL_ARG="";  case "${pos_liftover}" in ""|NO_FILE) ;; *) [ -s "${pos_liftover}" ] && PL_ARG="--pos-liftover ${pos_liftover}";; esac
-    DR_ARG="";  [ -s "${dr_report}" ] && [ "${dr_report}" != "NO_FILE" ] && DR_ARG="--dr-report ${dr_report}"
+    # NO_FILE* are the per-input placeholders main.nf stages when a feature is off (assets/NO_FILE_*).
+    VH_ARG="";  case "${vcfs_h37rv}" in ""|NO_FILE*) ;; *) VH_ARG="--vcfs-h37rv ${vcfs_h37rv}";; esac
+    PL_ARG="";  case "${pos_liftover}" in ""|NO_FILE*) ;; *) [ -s "${pos_liftover}" ] && PL_ARG="--pos-liftover ${pos_liftover}";; esac
+    DR_ARG="";  case "${dr_report}" in ""|NO_FILE*) ;; *) [ -s "${dr_report}" ] && DR_ARG="--dr-report ${dr_report}";; esac
     KRK_ARG=""; [ -n "${kraken_reports}" ] && KRK_ARG="--kraken ${kraken_reports}"
     python3 ${projectDir}/bin/qc_report.py \\
         --summary ${summary} \\
@@ -147,6 +164,12 @@ process QC_REPORT {
         --iupac-max ${params.report_iupac_max} \\
         --mapping-min ${params.report_mapping_min} \\
         ${gate_arg}
+    """
+
+    stub:
+    """
+    touch ${basename}_qc_report.html
+    touch ${basename}_qc_flags.tsv
     """
 }
 
@@ -171,5 +194,10 @@ process SNP_MATRIX {
         --vcfs ${vcfs} \\
         --reference "${reference}" \\
         -o ${basename}_snp_matrix.tsv
+    """
+
+    stub:
+    """
+    touch ${basename}_snp_matrix.tsv
     """
 }

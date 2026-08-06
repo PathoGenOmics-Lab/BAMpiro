@@ -164,3 +164,90 @@ def getSavePath(filename, params) {
     // E. DEFAULT PUBLISH
     return name 
 }
+
+/**
+ * Parse the declared parameters straight out of nextflow.config.
+ *
+ * Reading the config rather than keeping a second list of names means the two can never drift.
+ * Returns a list of [name, default, description, section] in declaration order.
+ */
+def declaredParams(String configPath) {
+    def f = new File(configPath)
+    if (!f.exists()) return []
+
+    def out = []
+    def section = 'General'
+    def depth = 0
+    def inside = false
+
+    f.readLines().each { raw ->
+        def line = raw.trim()
+        if (!inside) {
+            if (line ==~ /^params\s*\{.*/) { inside = true; depth = 1 }
+            return
+        }
+        // Track nesting by line so the matching close ends the block and a later one is ignored.
+        // A balanced "${...}" inside a value nets to zero, which is what we want.
+        def net = depth + line.count('{') - line.count('}')
+        if (net <= 0) { inside = false; return }
+        depth = net
+
+        def head = (line =~ /^\/\/\s*---\s*(.+?)\s*-*\s*$/)
+        if (head) { section = head[0][1]; return }
+        if (line.startsWith('//') || !line) return
+        // A quoted value is matched whole first, so a "//" inside it (a URL, a docker:// ref) is
+        // not mistaken for the start of a trailing comment.
+        def m = (line =~ /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*("[^"]*"|'[^']*'|.+?)\s*(?:\/\/\s*(.*))?$/)
+        if (m) out << [name: m[0][1], value: m[0][2], description: (m[0][3] ?: '').trim(), section: section]
+    }
+    return out
+}
+
+/**
+ * Reject an unknown --parameter instead of accepting it and doing nothing.
+ *
+ * Nextflow puts every --flag into params whether or not the pipeline declares it, so a typo like
+ * `--treads 16` is silently ignored and the run completes with the default. Anything Nextflow
+ * itself injects is allowed through.
+ */
+def validateParams(Map params, String configPath) {
+    def declared = declaredParams(configPath)*.name as Set
+    if (!declared) return   // config unreadable: do not block the run over a validation helper
+
+    // Nextflow-injected and convention keys that are never declared in the params block.
+    def allowed = ['help', 'validate_params', 'monochrome_logs', 'igenomes_base'] as Set
+
+    def unknown = params.keySet().findAll { !declared.contains(it) && !allowed.contains(it) }.sort()
+    if (!unknown) return
+
+    def msg = new StringBuilder("Unrecognised parameter(s): ${unknown.collect{ "--${it}" }.join(', ')}\n")
+    unknown.each { u ->
+        // Cheap edit-distance suggestion: most real cases are one transposed or dropped letter.
+        def near = declared.findAll { d ->
+            d.size() > 3 && (d.toLowerCase().contains(u.toLowerCase()) || u.toLowerCase().contains(d.toLowerCase())
+                             || (d.size() - u.size()).abs() <= 2 && (d.toSet().intersect(u.toSet()).size() >= u.size() - 1))
+        }.sort().take(3)
+        if (near) msg << "  --${u}: did you mean ${near.collect{ "--${it}" }.join(' or ')}?\n"
+    }
+    msg << "Run with --help to list every parameter."
+    throw new RuntimeException(msg.toString())
+}
+
+/**
+ * Print every declared parameter with its default, grouped by the section headings in the config.
+ */
+def paramsHelp(String configPath, String version) {
+    def declared = declaredParams(configPath)
+    def out = new StringBuilder("\nBAMpiro ${version}\n\n")
+    out << "  nextflow run main.nf --tsv samples.tsv --outdir results -profile local,docker\n\n"
+    out << "Profiles: standard (default, this host), local, slurm, garnatxa, docker, generic, test\n"
+    declared.groupBy{ it.section }.each { section, entries ->
+        out << "\n${section}\n"
+        entries.each { p ->
+            def val = p.value.replaceAll(/\s+/, ' ')
+            if (val.size() > 46) val = val.take(43) + '...'
+            out << String.format("  --%-26s %s\n", p.name, val)
+        }
+    }
+    return out.toString()
+}

@@ -1,0 +1,29 @@
+# Tooling configuration for the Python under bin/ and the test suite under tests/.
+# BAMpiro itself is a Nextflow pipeline and is not installed as a package.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Make the pipeline's scripts importable as plain modules from the tests.
+pythonpath = ["bin"]
+addopts = "-ra --strict-markers"
+markers = [
+    "nextflow: needs the `nextflow` CLI on PATH (skipped when absent)",
+]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = [
+    # Vendored verbatim from KrakenTools (see params.krakentools_url); kept
+    # byte-identical to upstream, so it is not ours to restyle.
+    "bin/extract_kraken_reads.py",
+]
+
+[tool.ruff.lint]
+# Deliberately narrow: catch real defects (undefined names, unused imports and
+# variables, broken f-strings, syntax errors, mutable default arguments) without
+# imposing a restyle on a codebase that chose a compact, dense layout.
+select = ["F", "E9", "B006", "B008", "B017", "B904"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests legitimately import a module purely to assert it imports cleanly.
+"tests/**" = ["F401"]

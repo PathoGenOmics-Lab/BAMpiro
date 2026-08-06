@@ -54,7 +54,7 @@ results_bampiro/
         ├── MP00091.LENS.filter_mqc.tsv     # -> Length-aware read-filter drop counts (input/kept/dropped; MultiQC table)
         ├── MP00091.LENS.mask_sites.tsv     # -> Specific positions masked due to low confidence
         ├── MP00091...fastp.html/.json      # -> Trimming quality reports
-        ├── MP00091...kraken.report         # -> Taxonomic classification report
+        ├── MP00091...kraken.report         # -> Taxonomic classification report (only with --kraken2_db)
         ├── MP00091.LENS.snpeff.csv         # -> Variant effect statistics
         ├── MP00091__<runId>.dr_mutations.tsv  # -> Pathotypr per-sample DR mutations (only if --run_pathotypr)
         └── Locus_to_exclude_LENS.txt       # -> List of repetitive regions excluded from calling
@@ -72,7 +72,7 @@ live-adjustable inside the HTML report.
 | `LOW_DEPTH` | mean depth below | `--report_depth_min` | :octicons-x-circle-fill-16:{ .red } **FAIL** |
 | `LOW_BREADTH` | genome breadth below | `--report_breadth_min` | :octicons-x-circle-fill-16:{ .red } **FAIL** |
 | `HIGH_MISSING` | missing % above | `--report_missing_max` | :octicons-x-circle-fill-16:{ .red } **FAIL** |
-| `NO_DATA` | no QC metrics for the sample | — | :octicons-x-circle-fill-16:{ .red } **FAIL** |
+| `NO_DATA` | no QC metrics for the sample | - | :octicons-x-circle-fill-16:{ .red } **FAIL** |
 | `MAPPING_LOW` | mapped % below | `--report_mapping_min` | :octicons-alert-fill-16:{ .amber } WARN |
 | `HIGH_DUP` | duplication % above | `--report_dup_max` | :octicons-alert-fill-16:{ .amber } WARN |
 | `HIGH_IUPAC` | ambiguous/IUPAC % above | `--report_iupac_max` | :octicons-alert-fill-16:{ .amber } WARN |
@@ -85,22 +85,19 @@ live-adjustable inside the HTML report.
 
 ```text
 BAMpiro/
-├── bin/                     # Python helpers
-│   ├── stats_to_legacy.py         # Per-sample metrics -> legacy log (parses the pathotypr lineage call)
-│   ├── collect_summary.py         # Aggregate per-sample logs -> cohort summary + gene-burden TSVs
-│   ├── collect_dr.py              # Aggregate pathotypr DR calls -> run drug-resistance TSV
-│   ├── pathotypr_liftover.py      # Alignment-free k-mer coordinate liftover (mapping ref <-> H37Rv)
-│   ├── build_snp_matrix.py        # Build the master SNP matrix (site × sample)
-│   ├── qc_report.py               # Build the interactive self-contained HTML QC report
-│   ├── WGS_fasta_allpos.py        # Consensus FASTA from the all-positions VCF
-│   ├── build_min_unique_len.py    # Per-reference mappability track (genmap)
-│   ├── filter_reads_mappability.py  # Length-aware read filter
-│   └── extract_kraken_reads.py    # Pull reads of a given taxon from Kraken2 output (decontamination)
-├── assets/
-│   ├── mycolorsTB_nature.tsv       # Canonical MTBC lineage colour palette (report)
-│   ├── H37Rv_blindspots.bed        # H37Rv Illumina blind-spots (Zenodo 3701840; --mask_blindspots)
-│   └── H37Rv_blindspots.README.md  # Provenance / derivation of the blind-spots BED
-├── modules/                 # Nextflow DSL2 Modules
+├── main.nf                  # Entry point: reads the samplesheet, then calls each stage in order
+├── subworkflows/            # One per pipeline stage, with an explicit take/emit
+│   ├── prepare_references.nf  # 1. Reference indexing + SnpEff DB
+│   ├── read_qc.nf             # 2-3. Read validation, Kraken2 screen, FastP
+│   ├── lineage_typing.nf      # 4. Pathotypr lineage + drug resistance
+│   ├── map_reads.nf           # 5. Mapping, merge/markdup, length-aware read filter
+│   ├── call_variants.nf       # 6. FreeBayes, backbone, merge
+│   ├── make_consensus.nf      # 7. Masked and virgin consensus
+│   ├── annotate.nf            # 8. SnpEff (main / legacy)
+│   ├── legacy_stats.nf        # 9. Per-sample metrics
+│   ├── multiqc_report.nf      # 10. MultiQC
+│   └── cohort_report.nf       # 11. Cohort summary, SNP matrix, QC report
+├── modules/                 # The processes themselves (Nextflow DSL2)
 │   ├── qc.nf                # FastP, Kraken, MultiQC, software versions
 │   ├── mapping.nf           # BWA-MEM2, MarkDup, length-aware read filter
 │   ├── variants.nf          # FreeBayes, Backbone, Merge
@@ -109,10 +106,42 @@ BAMpiro/
 │   ├── report.nf            # Cohort summary, SNP matrix, DR collection, QC report
 │   ├── pathotypr.nf         # Lineage + drug-resistance typing
 │   ├── reference.nf         # Reference Prep
-│   └── utils.nf             # Publish-path routing / clean publish dir
+│   └── utils.nf             # Publish-path routing, parameter validation, --help
+├── bin/                     # Everything a process actually runs, kept out of the process scripts
+│   ├── qc_report.py               # CLI for the interactive self-contained HTML QC report
+│   ├── qcreport/                  # The package behind it
+│   │   ├── parsers.py             #   Read every input file the report consumes
+│   │   ├── metrics.py             #   Thresholds and the PASS/WARN/FAIL verdict
+│   │   ├── panels.py              #   SNP dynamics, epistasis, SNP matrix
+│   │   └── render.py              #   CSS/JS assets and the HTML assembly
+│   ├── stats_to_legacy.py         # Per-sample metrics -> legacy log (parses the pathotypr lineage call)
+│   ├── collect_summary.py         # Aggregate per-sample logs -> cohort summary + gene-burden TSVs
+│   ├── collect_dr.py              # Aggregate pathotypr DR calls -> run drug-resistance TSV
+│   ├── pathotypr_liftover.py      # Alignment-free k-mer coordinate liftover (mapping ref <-> H37Rv)
+│   ├── build_snp_matrix.py        # Build the master SNP matrix (site × sample)
+│   ├── WGS_fasta_allpos.py        # Consensus FASTA from the all-positions VCF
+│   ├── build_min_unique_len.py    # Per-reference mappability track (genmap)
+│   ├── filter_reads_mappability.py  # Length-aware read filter
+│   ├── vcf_filter_rules.py        # The bcftools expressions defining a hom / het call
+│   ├── format_snps_for_backbone.awk # Genotype re-validation before the backbone merge
+│   ├── backbone_allpos.awk        # mpileup -> one VCF record per reference position
+│   ├── safe_tabix                 # Index a VCF, tolerating only a genuinely empty one
+│   └── extract_kraken_reads.py    # Vendored from KrakenTools (decontamination)
+├── assets/
+│   ├── mycolorsTB_nature.tsv       # Canonical MTBC lineage colour palette (report)
+│   ├── H37Rv_blindspots.bed        # H37Rv Illumina blind-spots (Zenodo 3701840; --mask_blindspots)
+│   ├── H37Rv_blindspots.README.md  # Provenance / derivation of the blind-spots BED
+│   └── NO_FILE*                    # Placeholders for the optional QC report inputs
+├── tests/                   # See tests/README.md: unit, front-end and stub-run legs
+├── conf/                    # Ready-made configs: sites (garnatxa.config -> -profile garnatxa),
+│                            #   organisms (tuberculosis.config, organism.config), tests (test*.config)
 ├── .github/dockerfile/      # Container recipe (bundles pathotypr + Zenodo panels + H37Rv snpEff DB)
-├── conf/                    # Ready-made example configs (tuberculosis.config, organism.config)
 ├── docs/                    # This documentation (MkDocs Material; built via mkdocs.yml)
-├── nextflow.config          # Global configuration & params
-└── main.nf                  # Main workflow entry point
+└── nextflow.config          # Global configuration & params
 ```
+
+!!! note "Why the science lives in `bin/`"
+
+    A process script cannot be tested: `-stub-run` replaces it, and nothing can import it. Anything
+    with a decision in it - the hom/het thresholds, the genotype re-validation, the pileup parser -
+    is a file under `bin/` that the process calls, so the test suite can exercise it directly.

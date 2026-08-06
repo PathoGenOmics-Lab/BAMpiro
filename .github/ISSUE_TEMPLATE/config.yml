@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Troubleshooting guide
+    url: https://github.com/PathoGenOmics-Lab/BAMpiro/blob/main/docs/troubleshooting.md
+    about: Common first-run errors and their fixes. Check this before filing a bug.
+  - name: Documentation
+    url: https://github.com/PathoGenOmics-Lab/BAMpiro/tree/main/docs
+    about: Installation, quick start, the samplesheet format, the full parameter reference, the QC report and the tutorial series.
+  - name: Questions about running BAMpiro
+    url: https://github.com/PathoGenOmics-Lab/BAMpiro/issues
+    about: Discussions are not enabled on this repository, so please open an issue and label it as a question.

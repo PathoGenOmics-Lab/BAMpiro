@@ -58,6 +58,8 @@ def main():
 
     w = sys.stdout.write
     for line in sys.stdin:
+        if not line.strip():                               # a blank line has no fields to index
+            continue
         if line[0] == "@":
             if line.startswith("@SQ"):
                 for tok in line.split("\t"):

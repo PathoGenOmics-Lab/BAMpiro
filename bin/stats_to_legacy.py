@@ -134,7 +134,12 @@ def get_genome_size(fai_file):
             for line in f:
                 parts = line.split('\t')
                 if len(parts) >= 2:
-                    total += int(parts[1])
+                    # per-LINE guard: a bad row is skipped, never truncating the total (a partial genome
+                    # length silently propagates into mean depth, breadth, evenness and every density bin)
+                    try:
+                        total += int(parts[1])
+                    except ValueError as e:
+                        sys.stderr.write(f"[stats_to_legacy] WARN get_genome_size({fai_file}): skipping row: {e}\n")
     except Exception as e:
         sys.stderr.write(f"[stats_to_legacy] WARN get_genome_size({fai_file}): {e}\n")
     return total   # 0 signals unknown; every consumer guards g_size > 0 and emits NA (no organism-specific fallback)
@@ -151,8 +156,13 @@ def get_contig_offsets(fai_file):
             for line in f:
                 parts = line.split('\t')
                 if len(parts) >= 2:
+                    try:   # per-LINE guard: a bad row must not drop every contig after it
+                        length = int(parts[1])
+                    except ValueError as e:
+                        sys.stderr.write(f"[stats_to_legacy] WARN get_contig_offsets({fai_file}): skipping row: {e}\n")
+                        continue
                     offsets[parts[0]] = running
-                    running += int(parts[1])
+                    running += length
     except Exception as e:
         sys.stderr.write(f"[stats_to_legacy] WARN get_contig_offsets({fai_file}): {e}\n")
     return offsets
@@ -184,30 +194,33 @@ def get_bam_stats(stats_file):
                 key = parts[1].rstrip(':')
                 val = parts[2].strip()
 
-                if key == 'raw total sequences':
-                    result['total'] = int(val)
-                elif key == 'reads mapped':
-                    result['mapped'] = int(val)
-                elif key == 'reads mapped and paired':
-                    result['mapped_paired'] = int(val)
-                elif key == 'reads properly paired':
-                    result['properly_paired'] = int(val)
-                elif key == 'reads duplicated':
-                    result['duplicates'] = int(val)
-                elif key == 'reads unmapped':
-                    result['reads_unmapped'] = int(val)
-                elif key == 'reads MQ0':
-                    result['reads_mq0'] = int(val)
-                elif key == 'average quality':
-                    result['avg_quality'] = float(val)
-                elif key == 'insert size average':
-                    result['insert_size_avg'] = float(val)
-                elif key == 'insert size standard deviation':
-                    result['insert_size_sd'] = float(val)
-                elif key == 'error rate':
-                    result['error_rate'] = float(val)
-                elif key == 'bases mapped (cigar)':
-                    result['bases_mapped'] = int(val)
+                try:   # per-LINE guard: an unparsable value skips that metric, not the rest of the block
+                    if key == 'raw total sequences':
+                        result['total'] = int(val)
+                    elif key == 'reads mapped':
+                        result['mapped'] = int(val)
+                    elif key == 'reads mapped and paired':
+                        result['mapped_paired'] = int(val)
+                    elif key == 'reads properly paired':
+                        result['properly_paired'] = int(val)
+                    elif key == 'reads duplicated':
+                        result['duplicates'] = int(val)
+                    elif key == 'reads unmapped':
+                        result['reads_unmapped'] = int(val)
+                    elif key == 'reads MQ0':
+                        result['reads_mq0'] = int(val)
+                    elif key == 'average quality':
+                        result['avg_quality'] = float(val)
+                    elif key == 'insert size average':
+                        result['insert_size_avg'] = float(val)
+                    elif key == 'insert size standard deviation':
+                        result['insert_size_sd'] = float(val)
+                    elif key == 'error rate':
+                        result['error_rate'] = float(val)
+                    elif key == 'bases mapped (cigar)':
+                        result['bases_mapped'] = int(val)
+                except ValueError as e:
+                    sys.stderr.write(f"[stats_to_legacy] WARN get_bam_stats({stats_file}): skipping '{key}': {e}\n")
     except Exception as e:
         sys.stderr.write(f"[stats_to_legacy] WARN get_bam_stats({stats_file}): {e}\n")
     return result
@@ -323,82 +336,90 @@ def analyze_vcf(vcf_file, g_size=0, nbins=BIN_N, contig_offsets=None):
     try:
         with opener(vcf_file, 'rt') as f:
             for line in f:
-                if line.startswith('#'): continue
-                parts = line.strip().split('\t')
-                if len(parts) < 10: continue
-                ref = parts[3]
-                alt = parts[4]
-                if alt in ['.', '*']: continue
-                fmt = parts[8].split(':')
-                if 'GT' not in fmt: continue
-                gt_idx = fmt.index('GT')
-                sample = parts[9].split(':')
-                if len(sample) <= gt_idx: continue
-                gt = sample[gt_idx]
-                if gt in ['./.', '0/0', '0|0']: continue
+                # per-RECORD guard: one malformed record is skipped, it never discards the rest of the VCF
+                try:
+                    if line.startswith('#'): continue
+                    parts = line.strip().split('\t')
+                    if len(parts) < 10: continue
+                    ref = parts[3]
+                    alt = parts[4]
+                    if alt in ['.', '*']: continue
+                    fmt = parts[8].split(':')
+                    if 'GT' not in fmt: continue
+                    gt_idx = fmt.index('GT')
+                    sample = parts[9].split(':')
+                    if len(sample) <= gt_idx: continue
+                    gt = sample[gt_idx]
+                    # Ploidy-agnostic: decide from the present (non-'.') alleles instead of a list of diploid
+                    # spellings, so the haploid forms freebayes_ploidy=1 emits are handled too. A no-call
+                    # ('./.', '.') has no alleles and a reference call ('0/0', '0|0', '0') only allele 0;
+                    # neither is a variant. Keeps the haploid '1' = homozygous behaviour below.
+                    alleles = [a for a in gt.replace('|', '/').split('/') if a != '.']
+                    if not alleles or set(alleles) == {'0'}: continue
 
-                # snpEff functional annotation of this real variant (no-op when the VCF has no ANN=)
-                info_str = parts[7] if len(parts) > 7 else ''
-                stats['ann_total'] += 1
-                ann = _parse_ann_field(info_str)
-                if ann is not None:
-                    cls, impact, gene, has_error, db_error = ann
-                    stats['ann_present'] = True
-                    stats['ann_records'] += 1
-                    stats['ann_impact'][impact] += 1
-                    stats['ann_class'][cls] += 1
-                    if has_error:
-                        stats['ann_warn'] += 1
-                    if db_error:
-                        stats['ann_db_error'] = True
-                    if gene:
-                        g = stats['ann_gene'].get(gene)
-                        if g is None:
-                            g = [0, 0, {}]
-                            stats['ann_gene'][gene] = g
-                        if impact == 'HIGH':
-                            g[0] += 1
-                        elif impact == 'MODERATE':
-                            g[1] += 1
-                        g[2][cls] = g[2].get(cls, 0) + 1
+                    # snpEff functional annotation of this real variant (no-op when the VCF has no ANN=)
+                    info_str = parts[7] if len(parts) > 7 else ''
+                    stats['ann_total'] += 1
+                    ann = _parse_ann_field(info_str)
+                    if ann is not None:
+                        cls, impact, gene, has_error, db_error = ann
+                        stats['ann_present'] = True
+                        stats['ann_records'] += 1
+                        stats['ann_impact'][impact] += 1
+                        stats['ann_class'][cls] += 1
+                        if has_error:
+                            stats['ann_warn'] += 1
+                        if db_error:
+                            stats['ann_db_error'] = True
+                        if gene:
+                            g = stats['ann_gene'].get(gene)
+                            if g is None:
+                                g = [0, 0, {}]
+                                stats['ann_gene'][gene] = g
+                            if impact == 'HIGH':
+                                g[0] += 1
+                            elif impact == 'MODERATE':
+                                g[1] += 1
+                            g[2][cls] = g[2].get(cls, 0) + 1
 
-                is_snp = (len(ref) == 1 and len(alt) == 1)
-                # homozygous = every present allele is identical: covers diploid '1/1' AND haploid '1'
-                # (freebayes_ploidy=1). The old 'len==2 and equal' test miscounted every haploid call as het.
-                alleles = [a for a in gt.replace('|', '/').split('/') if a != '.']
-                is_homo = bool(alleles) and len(set(alleles)) == 1
+                    is_snp = (len(ref) == 1 and len(alt) == 1)
+                    # homozygous = every present allele is identical: covers diploid '1/1' AND haploid '1'
+                    # (freebayes_ploidy=1). The old 'len==2 and equal' test miscounted every haploid call as het.
+                    is_homo = len(set(alleles)) == 1
 
-                # positional bin for the genome-landscape variant tracks. POS restarts per contig, so add the
-                # contig's cumulative offset to get a global coordinate before binning over the whole genome.
-                b = None
-                if g_size > 0:
-                    try:
-                        gpos = contig_offsets.get(parts[0], 0) + int(parts[1])
-                        b = min(nbins - 1, (gpos * nbins) // g_size)
-                    except ValueError:
-                        b = None
+                    # positional bin for the genome-landscape variant tracks. POS restarts per contig, so add the
+                    # contig's cumulative offset to get a global coordinate before binning over the whole genome.
+                    b = None
+                    if g_size > 0:
+                        try:
+                            gpos = contig_offsets.get(parts[0], 0) + int(parts[1])
+                            b = min(nbins - 1, (gpos * nbins) // g_size)
+                        except ValueError:
+                            b = None
 
-                if is_snp:
-                    stats['snps'] += 1
-                    r = ref.upper(); a = alt.upper()
-                    if r in 'ACGT' and a in 'ACGT' and r != a:
-                        if frozenset((r, a)) in _TRANSITIONS:
-                            stats['ti'] += 1
-                        else:
-                            stats['tv'] += 1
-                    if b is not None and is_homo:
-                        stats['snp_prof'][b] += 1
-                else:
-                    stats['indels'] += 1
-                    if is_homo: stats['homo_indels'] += 1
-                    if b is not None:
-                        stats['indel_prof'][b] += 1
-                if is_homo:
-                    stats['homo_total'] += 1
-                else:
-                    stats['het_total'] += 1
-                    if b is not None:
-                        stats['het_prof'][b] += 1
+                    if is_snp:
+                        stats['snps'] += 1
+                        r = ref.upper(); a = alt.upper()
+                        if r in 'ACGT' and a in 'ACGT' and r != a:
+                            if frozenset((r, a)) in _TRANSITIONS:
+                                stats['ti'] += 1
+                            else:
+                                stats['tv'] += 1
+                        if b is not None and is_homo:
+                            stats['snp_prof'][b] += 1
+                    else:
+                        stats['indels'] += 1
+                        if is_homo: stats['homo_indels'] += 1
+                        if b is not None:
+                            stats['indel_prof'][b] += 1
+                    if is_homo:
+                        stats['homo_total'] += 1
+                    else:
+                        stats['het_total'] += 1
+                        if b is not None:
+                            stats['het_prof'][b] += 1
+                except Exception as e:
+                    sys.stderr.write(f"[stats_to_legacy] WARN analyze_vcf({vcf_file}): skipping record: {e}\n")
     except Exception as e:
         sys.stderr.write(f"[stats_to_legacy] WARN analyze_vcf({vcf_file}): {e} (Ti/Tv & SNP counts may be partial)\n")
     return stats
@@ -509,8 +530,9 @@ def main():
         tot_after_bases = sum(l['after_bases'] for l in lanes)
         r_len = wmean('r1_len', 'after_reads') or 0.0
 
-        data['TRD_OUT'] = str(int(trd)) if trd > 0 else 'NA'
-        data['TRM_OUT'] = str(int(trm)) if trm > 0 else 'NA'
+        # inside `if lanes`, so a fastp JSON WAS read: 0 reads is a MEASURED (failed) sample, not a missing one
+        data['TRD_OUT'] = str(int(trd))
+        data['TRM_OUT'] = str(int(trm))
         data['RDL_OUT'] = f"{r_len:.1f}"
         data['DUP_OUT'] = f"{(wmean('dup', 'before_reads') or 0.0)*100:.2f}"
         q20 = wmean('q20', 'after_bases')
@@ -536,8 +558,8 @@ def main():
     if bam['total'] > 0:
         data['PP_OUT'] = f"{(bam['properly_paired'] / bam['total']) * 100:.2f}"
 
-    # Average base quality
-    if bam['avg_quality'] > 0:
+    # Average base quality; measured as soon as the SN block reports reads, so a genuine 0 is emitted as 0
+    if bam['total'] > 0:
         data['STD_OUT'] = f"{bam['avg_quality']:.1f}"
 
     # Coverage: depth from CIGAR-based mapped bases (more accurate than reads * read_length)
@@ -549,16 +571,20 @@ def main():
 
     # Breadth of coverage (% genome covered at >= 1x)
     breadth = calc_breadth_of_coverage(args.bam_stats, g_size, min_dp=1)
-    if breadth > 0:
+    if g_size > 0:   # 0% breadth is a real (failed) sample; NA is for an unknown genome length, as below
         data['COV_BREADTH'] = f"{breadth * 100:.2f}"
 
     # Extended coverage metrics from the same COV histogram (no extra tool)
     ch = cov_histogram_stats(args.bam_stats, g_size)
     if g_size > 0:
-        if ch['median_depth'] > 0:
-            data['COV_MEDIAN'] = f"{ch['median_depth']:.2f}"
+        # a median depth of 0 is the RIGHT answer when over half the genome is uncovered, so it is emitted
+        # like the two breadths below: guarding it on > 0 made a failed sample look like an unmeasured one
+        data['COV_MEDIAN'] = f"{ch['median_depth']:.2f}"
         data['COV_BREADTH5'] = f"{ch['breadth5']:.2f}"
         data['COV_BREADTH10'] = f"{ch['breadth10']:.2f}"
+        # evenness (CoV) is UNDEFINED at zero mean depth, and cov_histogram_stats returns 0.0 for both that
+        # and a perfectly flat genome; this guard is the only thing separating them, so it stays (a 0.000
+        # here would read as ideal evenness for a sample with no coverage at all).
         if ch['evenness'] > 0:
             data['COV_EVENNESS'] = f"{ch['evenness']:.3f}"
 
@@ -568,11 +594,13 @@ def main():
         data['MQ0_PCT'] = f"{(bam['reads_mq0'] / bam['total']) * 100:.2f}"
         singletons = max(0, bam['mapped'] - bam['mapped_paired'])   # approx (no flagstat passed)
         data['SINGLE_PCT'] = f"{(singletons / bam['total']) * 100:.2f}"
+    # samtools reports a 0 mean insert size when there is no paired insert at all (single-end library or no
+    # proper pairs) -> not applicable, keep NA. A 0 sd under a REAL mean is measured (a degenerate library of
+    # identical inserts), so the sd follows the mean instead of guarding itself away.
     if bam['insert_size_avg'] > 0:
         data['ISIZE_MEAN'] = f"{bam['insert_size_avg']:.1f}"
-    if bam['insert_size_sd'] > 0:
         data['ISIZE_SD'] = f"{bam['insert_size_sd']:.1f}"
-    if bam['error_rate'] > 0:
+    if bam['bases_mapped'] > 0:   # the error rate's own denominator: 0 mismatches over mapped bases is a real 0
         data['ERR_RATE'] = f"{bam['error_rate']*100:.3f}"   # emit as a percent
 
     # 3. Variants

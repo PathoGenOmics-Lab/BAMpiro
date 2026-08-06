@@ -1,0 +1,34 @@
+{
+  "title": "BAMpiro: bacterial short-read mapping, variant calling and lineage/drug-resistance typing",
+  "description": "<p>A Nextflow (DSL2) pipeline for short-read bacterial and <em>Mycobacterium tuberculosis</em> complex analysis: read QC and contamination screening, length-aware mappability masking, mapping, variant calling, consensus generation, SnpEff annotation, alignment-free lineage and WHO drug-resistance typing with Pathotypr, and a single self-contained interactive QC report.</p>",
+  "upload_type": "software",
+  "license": "GPL-3.0-or-later",
+  "access_right": "open",
+  "creators": [
+    {
+      "name": "Ruiz-Rodriguez, Paula",
+      "affiliation": "I2SysBio (University of Valencia - CSIC)"
+    },
+    {
+      "name": "Coscolla, Mireia",
+      "affiliation": "I2SysBio (University of Valencia - CSIC)"
+    }
+  ],
+  "keywords": [
+    "bioinformatics",
+    "Nextflow",
+    "workflow",
+    "variant calling",
+    "Mycobacterium tuberculosis",
+    "drug resistance",
+    "lineage typing",
+    "quality control"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/PathoGenOmics-Lab/BAMpiro",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    }
+  ]
+}

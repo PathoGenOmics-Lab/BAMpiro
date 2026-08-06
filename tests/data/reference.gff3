@@ -1,0 +1,9 @@
+##gff-version 3
+##sequence-region test_chr 1 5000
+test_chr	test	region	1	5000	.	+	.	ID=test_chr;Name=test_chr
+test_chr	test	gene	201	1400	.	+	.	ID=gene-TEST_0001;Name=dnaA;locus_tag=TEST_0001
+test_chr	test	CDS	201	1400	.	+	0	ID=cds-TEST_0001;Parent=gene-TEST_0001;Name=dnaA;locus_tag=TEST_0001;product=dnaA test product
+test_chr	test	gene	1601	3100	.	+	.	ID=gene-TEST_0002;Name=rpoB;locus_tag=TEST_0002
+test_chr	test	CDS	1601	3100	.	+	0	ID=cds-TEST_0002;Parent=gene-TEST_0002;Name=rpoB;locus_tag=TEST_0002;product=rpoB test product
+test_chr	test	gene	3301	4700	.	-	.	ID=gene-TEST_0003;Name=katG;locus_tag=TEST_0003
+test_chr	test	CDS	3301	4700	.	-	0	ID=cds-TEST_0003;Parent=gene-TEST_0003;Name=katG;locus_tag=TEST_0003;product=katG test product

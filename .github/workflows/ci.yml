@@ -1,0 +1,106 @@
+name: CI
+
+# The gate for every change: linting, unit tests for the Python under bin/, tests for the report's
+# hand-written front-end statistics, and a full stub run of the DAG. (The docs build lives in
+# docs.yml, which runs on pull requests too.)
+#
+# Nothing here needs a container, a reference genome or real reads: the fixture cohort under
+# tests/data/ is 170 kB and `-stub-run` executes each process's stub: block instead of the tool.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A new push supersedes the previous run of the same branch. The repository is private on a free
+# plan, so Actions minutes are metered; do not burn them on results nobody will read.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check .
+
+  unit:
+    name: Unit tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest version the scripts must still run on, and the one in the container.
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install pytest numpy
+      - run: python -m pytest tests/unit -q
+
+  fixtures:
+    name: Fixtures are reproducible
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The committed cohort must be exactly what the generator produces, or the seed has drifted
+      # and every test that reads tests/data/ is measuring something nobody can regenerate.
+      - name: Regenerate and diff
+        run: |
+          python tests/data/make_test_data.py
+          git diff --exit-code --stat tests/data/
+
+  report-frontend:
+    name: Report front-end (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # No dependencies: the tests use node:test and load the report bundle through node:vm.
+      - run: node --test tests/js/*.test.mjs
+
+  pipeline:
+    name: Stub run (Nextflow ${{ matrix.nxf_ver }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The minimum the manifest declares (v1 parser) and the current release (strict v2
+        # parser). Both must pass: main.nf is written to satisfy the stricter of the two.
+        nxf_ver: ["24.04.2", "latest-stable"]
+    env:
+      NXF_ANSI_LOG: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest
+      - uses: nf-core/setup-nextflow@v2
+        with:
+          version: ${{ matrix.nxf_ver }}
+      - run: python -m pytest tests/pipeline -q
+
+# The docs are validated by docs.yml, which already installs the cairo/pango libraries the
+# social plugin needs and now runs on pull requests too. Nothing to duplicate here.

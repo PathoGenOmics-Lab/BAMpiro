@@ -1,0 +1,3 @@
+Placeholder so git tracks this directory. -profile test_full points
+--kraken2_db here purely so the Kraken branch of the DAG is exercised;
+a stub run never opens the database.

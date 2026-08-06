@@ -1,0 +1,3 @@
+sampleId	runId	r1	r2	refId	refFasta	refGff	taxId
+#SAMPLE_A	RUN1	tests/data/reads/SAMPLE_A_RUN1_R1.fq.gz	tests/data/reads/SAMPLE_A_RUN1_R2.fq.gz	TESTREF	tests/data/reference.fasta	tests/data/reference.gff3	1773
+

@@ -19,7 +19,7 @@ include { getSavePath; getSampleDir } from './utils'
 
 process RUN_PATHOTYPR_PE {
     tag "PathotyprPE: ${sampleId}"
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     cpus 4
     memory '8 GB'
 
@@ -51,11 +51,18 @@ process RUN_PATHOTYPR_PE {
     # Fix the DR detail file name to carry our sampleId+runId (pathotypr names the sample after the FASTQ)
     cp "\$(ls ${sampleId}__${runId}.pathotypr.dr_*_mutations.tsv | head -1)" ${sampleId}__${runId}.dr_mutations.tsv
     """
+
+    // The lineage summary also satisfies the pathotypr.* glob (emit: results), so two files cover all three outputs.
+    stub:
+    """
+    touch ${sampleId}__${runId}.pathotypr.lineage_summary.tsv
+    touch ${sampleId}__${runId}.dr_mutations.tsv
+    """
 }
 
 process RUN_PATHOTYPR_SE {
     tag "PathotyprSE: ${sampleId}"
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     cpus 4
     memory '8 GB'
 
@@ -82,5 +89,11 @@ process RUN_PATHOTYPR_SE {
         --reference ${ref_fasta_pathotypr} --markers ${dr_markers} \\
         --output-prefix ${sampleId}__${runId}.pathotypr.dr --min-alt-percent ${params.pathotypr_min_alt} --threads ${task.cpus}
     cp "\$(ls ${sampleId}__${runId}.pathotypr.dr_*_mutations.tsv | head -1)" ${sampleId}__${runId}.dr_mutations.tsv
+    """
+
+    stub:
+    """
+    touch ${sampleId}__${runId}.pathotypr.lineage_summary.tsv
+    touch ${sampleId}__${runId}.dr_mutations.tsv
     """
 }

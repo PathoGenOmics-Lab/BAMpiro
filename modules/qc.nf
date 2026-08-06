@@ -26,6 +26,12 @@ process VALIDATE_RAW_READS_PE {
     if [[ "!{r1}" == *.gz ]]; then gzip -t "!{r1}" >/dev/null; else [[ -s "!{r1}" ]]; fi
     if [[ "!{r2}" == *.gz ]]; then gzip -t "!{r2}" >/dev/null; else [[ -s "!{r2}" ]]; fi
     '''
+
+    stub:
+    """
+    # the outputs re-emit the staged input reads, so there is nothing to create
+    true
+    """
 }
 
 process VALIDATE_RAW_READS_SE {
@@ -43,6 +49,11 @@ process VALIDATE_RAW_READS_SE {
     set -euo pipefail
     if [[ "!{r1}" == *.gz ]]; then gzip -t "!{r1}" >/dev/null; else [[ -s "!{r1}" ]]; fi
     '''
+
+    stub:
+    """
+    true
+    """
 }
 
 process KRAKEN_FILTER_PE {
@@ -51,7 +62,7 @@ process KRAKEN_FILTER_PE {
     memory '80 GB'
     
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), path(r2), val(refId), val(taxId)
@@ -93,6 +104,13 @@ process KRAKEN_FILTER_PE {
     gzip -f ${prefix}_R1.kraken.fq
     gzip -f ${prefix}_R2.kraken.fq
     '''
+
+    stub:
+    """
+    touch ${sampleId}__${runId}_R1.kraken.fq.gz
+    touch ${sampleId}__${runId}_R2.kraken.fq.gz
+    touch ${sampleId}__${runId}.kraken.report
+    """
 }
 
 process KRAKEN_FILTER_SE {
@@ -101,7 +119,7 @@ process KRAKEN_FILTER_SE {
     memory '80 GB'
     
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), val(refId), val(taxId)
@@ -136,6 +154,12 @@ process KRAKEN_FILTER_SE {
 
     gzip -f ${prefix}.kraken.fq
     '''
+
+    stub:
+    """
+    touch ${sampleId}__${runId}.kraken.fq.gz
+    touch ${sampleId}__${runId}.kraken.report
+    """
 }
 
 process FASTP_PE {
@@ -144,7 +168,7 @@ process FASTP_PE {
     memory { 4.GB * task.attempt }
     
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), path(r2), val(refId), val(taxId)
@@ -179,6 +203,15 @@ process FASTP_PE {
     cat ${prefix}_merged.fq.gz ${prefix}_u1.fq.gz ${prefix}_u2.fq.gz > ${prefix}_se_combined.fq.gz
     rm -f ${prefix}_merged.fq.gz ${prefix}_u1.fq.gz ${prefix}_u2.fq.gz
     '''
+
+    stub:
+    """
+    touch ${sampleId}__${runId}_R1.clean.fq.gz
+    touch ${sampleId}__${runId}_R2.clean.fq.gz
+    touch ${sampleId}__${runId}_se_combined.fq.gz
+    touch ${sampleId}__${runId}_fastp.json
+    touch ${sampleId}__${runId}_fastp.html
+    """
 }
 
 process FASTP_SE {
@@ -187,7 +220,7 @@ process FASTP_SE {
     memory { 4.GB * task.attempt }
     
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), val(refId), val(taxId)
@@ -208,6 +241,13 @@ process FASTP_SE {
       --length_required !{params.fastp_min_length} \
       --json ${prefix}_fastp.json --html ${prefix}_fastp.html
     '''
+
+    stub:
+    """
+    touch ${sampleId}__${runId}_SE.clean.fq.gz
+    touch ${sampleId}__${runId}_fastp.json
+    touch ${sampleId}__${runId}_fastp.html
+    """
 }
 
 process MULTIQC {
@@ -242,6 +282,12 @@ process MULTIQC {
     # -c : Use custom config
     # -n : Set dynamic output name
     multiqc . -c multiqc_config.yaml -n ${report_name}
+    """
+
+    stub:
+    """
+    touch ${report_name}.html
+    mkdir -p ${report_name}_data
     """
 }
 
@@ -302,4 +348,10 @@ process DUMP_VERSIONS {
       echo '    </dl>'
     } > software_versions_mqc.yml
     '''
+
+    stub:
+    """
+    touch software_versions.txt
+    touch software_versions_mqc.yml
+    """
 }

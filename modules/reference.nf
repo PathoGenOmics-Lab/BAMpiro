@@ -11,7 +11,7 @@ process PREPARE_REFERENCE {
 
     // We keep custom logic here because we NEED to publish the index files (.fai, .bwt, etc.),
     // which the global 'getSavePath' function would filter out.
-    publishDir "${params.outdir}/references/${refId}", mode: params.publish_mode, saveAs: { filename ->
+    publishDir path: { "${params.outdir}/references/${refId}" }, mode: params.publish_mode, saveAs: { filename ->
         // Hide the raw copy of reference.fa to save space (the original input already exists),
         // BUT keep it when publishing CRAM so the outputs are self-decodable.
         if (filename == "reference.fa" && !params.output_cram) return null
@@ -111,6 +111,14 @@ process PREPARE_REFERENCE {
         fi
     fi
     '''
+
+    stub:
+    """
+    touch reference.fa
+    # main.nf picks the .fai out of this index list, so it has to be part of the glob
+    touch reference.fa.amb reference.fa.ann reference.fa.bwt.2bit.64 reference.fa.pac reference.fa.0123 reference.fa.fai
+    touch Locus_to_exclude_${refId}.txt
+    """
 }
 
 
@@ -169,12 +177,18 @@ process BUILD_MAPPABILITY {
         --mask-window !{params.genmap_max_k} \
         --out-prefix !{refId}
     '''
+
+    stub:
+    """
+    touch ${refId}.min_unique_len.npz
+    touch Locus_to_exclude_mappability_${refId}.txt
+    """
 }
 
 
 process SNPEFF_BUILD_DB {
     tag "SnpEff DB: ${refId}"
-    publishDir "${params.outdir}/references/${refId}/snpeff", mode: params.publish_mode
+    publishDir path: { "${params.outdir}/references/${refId}/snpeff" }, mode: params.publish_mode
     cpus 1
     memory '8 GB'
     
@@ -214,4 +228,10 @@ EOF
     # Build Database
     snpEff build -c snpEff.config -gff3 -noCheckCds -noCheckProtein -v !{refId}
     '''
+
+    stub:
+    """
+    touch snpEff.config
+    mkdir -p data/${refId}
+    """
 }

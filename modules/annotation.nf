@@ -15,7 +15,7 @@ process ANNOTATE_CANONICAL {
     // canonical annotation remains (qc_report.py reads the first ANN). Positions must line up with the
     // canonical reference (true when the mapping reference shares its coordinates).
     tag "AnnCanonical: ${sampleId}"
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     cpus 2
     memory { 6.GB * task.attempt }
 
@@ -37,12 +37,17 @@ process ANNOTATE_CANONICAL {
       | bgzip -c > ${sampleId}.${refId}.canonical.ann.vcf.gz
     tabix -f -p vcf ${sampleId}.${refId}.canonical.ann.vcf.gz 2>/dev/null || : > ${sampleId}.${refId}.canonical.ann.vcf.gz.tbi
     """
+
+    stub:
+    """
+    touch ${sampleId}.${refId}.canonical.ann.vcf.gz
+    """
 }
 
 process ANNOTATE_LEGACY_VCF {
     tag "AnnLegacy: ${sampleId}"
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     cpus 2
     memory { 6.GB * task.attempt }
 
@@ -58,14 +63,6 @@ process ANNOTATE_LEGACY_VCF {
     set -euo pipefail
     
     # Function to safely index VCFs, handling potential empty files
-    safe_tabix () {
-      local gz="\$1"; local idx="\${gz}.tbi"
-      set +e; tabix -f -p vcf "\$gz"; st=\$?; set -e
-      if [ \$st -ne 0 ]; then 
-        # Check if file has variants or is just header
-        if zgrep -vq '^#' "\$gz"; then exit \$st; else : > "\$idx"; fi
-      fi
-    }
 
     # SnpEff requires the data directory structure to be present locally
     if [ ! -e data ]; then ln -s !{data_dir} data; fi
@@ -80,12 +77,20 @@ process ANNOTATE_LEGACY_VCF {
 
     safe_tabix !{sampleId}.!{refId}.!{label}.ann.vcf.gz
     """
+
+    // label must stay in the name: main.nf picks the freebayes.raw VCF by filename
+    stub:
+    """
+    touch ${sampleId}.${refId}.${label}.ann.vcf.gz
+    touch ${sampleId}.${refId}.${label}.ann.vcf.gz.tbi
+    touch ${sampleId}.${refId}.${label}.snpeff.stderr.log
+    """
 }
 
 process ANNOTATE_MAIN_VCF {
     tag "AnnMain: ${sampleId}"
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     cpus 2
     memory { 8.GB * task.attempt }
 
@@ -101,11 +106,6 @@ process ANNOTATE_MAIN_VCF {
     """
     set -euo pipefail
     
-    safe_tabix () {
-      local gz="\$1"; local idx="\${gz}.tbi"
-      set +e; tabix -f -p vcf "\$gz"; st=\$?; set -e
-      if [ \$st -ne 0 ]; then if zgrep -vq '^#' "\$gz"; then exit \$st; else : > "\$idx"; fi; fi
-    }
 
     # Link SnpEff database directory
     if [ ! -e data ]; then ln -s !{data_dir} data; fi
@@ -117,12 +117,20 @@ process ANNOTATE_MAIN_VCF {
 
     safe_tabix !{sampleId}.!{refId}.ann.vcf.gz
     """
+
+    stub:
+    """
+    touch ${sampleId}.${refId}.ann.vcf.gz
+    touch ${sampleId}.${refId}.ann.vcf.gz.tbi
+    touch ${sampleId}.${refId}.snpeff.csv
+    touch ${sampleId}.${refId}.snpeff.stderr.log
+    """
 }
 
 process GENERATE_LEGACY_STATS {
     tag "Stats: ${sampleId}"
     // Use getSampleDir. getSavePath automatically places .log files into the 'stats/' subfolder.
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     cpus 1
     
     input:
@@ -149,5 +157,10 @@ process GENERATE_LEGACY_STATS {
         --ref-fai ${ref_fai} \\
         ${patho_arg}
     mv "${sampleId}.log" "${sampleId}.${refId}.log"
+    """
+
+    stub:
+    """
+    touch ${sampleId}.${refId}.log
     """
 }

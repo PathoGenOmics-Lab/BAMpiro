@@ -6,28 +6,68 @@
 - **Singularity** or **Docker**
 - **Java** (version 17 or later, as required by Nextflow >= 24.04.2)
 
-The pipeline automatically pulls the container `docker://paururo/bampiro:1.0.1`,
-which contains every tool it needs (BWA-MEM2, Samtools, FreeBayes, SnpEff,
-Pathotypr, Python, …). `nextflow.config` references the image by its mutable `1.0.1`
-tag; for byte-for-byte reproducibility re-pin it to the digest the image was built
-from (`docker://paururo/bampiro@sha256:<digest>`). Override either with `--container`.
+The pipeline is parsed by both the classic and the strict Nextflow parser, so it runs
+unchanged on 24.04.2 and on 25.10 or newer without setting `NXF_SYNTAX_PARSER=v1`.
+
+A run needs two things: a samplesheet (`--tsv`, required) and a profile that says where to
+execute (`-profile`, defaulting to the current host).
 
 ```bash
-nextflow run main.nf --tsv samples.tsv --outdir results_bampiro -profile standard
+nextflow run main.nf --tsv samples.tsv --outdir results_bampiro -profile local,docker
 ```
 
 See [Quick Start](quickstart.md) for a full example and the
-[samplesheet format](quickstart.md#samplesheet).
+[samplesheet format](quickstart.md#samplesheet). `nextflow run main.nf --help` lists every
+parameter with its default and exits.
 
-## Running without SLURM
+## The container
 
-The **default** (`-profile standard`) targets the authors' SLURM cluster — it uses the `slurm` executor,
-`module load singularity`, and site-specific Singularity `--bind` paths. On any other machine those fail
-before the pipeline runs, so use the `local` (and, for Docker, `docker`) profiles, which drop all of that:
+The pipeline pulls `paururo/bampiro` automatically; it contains every tool it needs
+(BWA-MEM2, Samtools, FreeBayes, SnpEff, Pathotypr, Python, …). `nextflow.config` pins the
+image **by digest**, not by a tag:
+
+```groovy
+container = "docker://paururo/bampiro@sha256:c3bc85157c866154490162603ce8cdcffe86e41d3f065064104d6eb875a1cd19"
+```
+
+A tag can be repointed at a rebuilt image, so two runs a month apart could silently use
+different tool versions; a digest cannot. That digest is the 1.0.1 image. Override it with
+`--container`; either way the value actually used is recorded in the report's provenance
+footer.
+
+The same image is published to Docker Hub (`paururo/bampiro`, public) and to GHCR
+(`ghcr.io/pathogenomics-lab/bampiro`, currently private) with the same digest.
+
+## Choosing where it runs
+
+`-profile` decides **where** each task is executed. Nothing site-specific is baked into
+the defaults: with no `-profile` Nextflow applies `standard`, which runs every task on the
+current host, so a fresh clone works anywhere without being edited.
+
+| Profile | Executor | Use it for |
+| :--- | :--- | :--- |
+| `standard` *(applied when you pass no `-profile`)* | `local` | Whatever machine you launched from |
+| `local` | `local` | The same thing, spelled out in the command |
+| `slurm` | `slurm` | Any SLURM cluster. No queue, account or module system assumed |
+| `garnatxa` | `slurm` | The I2SysBio / University of Valencia cluster, configured end to end |
+| `docker` | *(leaves it alone)* | Docker instead of Singularity (combine it: `local,docker`) |
+| `generic` | *(leaves it alone)* | A non-tuberculosis organism (ploidy 1, the MTBC-only features off) |
+| `test` · `test_full` | `local` | The bundled fixture cohort, for `-stub-run` |
+
+Pick one executor profile and add as many option profiles as you like, comma-separated
+and with no spaces: `-profile local,docker`, `-profile slurm,generic`.
+
+!!! warning "On a cluster, choose the executor profile deliberately"
+
+    The default runs on the machine you launched from. On a cluster login node that means
+    the entire pipeline runs **on the login node**: nothing is ever submitted to the
+    scheduler, and your admins will notice. Pass `-profile slurm` (or `-profile garnatxa`)
+    for real work. The startup banner prints the profile, executor, container and Kraken
+    state it resolved, so read the `Executor` line before walking away.
 
 === "Local (Singularity/Apptainer)"
 
-    On a single machine, no SLURM and no environment-modules:
+    On a single machine, no scheduler and no environment modules:
 
     ```bash
     nextflow run main.nf --tsv samples.tsv --outdir results -profile local
@@ -39,14 +79,42 @@ before the pipeline runs, so use the `local` (and, for Docker, `docker`) profile
     nextflow run main.nf --tsv samples.tsv --outdir results -profile local,docker
     ```
 
-`local` runs every task on the current host with the executor set to `local` and the cluster-only bind
-paths cleared. Point `--kraken2_db` at your own Kraken2 database — if it lives outside the launch directory,
-Singularity may need it bound explicitly, e.g. `-profile local` plus
-`--kraken2_db /data/kraken2` and `export NXF_SINGULARITY_RUN_OPTIONS="--bind /data/kraken2"`.
+=== "SLURM cluster"
+
+    ```bash
+    nextflow run main.nf --tsv samples.tsv --outdir results -profile slurm
+    ```
+
+    `slurm` submits tasks with `sbatch` and assumes nothing else: no queue, no account, no
+    environment modules. Add your site's QoS / partition and your Singularity bind paths in
+    a small `-c` config, as shown in
+    [Configuring a run](tutorials/configuring-a-run.md#on-an-hpc-cluster-make-your-files-visible-to-the-container).
+
+=== "Garnatxa (I2SysBio)"
+
+    ```bash
+    nextflow run main.nf --tsv samples.tsv --outdir results -profile garnatxa
+    ```
+
+    Everything that cluster needs is already in `conf/garnatxa.config`: the SLURM QoS per
+    step, `module load singularity`, the Singularity bind paths, the shared Kraken2
+    database, a reusable mappability cache and a work directory on scratch. It also works
+    when the pipeline is pulled straight from GitHub
+    (`nextflow run PathoGenOmics-Lab/BAMpiro -profile garnatxa`), so there is nothing to
+    write or copy first.
+
+## Kraken2 is opt-in
+
+`--kraken2_db` has no default: without one the contamination screen is skipped and the
+report's taxonomy panel hides itself. To run it, point `--kraken2_db` at your own database
+(and give the samplesheet a `taxId` column). If the database lives outside the launch
+directory, Singularity needs it bound explicitly, e.g. `--kraken2_db /data/kraken2` plus
+`export NXF_SINGULARITY_RUN_OPTIONS="--bind /data/kraken2"`. `-profile garnatxa` already
+sets both the database and its bind.
 
 ## Container contents (software versions)
 
-The Docker container (`paururo/bampiro:1.0.1`) bundles the following tools:
+The container (`paururo/bampiro`, the 1.0.1 image pinned above) bundles the following tools:
 
 | Tool | Version | Purpose |
 | :--- | :--- | :--- |
@@ -80,20 +148,24 @@ run offline and reproducibly.
 
 Nextflow schedules each process with its own CPU / RAM request (retrying with more RAM
 on an out-of-memory kill). The peak driver is **Kraken2**, so size your machine / queue
-for it:
+for it whenever you set `--kraken2_db`:
 
 | Step | CPUs | Memory | Notes |
 | :--- | :--- | :--- | :--- |
-| **Kraken2** (contamination) | — | **~80 GB** | loads the whole DB; the run's memory ceiling. `--kraken_memory_mapping` (default on) mmaps it so parallel tasks share RAM |
+| **Kraken2** (contamination) | - | **~80 GB** | loads the whole DB; the run's memory ceiling. `--kraken_memory_mapping` (default on) mmaps it so parallel tasks share RAM |
 | Mappability track (`genmap`) | 8 | 16 GB | once per reference (cached across runs) |
 | Reference prep / SnpEff DB build | 4 | 8 GB | once per reference |
 | Mapping (`bwa-mem2`) | `--threads` (8) | scales with genome | the only step `--threads` controls |
 | Pathotypr typing | 4 | 8 GB | only with `--run_pathotypr` |
-| Variant calling / consensus / report | 1–4 | 2–4 GB | — |
+| Variant calling / consensus / report | 1–4 | 2–4 GB | - |
 
 !!! warning "Kraken2 sets the memory ceiling (~80 GB)"
 
     Kraken2 loads the entire database into RAM, so it is the single biggest memory
-    request in the run — an under-sized host kills it with an **OOM (exit 137)**. On a
-    laptop, use a smaller Kraken2 DB (or skip a DB you don't have) so the step fits.
-    Disk is roughly a few GB per sample (BAM/CRAM + VCFs + consensus).
+    request in the run - an under-sized host kills it with an **OOM (exit 137)**. On a
+    laptop, use a smaller Kraken2 DB, or leave `--kraken2_db` unset and the whole screen
+    is skipped. Disk is roughly a few GB per sample (BAM/CRAM + VCFs + consensus).
+
+    To make the whole pipeline fit a small machine, cap every request at once with
+    `--max_cpus` / `--max_memory` / `--max_time` (e.g. `--max_cpus 4 --max_memory 8.GB`).
+    Uncapped is the right choice on a cluster, where the per-process numbers are the point.

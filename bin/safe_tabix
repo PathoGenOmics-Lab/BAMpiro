@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+#
+# Index a bgzipped VCF, tolerating the one case where tabix legitimately fails.
+#
+#   safe_tabix sample.vcf.gz
+#
+# tabix exits non-zero on a VCF with no data rows, which is a normal outcome here: a sample can
+# genuinely have no variants left after filtering. That case gets an empty .tbi so the pipeline
+# carries on. Anything else (a truncated or malformed file) must fail loudly rather than get a
+# fake index that hides the corruption from every downstream step.
+#
+# The record count comes from `bcftools view -H`, which reads the whole file: a truncated VCF makes
+# bcftools itself error out, so the distinction is real rather than a guess about the header.
+
+set -euo pipefail
+
+gz="${1:?usage: safe_tabix <file.vcf.gz>}"
+idx="${gz}.tbi"
+
+if tabix -f -p vcf "$gz"; then
+    exit 0
+fi
+status=$?
+
+nrec=$(bcftools view -H "$gz" | wc -l)
+if [ "$nrec" -ne 0 ]; then
+    echo "ERROR: tabix failed on $gz with $nrec records (malformed/truncated) -> refusing a fake index" >&2
+    exit "$status"
+fi
+
+: > "$idx"

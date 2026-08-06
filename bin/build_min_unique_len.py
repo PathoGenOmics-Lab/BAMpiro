@@ -13,6 +13,8 @@ Coordinates: 0-based half-open, identical to genmap bedgraph 'start' and to BAM
 reference_start, so the read filter looks up min_unique_len[read.reference_start] directly.
 """
 import argparse
+import sys
+
 import numpy as np
 
 
@@ -41,7 +43,8 @@ def main():
     for K, path in items:                                  # ascending K -> first (smallest) unique wins
         kv = np.uint16(min(K, a.sentinel - 1))             # never store the sentinel itself as a real length
         for line in open(path):
-            if not line or line[0] == "#":
+            # A blank line reads as "\n", never "", so testing `not line` alone never fires.
+            if not line.strip() or line[0] == "#":
                 continue
             c, s, e, v = line.rstrip("\n").split("\t")
             arr = tracks.get(c)
@@ -59,6 +62,22 @@ def main():
         for n, L in contigs:
             tail = (tracks[n] == SENT) & (~covered[n])
             tracks[n][tail] = 0                            # span >= 0 always -> such reads are kept
+
+            # A never-scored position becomes 0, i.e. "uniquely placeable at any read length", so
+            # the read filter keeps everything there. At a contig END that is deliberate: genmap
+            # cannot score a k-mer that runs off the sequence. A hole in the MIDDLE is a different
+            # thing entirely, and it would silently disable masking over that stretch, so say so
+            # rather than let the permissive default pass for a measurement.
+            if tail.any():
+                idx = np.flatnonzero(tail)
+                head_run = np.flatnonzero(covered[n])
+                first, last = (head_run[0], head_run[-1]) if head_run.size else (L, -1)
+                interior = idx[(idx > first) & (idx < last)]
+                if interior.size:
+                    sys.stderr.write(
+                        "[build_min_unique_len] WARNING: %s has %d unscored position(s) away from "
+                        "the contig ends (first at %d); masking is disabled there\n"
+                        % (n, interior.size, int(interior[0]) + 1))
 
     np.savez(a.out_prefix + ".min_unique_len.npz", **tracks)
 

@@ -12,7 +12,7 @@ process CONSENSUS_FASTA {
     tag "Consensus: ${sampleId}"
     
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     cpus 1
     memory { 4.GB * task.attempt }
@@ -73,5 +73,11 @@ process CONSENSUS_FASTA {
     else
         sed -i "s/^>.*/>${sampleId}${outLabel}/" ${sampleId}.${refId}${outLabel}.consensus.fasta
     fi
+    """
+
+    stub:
+    """
+    touch ${sampleId}.${refId}${outLabel}.consensus.fasta
+    touch ${sampleId}.${refId}${outLabel}.consensus.log
     """
 }

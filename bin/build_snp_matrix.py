@@ -60,6 +60,10 @@ def _af_dp(fmt, val):
         alleles = [a for a in d.get('GT', './.').replace('|', '/').split('/') if a not in ('.', '')]
         if alleles:
             af = sum(1 for a in alleles if a != '0') / len(alleles)
+    # A single-element AD cannot give an allele fraction, but it still states a depth: without this
+    # the matrix emits an empty DP cell for a site whose depth is right there in the record.
+    if dp is None and ad:
+        dp = sum(ad)
     return af, dp
 
 
