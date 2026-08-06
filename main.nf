@@ -21,45 +21,32 @@ include { ANNOTATE_LEGACY_VCF; ANNOTATE_MAIN_VCF; ANNOTATE_CANONICAL; GENERATE_L
 include { COLLECT_SUMMARY; COLLECT_DR; LIFT_VARIANTS; QC_REPORT; SNP_MATRIX } from './modules/report'
 include { cleanStr; nullish; sanitizeId } from './modules/utils'
 
-/* ----------------------------- Configuration Logic ----------------------------- */
-
-// Checked first: everything below dereferences params.tsv, so without this the user gets
-// "Argument of `file()` function cannot be null" instead of being told what to pass.
-if (!params.tsv) {
-    throw new RuntimeException(
-        "--tsv is required: a Tab-Separated samplesheet with one row per (sample, run, reference).\n" +
-        "  Columns: sampleId, runId, r1, r2, refId, refFasta, refGff, taxId\n" +
-        "  Example: nextflow run main.nf --tsv samples.tsv --outdir results -profile local,docker\n" +
-        "  See docs/tutorials/samplesheet.md")
-}
-
-def final_outdir = file(params.outdir).toAbsolutePath().toString()
-
-// Logic to extract the base name of the TSV (e.g., "samples.tsv" -> "samples")
-// This is used to name the final MultiQC report dynamically
-def tsv_name = file(params.tsv).simpleName
-def multiqc_report_filename = "${tsv_name}_multiqc_report"
-
 /* ----------------------------- Helpers ----------------------------- */
 // cleanStr / nullish / sanitizeId are shared with the modules; imported from modules/utils.nf above.
+//
+// Everything below is a FUNCTION, and every statement lives inside `workflow`. That is what the
+// strict parser (the default from Nextflow 25.10) requires: a script may declare includes,
+// processes, workflows and functions, but may not run statements at the top level.
 
-def inferRunId = { r1 ->
+def inferRunId(String r1) {
     def name = new File(r1).getName()
     name = name.replaceAll(/(\.fastq|\.fq)(\.gz|\.bz2)?$/,'')
     name = name.replaceAll(/(\.gz|\.bz2)$/,'')
-    sanitizeId(name)
+    return sanitizeId(name)
 }
-
-// 1. Output Directory Strategy
-def SAMPLE_PUBLISH_DIR = { sid -> "${final_outdir}/${sid}" }
 
 /* ----------------------------- TSV Parsing ----------------------------- */
 
-def tsvFile = new File(params.tsv as String)
-if (!tsvFile.exists()) throw new RuntimeException("Samplesheet not found: ${params.tsv}")
+// Read and validate the samplesheet, returning the parsed cohort as
+//   [refMap, refGffMap, expectedMap, peList, seList, hasTax]
+// Throws with every problem listed at once, so the user fixes them in a single pass.
+def parseSamplesheet(String tsvPath) {
+
+def tsvFile = new File(tsvPath)
+if (!tsvFile.exists()) throw new RuntimeException("Samplesheet not found: ${tsvPath}")
 
 def lines = tsvFile.readLines()
-if (lines.size() < 2) throw new RuntimeException("Samplesheet has a header but no data rows: ${params.tsv}")
+if (lines.size() < 2) throw new RuntimeException("Samplesheet has a header but no data rows: ${tsvPath}")
 
 def header = lines[0].replace('\r','').split('\t')*.trim()
 def col = [:]
@@ -73,7 +60,7 @@ def errors = []
     if (!col.containsKey(req)) errors << "header is missing the required column '${req}'"
 }
 if (errors) {
-    log.error "Samplesheet ${params.tsv} is unusable:\n" + errors.collect{ "  - ${it}" }.join('\n')
+    log.error "Samplesheet ${tsvPath} is unusable:\n" + errors.collect{ "  - ${it}" }.join('\n')
     throw new RuntimeException("Samplesheet header invalid (${errors.size()} problem(s)); see the list above.")
 }
 
@@ -161,24 +148,54 @@ lines.drop(1).eachWithIndex { raw, idx ->
 }
 
 if (errors) {
-    log.error "Samplesheet ${params.tsv} has ${errors.size()} problem(s):\n" + errors.collect{ "  - ${it}" }.join('\n')
+    log.error "Samplesheet ${tsvPath} has ${errors.size()} problem(s):\n" + errors.collect{ "  - ${it}" }.join('\n')
     throw new RuntimeException("Samplesheet validation failed with ${errors.size()} problem(s); fix the rows listed above and rerun.")
 }
 if (peList.isEmpty() && seList.isEmpty()) {
-    throw new RuntimeException("Samplesheet ${params.tsv} produced no usable samples (every data row was blank or commented out).")
+    throw new RuntimeException("Samplesheet ${tsvPath} produced no usable samples (every data row was blank or commented out).")
 }
 
-// Check if Kraken DB exists
-def KRAKEN_ENABLED = false
-if (params.kraken2_db && hasTax) {
-    def db = new File(params.kraken2_db as String)
-    if (db.exists()) KRAKEN_ENABLED = true
-    else log.warn "Kraken DB not found at: ${params.kraken2_db} -> Kraken disabled"
+return [ refMap: refMap, refGffMap: refGffMap, expectedMap: expectedMap,
+         peList: peList, seList: seList, hasTax: hasTax ]
 }
 
-// Executor and profile are shown because WHERE the run lands is the easiest thing to get wrong:
-// with no -profile everything runs on the current host, which on a cluster is the login node.
-log.info """
+/* ----------------------------- Main Workflow ----------------------------- */
+
+workflow {
+
+    /* ----------------------------- Configuration ----------------------------- */
+
+    // Checked first: everything below dereferences params.tsv, so without this the user gets
+    // "Argument of `file()` function cannot be null" instead of being told what to pass.
+    if (!params.tsv) {
+        throw new RuntimeException(
+            "--tsv is required: a Tab-Separated samplesheet with one row per (sample, run, reference).\n" +
+            "  Columns: sampleId, runId, r1, r2, refId, refFasta, refGff, taxId\n" +
+            "  Example: nextflow run main.nf --tsv samples.tsv --outdir results -profile local,docker\n" +
+            "  See docs/tutorials/samplesheet.md")
+    }
+
+    def final_outdir = file(params.outdir).toAbsolutePath().toString()
+    // Base name of the TSV ("samples.tsv" -> "samples"), used to name the cohort-level outputs.
+    def tsv_name = file(params.tsv).simpleName
+    def multiqc_report_filename = "${tsv_name}_multiqc_report"
+
+    def sheet       = parseSamplesheet(params.tsv as String)
+    def refMap      = sheet.refMap
+    def refGffMap   = sheet.refGffMap
+    def expectedMap = sheet.expectedMap
+
+    // Check if Kraken DB exists
+    def KRAKEN_ENABLED = false
+    if (params.kraken2_db && sheet.hasTax) {
+        def db = new File(params.kraken2_db as String)
+        if (db.exists()) KRAKEN_ENABLED = true
+        else log.warn "Kraken DB not found at: ${params.kraken2_db} -> Kraken disabled"
+    }
+
+    // Executor and profile are shown because WHERE the run lands is the easiest thing to get wrong:
+    // with no -profile everything runs on the current host, which on a cluster is the login node.
+    log.info """
 ================================================================
  BAMpiro Pipeline 🧛‍♂️🧬  v${workflow.manifest.version}
 ================================================================
@@ -194,21 +211,17 @@ Run Pathotypr    : ${params.run_pathotypr}
 ================================================================
 """
 
-/* ----------------------------- Channels ----------------------------- */
+    /* ----------------------------- Channels ----------------------------- */
 
-def uniqueRefsList = refMap.collect { k,v -> [k, file(v)] }
-def ref_in_ch   = Channel.fromList(uniqueRefsList).map { refId, fasta -> tuple(refId, fasta) }
+    def ref_in_ch = Channel.fromList(refMap.collect { k, v -> [k, file(v)] })
+                           .map { refId, fasta -> tuple(refId, fasta) }
 
-def snpeff_db_in = Channel.fromList(refMap.keySet().collect { rid -> 
-    [rid, file(refMap[rid]), file(refGffMap[rid])] 
-}).map { rid, fa, gff -> tuple(rid, fa, gff) }
+    def snpeff_db_in = Channel.fromList(refMap.keySet().collect { rid ->
+        [rid, file(refMap[rid]), file(refGffMap[rid])]
+    }).map { rid, fa, gff -> tuple(rid, fa, gff) }
 
-def pe_reads_ch = Channel.fromList(peList).map { sId, runId, r1, r2, refId, taxId -> tuple(sId, runId, r1, r2, refId, taxId) }
-def se_reads_ch = Channel.fromList(seList).map { sId, runId, r1, refId, taxId -> tuple(sId, runId, r1, refId, taxId) }
-
-/* ----------------------------- Main Workflow ----------------------------- */
-
-workflow {
+    def pe_reads_ch = Channel.fromList(sheet.peList).map { sId, runId, r1, r2, refId, taxId -> tuple(sId, runId, r1, r2, refId, taxId) }
+    def se_reads_ch = Channel.fromList(sheet.seList).map { sId, runId, r1, refId, taxId -> tuple(sId, runId, r1, refId, taxId) }
 
     // 1. Reference Preparation
     def ref_bundle = PREPARE_REFERENCE(ref_in_ch)

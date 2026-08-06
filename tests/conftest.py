@@ -62,12 +62,11 @@ def nextflow() -> str:
 def nextflow_env() -> dict:
     """Environment for invoking Nextflow from a test.
 
-    NXF_SYNTAX_PARSER=v1 is required: main.nf keeps its samplesheet parsing at
-    script level, which the strict (v2) parser of Nextflow >= 25.10 rejects. See
-    tests/README.md; the migration is tracked separately from this suite.
+    No parser pin: main.nf is accepted by the strict (v2) parser that Nextflow
+    25.10 and later use by default, as well as by the v1 parser of the minimum
+    supported 24.04.2. CI runs both.
     """
     env = dict(os.environ)
-    env["NXF_SYNTAX_PARSER"] = "v1"
     env["NXF_ANSI_LOG"] = "false"
     return env
 

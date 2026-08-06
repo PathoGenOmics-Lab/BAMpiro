@@ -19,7 +19,7 @@ include { getSavePath; getSampleDir } from './utils'
 
 process RUN_PATHOTYPR_PE {
     tag "PathotyprPE: ${sampleId}"
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     cpus 4
     memory '8 GB'
 
@@ -62,7 +62,7 @@ process RUN_PATHOTYPR_PE {
 
 process RUN_PATHOTYPR_SE {
     tag "PathotyprSE: ${sampleId}"
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     cpus 4
     memory '8 GB'
 

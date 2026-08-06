@@ -62,7 +62,7 @@ process KRAKEN_FILTER_PE {
     memory '80 GB'
     
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), path(r2), val(refId), val(taxId)
@@ -119,7 +119,7 @@ process KRAKEN_FILTER_SE {
     memory '80 GB'
     
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), val(refId), val(taxId)
@@ -168,7 +168,7 @@ process FASTP_PE {
     memory { 4.GB * task.attempt }
     
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), path(r2), val(refId), val(taxId)
@@ -220,7 +220,7 @@ process FASTP_SE {
     memory { 4.GB * task.attempt }
     
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     input:
     tuple val(sampleId), val(runId), path(r1), val(refId), val(taxId)

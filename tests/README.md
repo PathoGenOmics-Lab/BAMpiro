@@ -72,19 +72,16 @@ The statistics are asserted against **SciPy and statsmodels** reference values r
 a snapshot of our own output, so the tests catch a regression against an independent
 implementation. Current agreement is around 1e-12.
 
-## Known gap: the Nextflow v2 parser
+## Both Nextflow parsers
 
-`main.nf` does its samplesheet parsing at script level, outside any `workflow` block. The strict
-(v2) parser that Nextflow 25.10 and later use by default rejects that:
+Nextflow 25.10 and later default to a strict parser that rejects statements at the top level of a
+script and requires dynamic process directives to be closures. `main.nf` is written to satisfy it:
+the samplesheet parsing is a function, every statement lives inside `workflow`, and each dynamic
+`publishDir` is a closure. That syntax is also valid for the v1 parser of the minimum supported
+24.04.2, so the CI matrix runs both versions and neither needs `NXF_SYNTAX_PARSER`.
 
-```
-Statements cannot be mixed with script declarations
-```
-
-The pipeline still runs on those versions through the v1 fallback, so the test harness and CI set
-`NXF_SYNTAX_PARSER=v1`. That fallback will not last forever. Moving the parsing into a function
-called from the workflow is a separate piece of work; CI runs against `latest-stable` as an early
-warning for when it becomes urgent.
+If you add script-level code and the run dies with *"Statements cannot be mixed with script
+declarations"*, that is the strict parser: move the code into the workflow or into a function.
 
 ## Adding a test
 

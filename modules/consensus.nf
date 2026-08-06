@@ -12,7 +12,7 @@ process CONSENSUS_FASTA {
     tag "Consensus: ${sampleId}"
     
     // Use getSampleDir for nested output support
-    publishDir "${params.outdir}/${getSampleDir(sampleId, params)}", mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     cpus 1
     memory { 4.GB * task.attempt }

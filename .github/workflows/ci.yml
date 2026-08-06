@@ -82,13 +82,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The minimum the manifest declares, plus the current release as an early warning: when
-        # `latest-stable` starts failing, the pipeline needs work before users hit it.
+        # The minimum the manifest declares (v1 parser) and the current release (strict v2
+        # parser). Both must pass: main.nf is written to satisfy the stricter of the two.
         nxf_ver: ["24.04.2", "latest-stable"]
     env:
-      # main.nf keeps its samplesheet parsing at script level, which the strict (v2) parser of
-      # Nextflow >= 25.10 rejects. See tests/README.md; migrating it is tracked separately.
-      NXF_SYNTAX_PARSER: v1
       NXF_ANSI_LOG: "false"
     steps:
       - uses: actions/checkout@v4
