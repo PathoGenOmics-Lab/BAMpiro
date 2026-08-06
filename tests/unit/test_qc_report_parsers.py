@@ -221,6 +221,7 @@ def test_parse_bed_of_an_empty_file_is_empty(tmp_path):
 GENE_BURDEN = (
     "gene\thigh\tmoderate\tlow\tmodifier\tdominant_effect\tn_samples\ttotal_impactful\tstart\tend\n"
     "katG\t3\t1\t0\t5\tstop_gained\t4\t4\t3301\t4700\n"
+    "\n"
     "rpoB\t1\t5\t2\t1\tmissense_variant\t3\t6\t1601\t3100\n"
 )
 
@@ -273,6 +274,7 @@ def test_parse_gene_burden_of_an_empty_file_is_empty(tmp_path):
 PNPS = (
     "gene\tgene_name\tn_samples\tn_pairs\tmean_dN\tmean_dS\tdNdS\teffect_dominant\n"
     "TEST_0001\tdnaA\t4\t6\t0.0012\t0.0009\t1.33\tmissense\n"
+    "\n"
     "TEST_0002\trpoB\t4\t6\t0.0000\t0.0000\tNA\tsynonymous\n"
     "TEST_0003\tkatG\t4\t6\t0.0020\t0.0000\tinf\tmissense\n"
 )
@@ -640,8 +642,20 @@ def test_samplesheet_parsers_skip_a_row_shorter_than_the_sample_column(tmp_path,
     assert parser(path) == empty
 
 
+def test_parse_sample_meta_skips_a_row_shorter_than_the_sample_column(tmp_path):
+    path = write(tmp_path / "sheet.tsv", "runId\tsampleId\tpassage\nRUN1\nRUN2\tS2\tP2\n")
+    assert list(qc.parse_sample_meta(path)["rows"]) == ["S2"]
+
+
 def test_parse_dose_of_an_empty_file_is_empty(tmp_path):
     assert qc.parse_dose(write(tmp_path / "sheet.tsv", "")) == {}
+
+
+def test_parse_dose_keeps_the_first_row_of_a_repeated_sample(tmp_path):
+    # the samplesheet has one row per run, so a multi-run sample appears more than once
+    path = write(tmp_path / "sheet.tsv",
+                 "sampleId\trunId\tdose\nS1\tRUN1\t10\nS1\tRUN2\t99\n\tRUN3\t5\n")
+    assert qc.parse_dose(path) == {"S1": 10.0}
 
 
 def test_parse_dose_skips_a_row_without_a_dose_cell(tmp_path):
