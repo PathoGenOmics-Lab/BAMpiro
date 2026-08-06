@@ -136,3 +136,24 @@ def test_the_startup_banner_reports_where_the_run_will_execute(nextflow, nextflo
     assert "Executor         : local" in output, output
     assert "Profile(s)       : test" in output, output
     assert str(DATA / "samplesheet.tsv") in output
+
+
+def test_resource_caps_let_an_oversized_request_run(nextflow, nextflow_env, tmp_path):
+    """Kraken2 asks for 80 GB, which no laptop has and the local executor will never schedule.
+
+    Only the success direction is asserted: whether an UNCAPPED run fails depends on how much
+    memory the host happens to have, so testing that would pass on a laptop and fail on a big
+    workstation. `-profile test_full` enables Kraken, and 1 GB is available anywhere.
+    """
+    result = run_pipeline(
+        nextflow, nextflow_env, tmp_path,
+        "-profile", "test_full", "-stub-run",
+        "--outdir", str(tmp_path / "out"),
+        "--mappability_dir", str(tmp_path / "mappability"),
+        "--max_cpus", "1",
+        "--max_memory", "1.GB",
+        timeout=900,
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert "exceeds available" not in output, output
