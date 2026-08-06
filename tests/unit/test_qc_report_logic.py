@@ -539,13 +539,34 @@ def test_mask_profile_defaults_to_the_module_bin_count():
     assert len(prof) == qc.NBINS
 
 
-def test_mask_profile_double_counts_overlapping_intervals_in_the_total():
-    # KNOWN BEHAVIOUR (pinned, not endorsed): the per-bin profile is clamped to 1.0 but the
-    # masked TOTAL sums interval lengths without merging, so an un-merged BED with overlapping
-    # records reports a masked % above the true union (here 100% of the genome twice = 200%).
+def test_mask_profile_total_is_the_union_of_overlapping_intervals():
+    # The masked TOTAL is the union, so an un-merged BED with duplicate records cannot report the
+    # same base twice (this used to sum raw lengths and claim 200% of the genome was masked).
     prof, pct = qc.mask_profile([(0, 100), (0, 100)], 100, nbins=10)
     assert prof == [1.0] * 10
-    assert pct == 200.0
+    assert pct == 100.0
+
+
+def test_mask_profile_total_merges_partially_overlapping_intervals():
+    # union of [0,30) and [20,50) is 50 bp, not 30 + 30
+    _, pct = qc.mask_profile([(0, 30), (20, 50)], 100, nbins=10)
+    assert pct == 50.0
+
+
+def test_mask_profile_total_swallows_a_contained_interval():
+    _, pct = qc.mask_profile([(10, 60), (20, 30)], 100, nbins=10)
+    assert pct == 50.0
+
+
+def test_mask_profile_total_is_order_independent():
+    # the sweep sorts, so a BED that is not in coordinate order gives the same union
+    assert qc.mask_profile([(60, 80), (0, 40), (30, 50)], 100, nbins=10)[1] == \
+        qc.mask_profile([(0, 40), (30, 50), (60, 80)], 100, nbins=10)[1] == 70.0
+
+
+def test_mask_profile_total_still_adds_up_disjoint_intervals():
+    _, pct = qc.mask_profile([(0, 10), (50, 60), (90, 100)], 100, nbins=10)
+    assert pct == 30.0
 
 
 # --------------------------------------------------------------------------- _pearson

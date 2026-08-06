@@ -266,17 +266,28 @@ def test_get_genome_size_skips_short_lines(tmp_path):
     assert stl.get_genome_size(str(fai)) == 1007
 
 
-def test_get_genome_size_non_numeric_length_aborts_and_returns_partial(tmp_path):
-    """The try/except wraps the whole loop, so a bad row truncates the total
-    instead of skipping just that row. Pinned as observed behaviour."""
+def test_get_genome_size_skips_a_non_numeric_length_and_keeps_reading(tmp_path, capsys):
+    """The guard is per ROW: a bad length is skipped with a warning and every later
+    contig still counts. A truncated genome length would silently propagate into mean
+    depth, breadth, evenness and every density bin."""
     fai = tmp_path / "ref.fai"
     fai.write_text("chr1\t1000\t0\t60\t61\nchr2\tNOT_A_NUMBER\t0\t60\t61\nchr3\t99\t0\t60\t61\n")
-    assert stl.get_genome_size(str(fai)) == 1000
+    assert stl.get_genome_size(str(fai)) == 1099
+    assert "WARN get_genome_size" in capsys.readouterr().err
 
 
 def test_get_contig_offsets_is_cumulative(tmp_path):
     fai = _write_fai(tmp_path, [("chr1", 1000), ("chr2", 500), ("chr3", 250)])
     assert stl.get_contig_offsets(str(fai)) == {"chr1": 0, "chr2": 1000, "chr3": 1500}
+
+
+def test_get_contig_offsets_skips_a_non_numeric_length_and_keeps_reading(tmp_path, capsys):
+    """A bad row drops only its own contig; the offsets after it are still built (and
+    still cumulative over the contigs that did parse)."""
+    fai = tmp_path / "ref.fai"
+    fai.write_text("chr1\t1000\t0\t60\t61\nchr2\tNOT_A_NUMBER\t0\t60\t61\nchr3\t250\t0\t60\t61\n")
+    assert stl.get_contig_offsets(str(fai)) == {"chr1": 0, "chr3": 1000}
+    assert "WARN get_contig_offsets" in capsys.readouterr().err
 
 
 def test_get_contig_offsets_missing_file_returns_empty(tmp_path):
@@ -342,6 +353,22 @@ def test_get_bam_stats_ignores_non_sn_lines(tmp_path):
     p = tmp_path / "stats.txt"
     p.write_text("FFQ\t1\t2\t3\nCOV\t[1-1]\t1\t500\nSN\treads mapped:\t7\n")
     assert stl.get_bam_stats(str(p))["mapped"] == 7
+
+
+def test_get_bam_stats_skips_an_unparsable_value_and_keeps_reading(tmp_path, capsys):
+    """The guard is per LINE: only the offending metric is lost, every SN line after
+    it is still parsed instead of being discarded with it."""
+    p = tmp_path / "stats.txt"
+    p.write_text("SN\traw total sequences:\t1000\n"
+                 "SN\treads mapped:\tNOT_A_NUMBER\n"
+                 "SN\treads properly paired:\t850\n"
+                 "SN\terror rate:\t0.001\n")
+    got = stl.get_bam_stats(str(p))
+    assert got["total"] == 1000
+    assert got["mapped"] == 0            # the bad line keeps its zeroed default
+    assert got["properly_paired"] == 850  # ...and the rest of the block survives
+    assert got["error_rate"] == 0.001
+    assert "WARN get_bam_stats" in capsys.readouterr().err
 
 
 # --------------------------------------------------------------------------
@@ -513,32 +540,59 @@ def test_analyze_vcf_zygosity(tmp_path, gt, homo):
     assert v["het_total"] == (0 if homo else 1)
 
 
-def test_analyze_vcf_haploid_ref_call_is_counted_as_a_homozygous_variant(tmp_path):
-    """BUG PIN (reported, not fixed): the skip list only covers './.', '0/0'
-    and '0|0'. A HAPLOID reference call ('0') survives, and because
-    len(set(['0'])) == 1 it is counted as a homozygous SNP."""
+def test_analyze_vcf_skips_a_haploid_reference_call(tmp_path):
+    """The mirror image of the haploid '1' fix: a HAPLOID reference call ('0') is not a
+    variant. A diploid-only skip list let it through, and len(set(['0'])) == 1 then made it
+    a homozygous SNP, inflating SNP_OUT, HOM_OUT and the SNP density profile on every
+    `-profile generic` run (freebayes_ploidy = 1)."""
     vcf = _write_vcf(tmp_path, [_rec(100, "A", "G", "0")])
-    v = stl.analyze_vcf(str(vcf))
-    assert v["snps"] == 1
-    assert v["homo_total"] == 1
+    v = stl.analyze_vcf(str(vcf), g_size=1000, nbins=10, contig_offsets={"chr1": 0})
+    assert v["snps"] == 0
+    assert v["homo_total"] == 0
+    assert v["ann_total"] == 0
+    assert v["snp_prof"] == [0] * 10
 
 
-def test_analyze_vcf_haploid_missing_call_is_counted_as_heterozygous(tmp_path):
-    """BUG PIN (reported, not fixed): a haploid no-call '.' is not in the skip
-    list; it yields an empty allele list, so is_homo is False and the record
-    lands in the heterozygous bucket."""
+def test_analyze_vcf_skips_a_haploid_no_call(tmp_path):
+    """A haploid no-call ('.') has no called allele at all, so it is neither a variant nor
+    heterozygous; it used to land in the het bucket and inflate HET_OUT."""
     vcf = _write_vcf(tmp_path, [_rec(100, "A", "G", ".")])
     v = stl.analyze_vcf(str(vcf))
-    assert v["snps"] == 1
-    assert v["het_total"] == 1
+    assert v["snps"] == 0
+    assert v["het_total"] == 0
+    assert v["ann_total"] == 0
 
 
-@pytest.mark.parametrize("gt", ["./.", "0/0", "0|0"])
+@pytest.mark.parametrize("gt", ["./.", "0/0", "0|0", "0", ".", "0/.", "0/0/0"])
 def test_analyze_vcf_skips_non_calls_and_ref_calls(tmp_path, gt):
-    vcf = _write_vcf(tmp_path, [_rec(100, "A", "G", gt)], name=f"s{gt.replace('/', '_').replace('|', 'p')}.vcf")
+    """Ploidy-agnostic: no spelling of "no called ALT allele" is a variant."""
+    vcf = _write_vcf(tmp_path, [_rec(100, "A", "G", gt)],
+                     name=f"s{gt.replace('/', '_').replace('|', 'p').replace('.', 'd')}.vcf")
     v = stl.analyze_vcf(str(vcf))
     assert v["snps"] == 0
     assert v["ann_total"] == 0
+
+
+def test_analyze_vcf_skips_a_bad_record_and_keeps_reading(tmp_path, capsys, monkeypatch):
+    """The guard is per RECORD: an exception on one line must not discard the rest of the
+    VCF. Faulted through the annotation parser, the only place a record can realistically
+    blow up after the field-count checks."""
+    real = stl._parse_ann_field
+
+    def boom(info_str):
+        if "BOOM" in info_str:
+            raise ValueError("bad ANN")
+        return real(info_str)
+
+    monkeypatch.setattr(stl, "_parse_ann_field", boom)
+    vcf = _write_vcf(tmp_path, [
+        _rec(100, "A", "G", "1/1", info="DP=10"),
+        _rec(200, "C", "T", "1/1", info="BOOM=1"),
+        _rec(300, "G", "A", "1/1", info="DP=10"),
+    ])
+    v = stl.analyze_vcf(str(vcf))
+    assert v["snps"] == 2          # the first and the LAST record, not just the first
+    assert "skipping record" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("alt", [".", "*"])
@@ -904,3 +958,80 @@ def test_end_to_end_writes_the_legacy_log(tmp_path, repo_root):
     assert profiles["SNP_PROFILE"].split(",")[40] == "1"    # homozygous SNP at 200
     assert profiles["HET_PROFILE"].split(",")[60] == "1"    # het SNP at 300
     assert profiles["INDEL_PROFILE"].split(",")[80] == "1"  # homozygous indel at 400
+
+
+def _run_legacy(tmp_path, repo_root, sample="S1"):
+    """Run the script over the inputs already written into tmp_path and return the parsed log."""
+    proc = subprocess.run(
+        [
+            sys.executable, str(repo_root / "bin" / "stats_to_legacy.py"),
+            "--sample", sample,
+            "--fastp-json", str(tmp_path / "fastp.json"),
+            "--bam-stats", str(tmp_path / "stats.txt"),
+            "--vcf", str(tmp_path / "calls.vcf"),
+            "--ref-fai", str(tmp_path / "ref.fa.fai"),
+        ],
+        cwd=tmp_path, capture_output=True, text=True, timeout=120,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return dict(ln.split("\t", 1) for ln in (tmp_path / f"{sample}.log").read_text().splitlines())
+
+
+def test_a_measured_zero_is_reported_as_zero_not_na(tmp_path, repo_root):
+    """A sample that FAILED must not be indistinguishable from one that was never measured.
+    Every value below was genuinely computed as 0 and used to be erased to NA by an `if x > 0`."""
+    (tmp_path / "fastp.json").write_text(
+        '{"summary": {"before_filtering": {"total_reads": 0},'
+        ' "after_filtering": {"total_reads": 0, "total_bases": 0, "read1_mean_length": 0}},'
+        ' "duplication": {"rate": 0}}')
+    # 1000 reads sequenced but nothing covered (no COV block), a perfectly uniform 300 bp insert
+    # (sd 0) and no mismatch over 5000 mapped bases.
+    (tmp_path / "stats.txt").write_text(
+        "SN\traw total sequences:\t1000\n"
+        "SN\treads mapped:\t0\n"
+        "SN\taverage quality:\t0.0\n"
+        "SN\tinsert size average:\t300.0\n"
+        "SN\tinsert size standard deviation:\t0.0\n"
+        "SN\terror rate:\t0.0\n"
+        "SN\tbases mapped (cigar):\t5000\n")
+    _write_fai(tmp_path, [("chr1", 1000)])
+    _write_vcf(tmp_path, [])
+
+    data = _run_legacy(tmp_path, repo_root)
+    assert data["TRD_OUT"] == "0"          # fastp WAS read: zero reads is a measurement
+    assert data["TRM_OUT"] == "0"
+    assert data["STD_OUT"] == "0.0"        # reads present, so a 0 mean base quality is real
+    assert data["ERR_RATE"] == "0.000"     # mapped bases present, so 0 mismatches is real
+    assert data["ISIZE_SD"] == "0.0"       # a real mean, so an identical-insert library is real
+    assert data["COV_BREADTH"] == "0.00"
+    assert data["COV_MEDIAN"] == "0.00"    # nothing covered -> the median depth IS 0
+    assert data["COV_BREADTH5"] == "0.00"
+    assert data["COV_BREADTH10"] == "0.00"
+    # The one exception: evenness (CoV) is UNDEFINED at zero mean depth and cov_histogram_stats
+    # returns the same 0.0 for that and for a perfectly flat genome, so the > 0 guard is the only
+    # thing separating them and stays. 0.000 here would read as ideal evenness.
+    assert data["COV_EVENNESS"] == "NA"
+
+
+def test_an_unmeasured_metric_is_still_na(tmp_path, repo_root):
+    """The other half of the contract: absent input still yields NA, never a fabricated 0."""
+    (tmp_path / "fastp.json").write_text("not json at all")   # no lane is parsed
+    (tmp_path / "stats.txt").write_text(
+        "SN\traw total sequences:\t0\n"
+        "SN\tinsert size average:\t0.0\n"
+        "SN\tinsert size standard deviation:\t0.0\n"
+        "SN\tbases mapped (cigar):\t0\n")
+    (tmp_path / "ref.fa.fai").write_text("")   # unknown genome length
+    _write_vcf(tmp_path, [])
+
+    data = _run_legacy(tmp_path, repo_root)
+    assert data["TRD_OUT"] == "NA"
+    assert data["TRM_OUT"] == "NA"
+    assert data["STD_OUT"] == "NA"       # no reads -> no measurable mean base quality
+    assert data["ERR_RATE"] == "NA"      # no mapped bases -> the rate has no denominator
+    assert data["ISIZE_MEAN"] == "NA"    # no paired insert at all -> not applicable, not 0 bp
+    assert data["ISIZE_SD"] == "NA"
+    assert data["GENOME_LEN"] == "NA"
+    assert data["COV_BREADTH"] == "NA"   # unknown genome length -> no denominator
+    assert data["COV_MEDIAN"] == "NA"
+    assert data["COV_EVENNESS"] == "NA"

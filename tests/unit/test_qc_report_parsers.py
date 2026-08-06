@@ -371,8 +371,14 @@ def test_parse_dr_skips_blank_lines_and_rows_without_a_sample(tmp_path):
     assert len(dr["calls"]) == 1
 
 
-def test_parse_dr_of_a_non_integer_depth_is_none(tmp_path):
+def test_parse_dr_reads_a_float_formatted_depth(tmp_path):
+    """A depth written as '40.0' is still a depth of 40, not a parse failure."""
     path = write(tmp_path / "dr.tsv", "sample\tdrug\tdp\nS1\tRIF\t40.0\n")
+    assert qc.parse_dr(path)["calls"][0]["dp"] == 40
+
+
+def test_parse_dr_of_a_non_numeric_depth_is_none(tmp_path):
+    path = write(tmp_path / "dr.tsv", "sample\tdrug\tdp\nS1\tRIF\tdeep\n")
     assert qc.parse_dr(path)["calls"][0]["dp"] is None
 
 
@@ -488,16 +494,26 @@ def test_parse_gff_of_an_absent_file_is_empty(path):
     assert qc.parse_gff(path) == []
 
 
-def test_parse_gff_attribute_lookup_matches_a_key_suffix(tmp_path):
-    """KNOWN BUG (pinned, not endorsed): the attribute lookup is an unanchored substring
-    search, so 'locus_tag=' also matches inside 'old_locus_tag=' and 'gene=' also matches
-    inside 'pseudogene='. Both attributes are legal GFF3 and common in RefSeq / Prokka
-    output, so a feature can be named after an obsolete tag or after a pseudogene TYPE.
-    Reported upstream; this test records what the code does today, not what it should do."""
+def test_parse_gff_attribute_lookup_matches_the_whole_key_not_a_suffix(tmp_path):
+    """The attribute key is matched whole, so 'locus_tag' is not read out of 'old_locus_tag'
+    and 'gene' is not read out of 'pseudogene'. Both attributes are legal GFF3 and routine in
+    RefSeq / Prokka output, so a substring search named features after an obsolete tag or after
+    a pseudogene TYPE ('unitary')."""
     path = write(tmp_path / "ref.gff3",
                  "chr\tt\tgene\t1\t100\t.\t+\t.\tID=g1;old_locus_tag=OLDTAG;locus_tag=NEWTAG\n"
                  "chr\tt\tgene\t200\t300\t.\t+\t.\tID=g2;pseudogene=unitary;locus_tag=LT2\n")
-    assert [g["name"] for g in qc.parse_gff(path)] == ["OLDTAG", "unitary"]
+    assert [g["name"] for g in qc.parse_gff(path)] == ["NEWTAG", "LT2"]
+
+
+def test_parse_gff_tolerates_spaces_around_the_attribute_separator(tmp_path):
+    path = write(tmp_path / "ref.gff3", "chr\tt\tgene\t1\t100\t.\t+\t.\tID=g1; locus_tag=LT1 ; note=x\n")
+    assert [g["name"] for g in qc.parse_gff(path)] == ["LT1"]
+
+
+def test_parse_gff_keeps_an_equals_sign_inside_an_attribute_value(tmp_path):
+    """Only the FIRST '=' splits key from value, so a value containing '=' survives intact."""
+    path = write(tmp_path / "ref.gff3", "chr\tt\tgene\t1\t100\t.\t+\t.\tName=a=b;locus_tag=LT1\n")
+    assert [g["name"] for g in qc.parse_gff(path)] == ["a=b"]
 
 
 def test_parse_gene_locus_maps_the_committed_gene_names_to_locus_tags(data_dir):
@@ -525,17 +541,23 @@ def test_parse_gene_locus_of_an_absent_file_is_empty(path):
     assert qc.parse_gene_locus(path) == {}
 
 
-def test_parse_gene_locus_attribute_lookup_matches_a_key_suffix(tmp_path):
-    """KNOWN BUG (pinned, not endorsed): same unanchored substring lookup as parse_gff.
-    When 'old_locus_tag=' precedes 'locus_tag=' the gene is mapped to the OBSOLETE tag,
-    and 'pseudogene=' is read as the gene name. build_gene_map only escapes the first case
-    because a non-Rv-style tag fails its _RV_LOCUS_RE filter and the curated map survives;
-    an old_locus_tag that IS Rv-style would silently override the curated locus."""
+def test_parse_gene_locus_attribute_lookup_matches_the_whole_key_not_a_suffix(tmp_path):
+    """Same whole-key match as parse_gff: 'old_locus_tag' must not answer for 'locus_tag'
+    (that mapped the gene to its OBSOLETE tag) and 'pseudogene' must not answer for 'gene'
+    (that turned the pseudogene TYPE into a gene name)."""
     path = write(tmp_path / "ref.gff3",
                  "chr\tt\tgene\t1\t100\t.\t+\t.\tID=g1;old_locus_tag=MTV_OLD;locus_tag=Rv0667;gene=rpoB\n"
                  "chr\tt\tgene\t200\t300\t.\t+\t.\tID=g2;pseudogene=unitary;locus_tag=LT2\n")
-    assert qc.parse_gene_locus(path) == {"rpoB": "MTV_OLD", "unitary": "LT2"}
-    assert qc.build_gene_map(path)["rpoB"] == qc.GENE_RV["rpoB"]   # curated value survives here
+    assert qc.parse_gene_locus(path) == {"rpoB": "Rv0667"}
+
+
+def test_build_gene_map_takes_the_real_locus_tag_not_the_obsolete_one(tmp_path):
+    """build_gene_map overlays H37Rv-style tags from the GFF onto the curated map. An Rv-style
+    'old_locus_tag' read in place of 'locus_tag' passed the _RV_LOCUS_RE filter and silently
+    overrode the curated locus with a retired one."""
+    path = write(tmp_path / "ref.gff3",
+                 "chr\tt\tgene\t1\t100\t.\t+\t.\tgene=rpoB;old_locus_tag=Rv9999;locus_tag=Rv0667\n")
+    assert qc.build_gene_map(path)["rpoB"] == "Rv0667"
 
 
 # --------------------------------------------------------------------------- samplesheet parsers

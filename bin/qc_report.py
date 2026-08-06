@@ -293,16 +293,24 @@ def mask_profile(intervals, genome_len, nbins=NBINS):
         return None, 0.0
     binbp = genome_len / nbins
     cov = [0.0] * nbins
-    total = 0
+    kept = []
     for s, e in intervals:
         s = max(0, s); e = min(genome_len, e)
         if e <= s:
             continue
-        total += e - s
+        kept.append((s, e))
         b0 = int(s // binbp); b1 = min(nbins - 1, int((e - 1) // binbp))
         for b in range(b0, b1 + 1):
             bs = b * binbp; be = (b + 1) * binbp
             cov[b] += max(0.0, min(e, be) - max(s, bs))
+    # the total is the UNION of the intervals: an un-merged BED with overlapping records must not
+    # count the same base twice (that reported >100% masked), so sweep them in coordinate order
+    total = 0
+    reach = 0   # rightmost end already counted
+    for s, e in sorted(kept):
+        if e > reach:
+            total += e - max(s, reach)
+            reach = e
     prof = [round(min(1.0, cov[b] / binbp), 3) if binbp > 0 else 0.0 for b in range(nbins)]
     return prof, round(100.0 * total / genome_len, 2)
 
@@ -415,8 +423,8 @@ def parse_dr(path):
                 grade = (d.get("grade") or "").strip()
                 mg = re.match(r"\s*(\d)", grade)
                 dp = d.get("dp")
-                try:
-                    dp = int(dp) if dp not in (None, "", "NA", ".") else None
+                try:   # via float(): a depth written as '40.0' is still an integer depth, not a parse failure
+                    dp = int(float(dp)) if dp not in (None, "", "NA", ".") else None
                 except ValueError:
                     dp = None
                 calls.append({"s": s, "drug": (d.get("drug") or "").strip(), "gene": (d.get("gene") or "").strip(),
@@ -477,6 +485,18 @@ def parse_kraken(paths):
     return {"samples": out}
 
 
+def _gff_attr(attrs, key):
+    """Value of GFF3 attribute `key` from the column-9 string, or None when absent. The key is matched
+    WHOLE against each ';'-separated field (a substring search would read 'locus_tag' out of
+    'old_locus_tag' and 'gene' out of 'pseudogene', both legal GFF3 and routine in RefSeq/Prokka).
+    Only the first '=' splits, so a value that itself contains '=' survives."""
+    for field in attrs.split(";"):
+        k, sep, v = field.partition("=")
+        if sep and k.strip() == key:
+            return v.strip()
+    return None
+
+
 def parse_gff(path):
     """Best-effort GFF3 parse of gene/CDS features -> [{name, start, end}] (1-based). Empty on any problem."""
     if not path or not os.path.exists(path):
@@ -496,10 +516,9 @@ def parse_gff(path):
                 except ValueError:
                     continue
                 name = None
-                for key in ("Name=", "gene=", "locus_tag=", "ID="):
-                    i = c[8].find(key)
-                    if i >= 0:
-                        name = c[8][i + len(key):].split(";")[0].strip()
+                for key in ("Name", "gene", "locus_tag", "ID"):
+                    name = _gff_attr(c[8], key)
+                    if name is not None:
                         break
                 name = name or f"{start}-{end}"
                 # prefer a 'gene' feature over a 'CDS' of the same name
@@ -542,12 +561,8 @@ def parse_gene_locus(path):
                 if len(c) < 9 or c[2] not in ("gene", "CDS"):
                     continue
                 attrs = c[8]
-
-                def attr(key):
-                    i = attrs.find(key)
-                    return attrs[i + len(key):].split(";")[0].strip() if i >= 0 else ""
-                locus = attr("locus_tag=")
-                name = attr("gene=") or attr("Name=")
+                locus = _gff_attr(attrs, "locus_tag")
+                name = _gff_attr(attrs, "gene") or _gff_attr(attrs, "Name")
                 if name and locus and name not in out:
                     out[name] = locus
     except (OSError, ValueError):
