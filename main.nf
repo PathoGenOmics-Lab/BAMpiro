@@ -19,7 +19,7 @@ include { CALL_BACKBONE as CALL_BACKBONE_RAW; MERGE_VCFS as MERGE_VCFS_RAW } fro
 include { CONSENSUS_FASTA as CONSENSUS_FASTA_RAW } from './modules/consensus'
 include { ANNOTATE_LEGACY_VCF; ANNOTATE_MAIN_VCF; ANNOTATE_CANONICAL; GENERATE_LEGACY_STATS } from './modules/annotation'
 include { COLLECT_SUMMARY; COLLECT_DR; LIFT_VARIANTS; QC_REPORT; SNP_MATRIX } from './modules/report'
-include { cleanStr; nullish; sanitizeId } from './modules/utils'
+include { cleanStr; nullish; sanitizeId; validateParams; paramsHelp } from './modules/utils'
 
 /* ----------------------------- Helpers ----------------------------- */
 // cleanStr / nullish / sanitizeId are shared with the modules; imported from modules/utils.nf above.
@@ -164,6 +164,14 @@ return [ refMap: refMap, refGffMap: refGffMap, expectedMap: expectedMap,
 workflow {
 
     /* ----------------------------- Configuration ----------------------------- */
+
+    if (params.help) {
+        log.info paramsHelp("${projectDir}/nextflow.config", workflow.manifest.version)
+        return
+    }
+
+    // A misspelled --flag is otherwise accepted, ignored, and the run finishes with the default.
+    validateParams(params, "${projectDir}/nextflow.config")
 
     // Checked first: everything below dereferences params.tsv, so without this the user gets
     // "Argument of `file()` function cannot be null" instead of being told what to pass.
