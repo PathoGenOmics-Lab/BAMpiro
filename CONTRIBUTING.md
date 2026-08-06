@@ -59,11 +59,11 @@ tests/run_tests.sh js           # report front-end only
 tests/run_tests.sh pipeline     # Nextflow stub runs only
 ```
 
-There are around 1,100 tests in three legs:
+There are around 1,200 tests in three legs:
 
 | Leg | What it covers | Needs |
 | :--- | :--- | :--- |
-| `tests/unit/` | The Python under `bin/`: the consensus decision tree, the QC verdict engine, the parsers, the k-mer liftover, the read filter | `pytest`, `numpy` |
+| `tests/unit/` | Everything under `bin/`: the consensus decision tree, the QC verdict engine, the parsers, the k-mer liftover, the read filter, and the awk and filter expressions the process scripts call | `pytest`, `numpy` |
 | `tests/js/` | The report's hand-written ES5 statistics, checked against SciPy and statsmodels reference values, plus the integrity of the asset bundle | `node >= 18` |
 | `tests/pipeline/` | Samplesheet validation and a full `-stub-run` of the DAG on both test profiles | `nextflow`, Java 17+ |
 
@@ -146,6 +146,27 @@ plugin needs, so it just gains a pull_request trigger; only the build job runs
 there, since deploy stays gated on the Pages variable. Drops the stale
 indel-mask branch trigger now that the branch is merged.
 ```
+
+## Where code goes
+
+The pipeline is layered, and the layer decides whether your change is testable:
+
+| Layer | What belongs there |
+| :--- | :--- |
+| `main.nf` | Reading the samplesheet and calling each stage. Nothing else. |
+| `subworkflows/*.nf` | One per pipeline stage, with an explicit `take:` / `emit:`. All the channel plumbing, and the `if (params.x)` that switches a stage off. |
+| `modules/*.nf` | The processes: their inputs, outputs, resources and the command line they run. |
+| `bin/` | Everything the command line actually does, once it is more than a call to a tool. |
+
+That last row is the one worth internalising. **A process script cannot be tested.** `-stub-run`
+replaces it wholesale, and nothing can import it, so a decision written inside a `script:` block has
+no coverage and cannot get any. If your change involves a threshold, a filter expression, a parse or
+any other decision, put it in a file under `bin/` and have the process call it. That is why
+`vcf_filter_rules.py`, `format_snps_for_backbone.awk` and `backbone_allpos.awk` exist.
+
+A sub-workflow's `emit:` name must not match a `def` local in the same scope: `emit: x = y` is a
+real assignment, so a local `x` shadows the binding property Nextflow then looks for, and the
+failure is confusing. Give the emit a different name.
 
 ## Adding a process
 
