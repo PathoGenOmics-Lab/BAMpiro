@@ -4,6 +4,7 @@
 
 <div align="center">
 
+[![CI](https://github.com/PathoGenOmics-Lab/BAMpiro/actions/workflows/ci.yml/badge.svg)](https://github.com/PathoGenOmics-Lab/BAMpiro/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/license-GPL%20v3-%23af64d1?style=flat-square)](LICENSE)
 [![Nextflow](https://img.shields.io/badge/nextflow-%E2%89%A524.04.2-%2323aa62?style=flat-square)](https://www.nextflow.io/)
 [![Version](https://img.shields.io/badge/version-1.0.1-%23149389?style=flat-square)](CHANGELOG.md)
@@ -145,6 +146,17 @@ Prefer the source? Browse the Markdown under [`docs/`](docs/), or build the site
 locally with `make docs-serve`
 (needs [MkDocs Material](https://squidfunk.github.io/mkdocs-material/):
 `pip install -r docs/requirements.txt`).
+
+## Tests
+
+```bash
+tests/run_tests.sh
+```
+
+Unit tests for the Python under `bin/`, tests for the report front-end's hand-written statistics
+(checked against SciPy), and a full `-stub-run` of the DAG over a 170 kB fixture cohort. No
+container, no reference genome, no network. [`tests/README.md`](tests/README.md) has the details;
+CI runs the same checks on every pull request.
 
 ## Why "BAMpiro"?
 
