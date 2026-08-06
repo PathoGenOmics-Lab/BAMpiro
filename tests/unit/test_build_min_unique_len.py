@@ -382,3 +382,27 @@ def test_output_file_name_is_the_prefix_plus_a_fixed_suffix(repo_root, tmp_path)
 
     assert res.returncode == 0, res.stderr
     assert (tmp_path / "H37Rv.min_unique_len.npz").exists()
+
+
+def test_an_unscored_hole_away_from_the_contig_ends_is_reported(repo_root, tmp_path):
+    """A never-scored position becomes 0, i.e. "placeable at any read length", so the read filter
+    keeps everything there. At a contig end that is deliberate; in the middle it silently disables
+    masking over that stretch, so it has to be visible."""
+    fai = _fai(tmp_path, [("chr1", 20)])
+    # Scored 0-5 and 15-20, nothing in between.
+    bg = _bedgraph(tmp_path, "k35", [("chr1", 0, 5, 1.0), ("chr1", 15, 20, 1.0)])
+    res, tracks = _build(repo_root, tmp_path, fai, [f"35:{bg}"])
+
+    assert res.returncode == 0, res.stderr
+    assert "unscored position(s) away from the contig ends" in res.stderr
+    assert "chr1" in res.stderr
+
+
+def test_unscored_contig_ends_alone_are_not_reported(repo_root, tmp_path):
+    """genmap cannot score a k-mer that runs off the sequence, so a tail is expected and silent."""
+    fai = _fai(tmp_path, [("chr1", 20)])
+    bg = _bedgraph(tmp_path, "k35", [("chr1", 0, 15, 1.0)])
+    res, tracks = _build(repo_root, tmp_path, fai, [f"35:{bg}"])
+
+    assert res.returncode == 0, res.stderr
+    assert "unscored position" not in res.stderr

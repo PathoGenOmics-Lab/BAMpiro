@@ -376,13 +376,18 @@ def test_positions_empty_file(tmp_path):
     assert lift._positions(path) == []
 
 
-def test_positions_negative_bed_start_is_expanded_verbatim(tmp_path):
-    """Pinning current behaviour: `-2` passes the `lstrip("-").isdigit()` test, so a
-    malformed BED with a negative start yields non-positive positions instead of being
-    rejected. Downstream (`cmd_markers`, `_lift_chain`) drops them anyway."""
+def test_positions_rejects_a_negative_bed_coordinate(tmp_path):
+    """A BED coordinate is never negative. Accepting one expanded to zero and negative
+    positions that no reference has; the row is treated as malformed instead."""
     path = tmp_path / "neg.bed"
     path.write_text("chr1\t-2\t1\n")
-    assert lift._positions(path) == [-1, 0, 1]
+    assert lift._positions(path) == []
+
+def test_positions_still_expands_a_valid_bed_interval(tmp_path):
+    """The guard must not reject well-formed rows: BED is 0-based half-open."""
+    path = tmp_path / "ok.bed"
+    path.write_text("chr1\t2\t5\n")
+    assert lift._positions(path) == [3, 4, 5]
 
 
 # ------------------------------------------------------- _lift_chain (integration)

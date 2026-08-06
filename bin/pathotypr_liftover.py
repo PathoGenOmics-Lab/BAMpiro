@@ -63,7 +63,9 @@ def _positions(path):
                 continue
             c = line.replace(",", "\t").split("\t")
             try:
-                if len(c) >= 3 and c[1].lstrip("-").isdigit() and c[2].lstrip("-").isdigit():
+                # isdigit() only, not lstrip("-"): a BED coordinate is never negative, and accepting
+                # one silently expands to zero and negative positions that no reference has.
+                if len(c) >= 3 and c[1].isdigit() and c[2].isdigit():
                     a, b = int(c[1]), int(c[2])          # BED 0-based half-open -> 1-based positions a+1..b
                     for p in range(a + 1, b + 1):
                         pos.add(p)

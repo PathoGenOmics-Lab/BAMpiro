@@ -310,12 +310,10 @@ class TestGetRoAo:
         # int(), so a float-formatted AD is dropped entirely.
         assert wgs.get_ro_ao("GT:AD", "0/0:30.0,0") == (None, None)
 
-    def test_malformed_ad_can_leave_a_half_assigned_result(self):
-        # BUG (pinned, not fixed): ro is assigned before the ao sum raises, and the
-        # except branch only passes, so a malformed AD returns (ro, None) instead of
-        # (None, None). Callers guard with `ro is not None and ao is not None`, so
-        # today this only degrades to DP-based gating rather than corrupting output.
-        assert wgs.get_ro_ao("GT:AD", "0/1:5,x") == (5, None)
+    def test_a_malformed_ad_yields_neither_count(self):
+        """Both or neither: a half-assigned (5, None) is a trap for any future caller that
+        checks only one of the two."""
+        assert wgs.get_ro_ao("GT:AD", "0/1:5,x") == (None, None)
 
 
 # --------------------------------------------------------------------------- #
@@ -796,13 +794,16 @@ class TestIntervalMasker:
         masker = interval_masker(tmp_path, body)
         assert masker.intervals == {"chr1": [(5, 15)]}
 
-    def test_contig_named_like_the_header_is_dropped(self, tmp_path):
-        # BUG (pinned, not fixed): the header check is a case-insensitive
-        # startswith("chrom"), so a real contig called e.g. "chromosome_1" is
-        # silently discarded and never masked.
+    def test_a_contig_named_like_the_header_is_still_masked(self, tmp_path):
+        """A header row is one whose coordinate columns are not numbers. Recognising it by the
+        contig name instead silently discarded every interval on a contig called chrom*."""
         masker = interval_masker(tmp_path, "chromosome_1\t5\t15\n")
-        assert masker.intervals == {}
-        assert masker.masked("chromosome_1", 10) is False
+        assert masker.intervals == {"chromosome_1": [(5, 15)]}
+        assert masker.masked("chromosome_1", 10) is True
+
+    def test_a_real_header_row_is_still_skipped(self, tmp_path):
+        masker = interval_masker(tmp_path, "Chrom\tStart\tEnd\nchr1\t5\t15\n")
+        assert masker.intervals == {"chr1": [(5, 15)]}
 
     def test_intervals_are_tracked_per_contig(self, tmp_path):
         masker = interval_masker(tmp_path, "chr1\t5\t15\nchr2\t100\t200\n")
@@ -952,12 +953,10 @@ class TestFastaReader:
     def test_empty_file_yields_no_sequences(self, tmp_path):
         assert wgs.FastaReader(write_text(tmp_path / "ref.fa", "")).seqs == {}
 
-    def test_bare_greater_than_header_raises_index_error(self, tmp_path):
-        # BUG (pinned, not fixed): `line[1:].split()[0]` has no guard, so a header
-        # line that is just ">" fails with an opaque IndexError instead of a clear
-        # "malformed FASTA" message.
+    def test_a_bare_greater_than_header_is_reported_clearly(self, tmp_path):
+        """A malformed FASTA should name the file and the problem, not raise a bare IndexError."""
         path = write_text(tmp_path / "ref.fa", ">\nACGT\n")
-        with pytest.raises(IndexError):
+        with pytest.raises(RuntimeError, match="no sequence name"):
             wgs.FastaReader(path)
 
 

@@ -136,8 +136,11 @@ def get_ro_ao(fmt: str, sample: str) -> Tuple[Optional[int], Optional[int]]:
         if ad and ad not in {".", ""}:
             parts = ad.split(",")
             try:
-                ro = int(parts[0])
-                ao = sum(int(x) for x in parts[1:]) if len(parts) > 1 else 0
+                # Both or neither: assigning ro before the ao sum can raise would leave a
+                # half-initialized (5, None) on a malformed AD such as "5,x".
+                ad_ro = int(parts[0])
+                ad_ao = sum(int(x) for x in parts[1:]) if len(parts) > 1 else 0
+                ro, ao = ad_ro, ad_ao
             except ValueError:
                 pass
     return ro, ao
@@ -187,10 +190,13 @@ class IntervalMasker:
                     line = line.strip()
                     if not line or line.startswith("#"):
                         continue
-                    if line.lower().startswith("chrom"):
-                        continue
                     parts = line.split("\t")
                     if len(parts) < 3:
+                        continue
+                    # A header row is one whose coordinate columns are not numbers. Detecting it by
+                    # the first field instead would drop a real interval on any contig named
+                    # chrom*, e.g. "chromosome_1", which would then never be masked.
+                    if not (parts[1].strip().isdigit() and parts[2].strip().isdigit()):
                         continue
                     chrom = parts[0].strip()
                     try:
@@ -319,7 +325,11 @@ class FastaReader:
                 if line.startswith(">"):
                     if name is not None:
                         self.seqs[name] = "".join(parts).upper()
-                    name = line[1:].split()[0]
+                    fields = line[1:].split()
+                    if not fields:
+                        raise RuntimeError(
+                            f"{fasta_path}: FASTA header with no sequence name (a bare '>')")
+                    name = fields[0]
                     parts = []
                 else:
                     parts.append(line.strip())

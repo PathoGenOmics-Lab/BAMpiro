@@ -379,11 +379,11 @@ def test_missing_mul_argument_is_an_error(repo_root, tmp_path):
     assert "--mul" in res.stderr
 
 
-def test_a_blank_line_in_the_stream_crashes(repo_root, tmp_path):
-    """Pinning current behaviour: the record parser indexes fields unconditionally, so a
-    stray blank line raises IndexError instead of being skipped. samtools never emits
-    one, but the filter is not defensive about it."""
+def test_a_blank_line_in_the_stream_is_skipped(repo_root, tmp_path):
+    """A blank line has no fields to index. samtools never emits one, but a traceback is a
+    poor way to find that out, and the read after it must still be judged normally."""
     track = _default_track(tmp_path)
     res = _run(repo_root, track, HEADER + "\n" + _sam("r", 0, pos=11), "--kmin", str(KMIN))
-    assert res.returncode != 0
-    assert "IndexError" in res.stderr
+    assert res.returncode == 0, res.stderr
+    assert "IndexError" not in res.stderr
+    assert "r" in res.stdout, "the record after the blank line was dropped"

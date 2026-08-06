@@ -34,19 +34,20 @@ def test_af_dp_ad_sums_every_alternate_allele():
 
 
 def test_af_dp_ad_summing_to_zero_falls_through_without_dividing():
-    """PIN: `sum(ad) > 0` is what keeps this out of a ZeroDivisionError. The
-    AD branch is skipped and the GT dosage is used instead."""
+    """`sum(ad) > 0` is what keeps this out of a ZeroDivisionError. The AD branch is skipped
+    and the GT dosage supplies the fraction, but AD still states a depth of zero."""
     af, dp = bsm._af_dp("GT:AD", "0/1:0,0")
     assert af == pytest.approx(0.5)      # from the GT dosage, not from AD
-    assert dp is None
+    assert dp == 0, "a measured depth of zero is not the same as an unknown depth"
 
 
-def test_af_dp_single_element_ad_is_ignored_for_af():
-    """A one-entry AD (no alternate depth) cannot give an allele fraction, so
-    the GT dosage is used - and the AD total does NOT become the depth."""
+def test_af_dp_single_element_ad_is_ignored_for_af_but_still_gives_a_depth():
+    """A one-entry AD (no alternate depth) cannot give an allele fraction, so the GT dosage is
+    used. The depth it does state must not be thrown away: the matrix would emit an empty DP
+    cell for a site whose depth is right there in the record."""
     af, dp = bsm._af_dp("GT:AD", "1:5")
     assert af == pytest.approx(1.0)
-    assert dp is None
+    assert dp == 5
 
 
 @pytest.mark.parametrize("ad", [".,.", ".", ""])
