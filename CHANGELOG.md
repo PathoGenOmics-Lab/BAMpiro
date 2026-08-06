@@ -76,6 +76,43 @@ that is not the authors' cluster.
   produced a warning on every run.
 - A blank line in a bedgraph raised `ValueError` in `build_min_unique_len.py`
   instead of being skipped.
+- **A GFF attribute was matched as a substring**, so `locus_tag=` also matched
+  inside `old_locus_tag=` and `gene=` inside `pseudogene=`, both routine in RefSeq
+  and Prokka output. Genes were labelled with an obsolete tag, and the curated
+  H37Rv gene map could be silently overridden.
+- `mask_profile` summed raw interval lengths for its headline total, so an
+  unmerged BED could report above 100% masked.
+- Four parsers in `stats_to_legacy.py` wrapped a whole read loop in one
+  `try/except`, so one malformed line silently discarded every line after it; a
+  partial genome size then propagated into depth, breadth, evenness and every
+  density bin.
+- Genuinely-zero metrics were written as `NA`, making a failed sample
+  indistinguishable from an unmeasured one.
+- Genotype classification assumed diploid spellings, so a haploid no-call was
+  counted as heterozygous. This matters for `-profile generic`, which is haploid.
+- `safe_tabix` had drifted between its copies: the one in `annotation.nf` still
+  used a `zgrep` check that cannot tell a truncated VCF from an empty one, and
+  wrote a fake index without saying so.
+- A missing `FORMAT/DP` reached the consensus as `ADP=.`, which reads as zero
+  depth and turns a called SNP into a gap.
+
+### Refactored
+
+Behaviour-preserving throughout, and each step verified rather than assumed:
+
+- **The science came out of the process scripts.** Around 500 lines of bash and
+  awk lived inside `modules/*.nf`, where no test could reach it: a stub run
+  replaces the script block and nothing can import it. The genotype
+  re-validation, the backbone pileup parser, the hom/het bcftools expressions and
+  `safe_tabix` now live in `bin/`, with 62 tests over them, including a run
+  against a real bcftools. `variants.nf` drops from 485 lines to 344.
+- **`qc_report.py` became a package.** 1697 lines and 53 functions are now a
+  319-line CLI over `bin/qcreport/` (parsers, metrics, panels, render). The old
+  and new versions produce byte-identical output on the demo cohort.
+- **The workflow is one sub-workflow per stage.** `main.nf` goes from 556 lines to
+  277, with the stage sequence reduced to eleven calls. Equivalence checked by
+  diffing execution traces against the previous version: identical task counts and
+  identical published outputs on both test profiles.
 
 ## [1.0.1] - 2026-07-19
 
