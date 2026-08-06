@@ -426,8 +426,8 @@ workflow {
             def fai   = list[5]
             def patho = list[6] // Can be null
 
-            // Fallback placeholder file
-            def real_patho = patho ? patho : file("NO_FILE")
+            // Fallback placeholder file (see the assets/NO_FILE* note in section 11a)
+            def real_patho = patho ? patho : file("${projectDir}/assets/NO_FILE")
             tuple(sId, rId, json, stats, vcf, fai, real_patho)
         }
         .filter { it != null }
@@ -482,17 +482,23 @@ workflow {
         // SNP dynamics: the samplesheet is the metadata source (auto-detects time/group columns; the
         // panel self-hides if absent).
         def report_meta = file(params.tsv)
-        // Drug-resistance calls (pathotypr DR run -> one run TSV); NO_FILE when pathotypr is off.
+        // Optional QC_REPORT inputs use a per-input placeholder from assets/. They must have DISTINCT
+        // names: Nextflow refuses to stage two inputs of the same task under one filename, and all three
+        // of these are off by default, so a single shared "NO_FILE" fails the run with an input file name
+        // collision. They are real empty files (a dangling symlink breaks under stageInMode 'copy') and
+        // are referenced through projectDir so a stray NO_FILE in the launch directory is never picked up.
+        // QC_REPORT recognises them by the NO_FILE* prefix.
+        // Drug-resistance calls (pathotypr DR run -> one run TSV); placeholder when pathotypr is off.
         def dr_report = params.run_pathotypr
             ? COLLECT_DR(patho_dr_results.map { sId, f -> f }.collect().ifEmpty([]), tsv_name).dr
-            : file("NO_FILE")
+            : file("${projectDir}/assets/NO_FILE_DR")
         // Canonical-reference-annotated VCFs for the dual amino-acid numbering (off unless annotate_canonical).
         // vcf_for_stats is the per-sample (sId,rId,vcf) channel; its positions match report_vcfs, so the
         // report's sample+position merge finds each variant's canonical amino-acid change.
         def report_vcfs_h37rv = params.annotate_canonical
             ? ANNOTATE_CANONICAL(vcf_for_stats, params.canonical_snpeff_db).out
                              .map { sId, vcf -> vcf }.collect().ifEmpty([])
-            : file("NO_FILE")
+            : file("${projectDir}/assets/NO_FILE_H37RV")
         // Kraken2 per-sample reports (deduped) -> Taxonomic composition panel; empty when Kraken is off.
         def report_kraken = ch_kraken_reports.unique { it.name }.collect().ifEmpty([])
         // Alignment-free canonical COORDINATE per variant via pathotypr (alternative to the --vcfs-h37rv path):
@@ -501,7 +507,7 @@ workflow {
                                              .map { rId, fa, idx, excl -> fa }.first()
         def pos_liftover  = params.variant_liftover
             ? LIFT_VARIANTS(report_vcfs, report_ref_fa, report_ref, tsv_name).map
-            : file("NO_FILE")
+            : file("${projectDir}/assets/NO_FILE_LIFTOVER")
         QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
                   report_meta, report_vcfs, report_vcfs_h37rv, pos_liftover, dr_report, report_kraken, provenance, tsv_name)
     }
