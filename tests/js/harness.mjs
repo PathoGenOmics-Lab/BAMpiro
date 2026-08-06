@@ -1,6 +1,6 @@
 // Loads the report's front-end so its pure functions can be unit-tested from Node.
 //
-// The report ships as ONE ES5 IIFE: qc_report.py concatenates bin/report_assets/js/*.js
+// The report ships as ONE ES5 IIFE: bin/qcreport/render.py concatenates bin/report_assets/js/*.js
 // in a fixed order and drops the result into shell.html. 01_prelude.js opens the IIFE and
 // 14_boot.js closes it, so no individual fragment (and no prefix of them) is a valid
 // script on its own.
@@ -19,11 +19,11 @@ import vm from "node:vm";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const JS_DIR = join(ROOT, "bin", "report_assets", "js");
 
-/** The module order qc_report.py uses, read from qc_report.py itself so the two cannot drift. */
+/** The module order the report uses, read from bin/qcreport/render.py itself so the two cannot drift. */
 export function moduleOrder() {
-  const py = readFileSync(join(ROOT, "bin", "qc_report.py"), "utf8");
+  const py = readFileSync(join(ROOT, "bin", "qcreport", "render.py"), "utf8");
   const block = py.match(/_JS_MODULES\s*=\s*\[([\s\S]*?)\]/);
-  if (!block) throw new Error("could not find _JS_MODULES in bin/qc_report.py");
+  if (!block) throw new Error("could not find _JS_MODULES in bin/qcreport/render.py");
   return [...block[1].matchAll(/"js\/([^"]+)"/g)].map((m) => m[1]);
 }
 
@@ -31,7 +31,7 @@ export function readModule(name) {
   return readFileSync(join(JS_DIR, name), "utf8");
 }
 
-/** The exact string qc_report.py injects into shell.html (a bare concatenation, no separator). */
+/** The exact string render.py injects into shell.html (a bare concatenation, no separator). */
 export function bundle() {
   return moduleOrder().map(readModule).join("");
 }

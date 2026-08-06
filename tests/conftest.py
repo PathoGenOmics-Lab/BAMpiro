@@ -4,6 +4,11 @@ The pipeline's Python lives in `bin/` as standalone scripts, not as an installed
 package, so tests load them by path. Every script guards its entry point behind
 `if __name__ == "__main__"`, so importing one is side-effect free apart from
 `qc_report`, which reads `bin/report_assets/` at import time.
+
+The one exception is `bin/qcreport/`, the package behind `bin/qc_report.py`: it is
+a real package and its tests import it normally (`from qcreport import parsers`),
+which works because pyproject.toml puts `bin` on the pytest pythonpath. Loading
+`qc_report` itself by path still works too, for the same reason.
 """
 
 from __future__ import annotations

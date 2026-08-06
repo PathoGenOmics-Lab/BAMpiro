@@ -1,7 +1,7 @@
 // Integrity of the report bundle itself.
 //
-// qc_report.py builds the report by concatenating a HARD-CODED list of CSS and JS fragments and
-// splicing them into shell.html. Nothing checks that list against what is actually on disk, so a
+// bin/qcreport/render.py builds the report by concatenating a HARD-CODED list of CSS and JS fragments
+// and splicing them into shell.html. Nothing checks that list against what is actually on disk, so a
 // new fragment that nobody registers ships as dead code and a syntax error in any one fragment
 // only surfaces when a human opens the HTML. These tests close both gaps.
 
@@ -15,11 +15,11 @@ import { bundle, moduleOrder, readModule } from "./harness.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const ASSETS = join(ROOT, "bin", "report_assets");
-const QC_REPORT = readFileSync(join(ROOT, "bin", "qc_report.py"), "utf8");
+const RENDER_PY = readFileSync(join(ROOT, "bin", "qcreport", "render.py"), "utf8");
 
 function pyList(name) {
-  const block = QC_REPORT.match(new RegExp(`${name}\\s*=\\s*\\[([\\s\\S]*?)\\]`));
-  assert.ok(block, `could not find ${name} in bin/qc_report.py`);
+  const block = RENDER_PY.match(new RegExp(`${name}\\s*=\\s*\\[([\\s\\S]*?)\\]`));
+  assert.ok(block, `could not find ${name} in bin/qcreport/render.py`);
   return [...block[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
 }
 
@@ -30,7 +30,7 @@ describe("asset registration", () => {
     assert.deepEqual(
       registered,
       onDisk,
-      "bin/report_assets/js/ and _JS_MODULES in bin/qc_report.py disagree; " +
+      "bin/report_assets/js/ and _JS_MODULES in bin/qcreport/render.py disagree; " +
         "an unregistered fragment is never included in the report",
     );
   });
@@ -48,7 +48,7 @@ describe("asset registration", () => {
   });
 
   it("ends every fragment with a newline, since they are joined with no separator", () => {
-    // qc_report.py does "".join(...), so a fragment without a trailing newline would splice its
+    // render.py does "".join(...), so a fragment without a trailing newline would splice its
     // last line into the next fragment's first line.
     for (const name of moduleOrder()) {
       const text = readModule(name);
@@ -99,7 +99,7 @@ describe("bundle syntax", () => {
 describe("shell.html", () => {
   const shell = readFileSync(join(ASSETS, "shell.html"), "utf8");
 
-  it("contains every placeholder qc_report.py substitutes", () => {
+  it("contains every placeholder render.py substitutes", () => {
     for (const token of ["__CSS__", "__JS__", "__JSON_GZ__", "__LOGO__", "__REPO__", "__TITLE__"]) {
       assert.ok(shell.includes(token), `shell.html is missing the ${token} placeholder`);
     }
