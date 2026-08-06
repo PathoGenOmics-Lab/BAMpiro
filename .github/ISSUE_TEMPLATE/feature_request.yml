@@ -1,0 +1,74 @@
+name: Feature request
+description: Suggest a new option, process, output or report panel
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        BAMpiro is a small lab tool, so the useful proposals are the ones tied to an analysis you
+        are actually trying to run. Describe that first; the implementation is the easy part to
+        discuss afterwards.
+
+        If the thing you need is already possible through a parameter, the
+        [configuration reference](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/main/docs/configuration.md)
+        lists every one of them.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: The analysis or workflow that BAMpiro does not currently support, and why the current behaviour gets in the way.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like it to do
+      description: A new parameter, a new process, an extra output file, another report panel. Be as concrete as you can.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the pipeline
+      multiple: true
+      options:
+        - Samplesheet, parameters or profiles
+        - Reference preparation, repeat and mappability masking
+        - Read QC, trimming, Kraken2 contamination screening
+        - Mapping and deduplication
+        - Variant calling and filtering
+        - Annotation, canonical numbering or the coordinate liftover
+        - Consensus sequences
+        - Pathotypr lineage and drug-resistance typing
+        - The interactive QC report
+        - Documentation
+        - Tests or CI
+        - Something else
+    validations:
+      required: true
+
+  - type: input
+    id: organism
+    attributes:
+      label: Organism and reference
+      description: >-
+        BAMpiro's defaults are tuned for MTBC but it is organism-agnostic, and that often decides
+        whether a feature belongs behind a flag.
+      placeholder: "M. tuberculosis / H37Rv, or Legionella pneumophila with my own reference + GFF"
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: Existing parameters, a custom `-c` config, or post-processing outside the pipeline, and why that was not enough.
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Would you like to implement it
+      options:
+        - label: I would be willing to open a pull request for this (see [CONTRIBUTING.md](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/main/CONTRIBUTING.md))

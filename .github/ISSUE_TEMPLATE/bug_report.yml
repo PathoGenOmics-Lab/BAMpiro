@@ -1,0 +1,151 @@
+name: Bug report
+description: A run fails, or BAMpiro produces a result that looks wrong
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Most first-run failures are already covered in
+        [Troubleshooting](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/main/docs/troubleshooting.md);
+        the most common by far is `-profile standard` targeting a SLURM cluster on a machine
+        that is not one (use `-profile local` or `-profile local,docker`).
+
+        When a task fails, Nextflow prints its **work directory**. `cd` there before filing:
+        `.command.err`, `.command.sh` and `.command.log` are what make the bug reproducible for us.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you ran into, and at which point of the run.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+      description: For a wrong result rather than a crash, say what the right answer looks like and how you know.
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: The exact command
+      description: The full `nextflow run` line, including every `--` parameter and `-` option.
+      render: shell
+      placeholder: |
+        nextflow run main.nf --tsv samples.tsv --outdir results_bampiro -profile local,docker
+    validations:
+      required: true
+
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Profile(s) used with -profile
+      multiple: true
+      options:
+        - standard (SLURM, the default)
+        - local
+        - docker
+        - generic (non-tuberculosis organism)
+        - test / test_full
+        - a custom profile or -c config of my own
+    validations:
+      required: true
+
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Container engine
+      options:
+        - Docker
+        - Singularity
+        - Apptainer
+        - None (-stub-run or tools on PATH)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where it runs
+      options:
+        - Laptop or single workstation
+        - SLURM cluster
+        - Another scheduler
+        - Cloud VM
+    validations:
+      required: true
+
+  - type: input
+    id: nextflow-version
+    attributes:
+      label: Nextflow version
+      description: The output of `nextflow -version` (the version line is enough).
+      placeholder: "24.04.2"
+    validations:
+      required: true
+
+  - type: input
+    id: bampiro-version
+    attributes:
+      label: BAMpiro version
+      description: >-
+        The release tag or `git rev-parse --short HEAD` if you cloned. It is also `manifest.version`
+        in `nextflow.config` and appears in the QC report header.
+      placeholder: "1.0.1"
+    validations:
+      required: true
+
+  - type: input
+    id: failing-process
+    attributes:
+      label: Failing process
+      description: The process name Nextflow reports, e.g. `MAP_READS`, `FREEBAYES_CALL`, `QC_REPORT`.
+      placeholder: "CONSENSUS_FASTA (Consensus: T00001)"
+
+  - type: textarea
+    id: command-err
+    attributes:
+      label: .command.err from the task's work directory
+      description: The end of the file is usually the useful part. Trim it if it is huge.
+      render: shell
+
+  - type: textarea
+    id: command-sh
+    attributes:
+      label: .command.sh from the task's work directory
+      description: The resolved script Nextflow actually ran, with your parameters substituted in.
+      render: shell
+
+  - type: textarea
+    id: nextflow-log
+    attributes:
+      label: Nextflow's error block, or .command.log
+      description: >-
+        The `ERROR ~ Error executing process ...` block Nextflow prints, or the relevant part of
+        `.nextflow.log` / the task's `.command.log`.
+      render: shell
+
+  - type: textarea
+    id: samplesheet
+    attributes:
+      label: The samplesheet row(s) involved
+      description: >-
+        Header plus the affected rows. Replace real paths and identifiers if the cohort is not
+        public. Please do not paste patient data.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I read [Troubleshooting](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/main/docs/troubleshooting.md) and my problem is not one of the entries there
+          required: true
+        - label: I searched the existing issues
+          required: true
+        - label: I re-ran with `-resume` and it fails the same way
