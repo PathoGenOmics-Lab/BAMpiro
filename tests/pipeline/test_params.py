@@ -43,7 +43,12 @@ def test_every_param_referenced_in_the_pipeline_is_declared():
     builtin = {"outdir"}
 
     used = {}
-    for source in [REPO_ROOT / "main.nf", *sorted((REPO_ROOT / "modules").glob("*.nf"))]:
+    sources = [
+        REPO_ROOT / "main.nf",
+        *sorted((REPO_ROOT / "subworkflows").glob("*.nf")),
+        *sorted((REPO_ROOT / "modules").glob("*.nf")),
+    ]
+    for source in sources:
         text = source.read_text()
         for match in re.finditer(r"params\.([A-Za-z_][A-Za-z0-9_]*)", text):
             # Skip method calls on the params map itself, e.g. params.keySet(). Checked after the
