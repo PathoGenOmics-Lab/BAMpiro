@@ -41,7 +41,8 @@ def main():
     for K, path in items:                                  # ascending K -> first (smallest) unique wins
         kv = np.uint16(min(K, a.sentinel - 1))             # never store the sentinel itself as a real length
         for line in open(path):
-            if not line or line[0] == "#":
+            # A blank line reads as "\n", never "", so testing `not line` alone never fires.
+            if not line.strip() or line[0] == "#":
                 continue
             c, s, e, v = line.rstrip("\n").split("\t")
             arr = tracks.get(c)

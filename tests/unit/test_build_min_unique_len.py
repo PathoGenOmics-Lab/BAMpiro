@@ -248,18 +248,22 @@ def test_blank_lines_in_the_fai_are_ignored(repo_root, tmp_path):
     assert sorted(tracks) == ["chr1"]
 
 
-def test_a_blank_line_in_a_bedgraph_crashes(repo_root, tmp_path):
-    """Pinning current behaviour: the row parser unpacks four columns unconditionally, so
-    a trailing blank line raises ValueError. The `if not line` guard never fires because
-    iterating a file yields "\\n" for an empty line, not ""."""
+@pytest.mark.parametrize("body", [
+    "chr1\t0\t4\t1\n\n",                                           # trailing blank line
+    "\nchr1\t0\t4\t1\n",                                           # leading blank line
+    "chr1\t0\t2\t1\n   \nchr1\t2\t4\t1\n",                         # whitespace-only line in the middle
+])
+def test_blank_lines_in_a_bedgraph_are_skipped(repo_root, tmp_path, body):
+    """A blank line is "\\n" (never "") when iterating a file, so it has to be skipped on
+    its content, not on emptiness, or the four-column unpack raises ValueError."""
     fai = _fai(tmp_path, [("chr1", 4)])
     path = tmp_path / "k20.bedgraph"
-    path.write_text("chr1\t0\t4\t1\n\n")
+    path.write_text(body)
 
-    res, _ = _build(repo_root, tmp_path, fai, ["20:" + str(path)])
+    res, tracks = _build(repo_root, tmp_path, fai, ["20:" + str(path)])
 
-    assert res.returncode != 0
-    assert "ValueError" in res.stderr
+    assert res.returncode == 0, res.stderr
+    assert list(tracks["chr1"]) == [20] * 4
 
 
 # -------------------------------------------------------------------------- --mask-bed
