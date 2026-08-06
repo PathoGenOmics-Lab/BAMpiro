@@ -4,10 +4,19 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [Unreleased] - targeting 1.1.0
 
 Headline: a **test suite and CI**, and a pipeline that runs correctly on a machine
 that is not the authors' cluster.
+
+`manifest.version` already reads `1.1.0`: that is the number this work is heading
+for, not a release that happened. Nothing is tagged and no release is published.
+See [RELEASING.md](RELEASING.md) for the order the actual release has to follow.
+
+The **container stays at the 1.0.1 image**, pinned by its digest. Nothing here
+changes a bundled tool, and the scripts added under `bin/` are staged by Nextflow
+from the pipeline directory rather than baked into the image, so there is nothing
+to rebuild. A release only needs a new image when the Dockerfile changes.
 
 ### Added
 

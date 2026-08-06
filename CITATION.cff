@@ -16,7 +16,7 @@ authors:
 repository-code: "https://github.com/PathoGenOmics-Lab/BAMpiro"
 url: "https://github.com/PathoGenOmics-Lab/BAMpiro"
 license: GPL-3.0
-version: 1.0.1
+version: 1.1.0
 # Add `doi:` here once the release is archived on Zenodo (mints a persistent software DOI).
 keywords:
   - bioinformatics
