@@ -4,6 +4,79 @@ All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+Headline: a **test suite and CI**, and a pipeline that runs correctly on a machine
+that is not the authors' cluster.
+
+### Added
+
+- **Test suite** (`tests/`) - around 1,100 tests in three legs, all runnable with
+  `tests/run_tests.sh` and none of them needing a container, a reference genome or
+  a network connection:
+ - `tests/unit/` - the Python under `bin/`: the consensus decision tree, the QC
+    verdict engine, every parser, the k-mer liftover and the read filter.
+ - `tests/js/` - the report's hand-written ES5 statistics (Spearman,
+    Kruskal-Wallis, chi-square, Benjamini-Hochberg), checked against **SciPy and
+    statsmodels** reference values rather than a snapshot of our own output, plus
+    the integrity of the asset bundle.
+ - `tests/pipeline/` - samplesheet validation and a full `-stub-run` of the DAG.
+- **A `stub:` block for every process**, so `-stub-run` walks the whole workflow in
+  seconds with no data. A test fails if a new process arrives without one.
+- **Fixture cohort** (`tests/data/`, 170 kB) - a 5 kb reference with three genes and
+  three samples covering paired-end, single-end and a sample split over two runs,
+  all derived from one seed. CI regenerates it and fails on any diff.
+- **`test` and `test_full` profiles** - the default feature set, and every optional
+  branch on so a single run instantiates every process.
+- **Continuous integration** (`.github/workflows/ci.yml`) - lint, unit tests on two
+  Python versions, the front-end tests, and a stub run against both the minimum
+  supported Nextflow and the current release, on every pull request.
+- **`slurm` and `garnatxa` execution profiles**. `-profile garnatxa` replaces the
+  hand-written `-c cluster.config` a user previously needed, and works when the
+  pipeline is pulled straight from GitHub.
+- **`--help`**, listing every parameter with its default.
+- **`--max_cpus` / `--max_memory` / `--max_time`** - cap every process to what the
+  machine can give, so an over-sized request (Kraken2 asks for 80 GB) fits a laptop
+  without editing the modules.
+- **Community files** - CONTRIBUTING, a Code of Conduct, a security policy, issue
+  forms, a pull-request template, `RELEASING.md` and `.zenodo.json`.
+
+### Changed
+
+- **`-profile standard` no longer submits to SLURM.** It is now the portable default
+  and runs on the current host, so a fresh clone works anywhere. Use `-profile slurm`
+  for a generic cluster or `-profile garnatxa` for the I2SysBio one. **This changes
+  what an existing `-profile standard` command does.**
+- The base config no longer carries one site's paths: the SLURM QoS, the
+  `module load singularity`, the Singularity `--bind` paths and the Kraken database
+  location all moved into `conf/garnatxa.config`.
+- **`--tsv` is required** and says what to pass; the default was a leftover
+  samplesheet name. `--kraken2_db` has no default either, and without one the
+  contamination screen is skipped.
+- **The container is pinned by digest** rather than the mutable `1.0.1` tag, so two
+  runs a month apart cannot silently use different tool versions.
+- **An unrecognised `--parameter` now stops the run** with a suggestion, instead of
+  being accepted and ignored. The declared set is read from `nextflow.config`, so
+  the two cannot drift.
+- The startup banner reports the resolved profile, executor, container and Kraken
+  state, because where a run lands is the easiest thing to get wrong.
+
+### Fixed
+
+- **The QC report could not be produced on the default settings.** Its three optional
+  inputs all fall back to a placeholder, and all three features are off by default,
+  so every run handed `QC_REPORT` the same `NO_FILE` path three times and Nextflow
+  refused to stage them (`input file name collision`). The placeholders are now
+  distinct files under `assets/`.
+- **`main.nf` did not compile under the strict Nextflow parser**, the default from
+  25.10, and only ran through the deprecated v1 fallback. The samplesheet parsing is
+  now a function, every statement lives inside the workflow, and each dynamic
+  `publishDir` is a closure. Verified on 24.04.2 and 26.04.6.
+- Removed `process.publishDirMode`, which is not a Nextflow directive and only
+  produced a warning on every run.
+- A blank line in a bedgraph raised `ValueError` in `build_min_unique_len.py`
+  instead of being skipped.
+
 ## [1.0.1] - 2026-07-19
 
 Headline: a consolidated **interactive QC report**, alignment-free **lineage &
