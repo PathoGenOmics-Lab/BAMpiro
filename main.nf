@@ -84,8 +84,8 @@ lines.drop(1).eachWithIndex { raw, idx ->
     // split(-1) only keeps trailing empties when the tabs are physically present; pad short rows so a
     // row that omits trailing columns becomes empty fields (reported below) instead of crashing on an
     // out-of-bounds Java-array read.
-    def p = line.split('\t', -1).toList()
-    while (p.size() < header.size()) p << ''
+    def cells = line.split('\t', -1).toList()
+    def p = cells.size() < header.size() ? cells + ([''] * (header.size() - cells.size())) : cells
 
     def sampleId = sanitizeId(p[col.sampleId])
     def r1Str    = cleanStr(p[col.r1])
@@ -117,8 +117,11 @@ lines.drop(1).eachWithIndex { raw, idx ->
 
     // Guarantee a unique run token per (sampleId, refId): lane-split inputs with no runId column
     // infer the same basename for every lane -> identical BAM names collide in the merge group.
+    // Kept as two statements: the strict (v2) parser used by Nextflow >= 25.10 rejects an
+    // assignment used as an expression, so `def n = (map[k] = map[k] + 1)` fails to compile.
     def runKey = "${sampleId}||${refId}||${runId}"
-    def runN = (seenRuns[runKey] = seenRuns[runKey] + 1)
+    seenRuns[runKey] = seenRuns[runKey] + 1
+    def runN = seenRuns[runKey]
     if (runN > 1) runId = "${runId}_${runN}"
 
     // Input files: record every missing path for this row, then skip the row.
