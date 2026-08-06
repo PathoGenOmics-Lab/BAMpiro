@@ -36,6 +36,12 @@ process MAPPING_PE {
       !{ref_fa} !{r1} !{r2} | \
       samtools sort -@ !{task.cpus} -l 1 -o !{sampleId}__!{runId}.pe.sorted.bam -
     '''
+
+    // Stubs create only the NEW outputs; ref_fa and exclude_txt are inputs re-emitted as-is.
+    stub:
+    """
+    touch ${sampleId}__${runId}.pe.sorted.bam
+    """
 }
 
 process MAPPING_SE {
@@ -63,6 +69,11 @@ process MAPPING_SE {
       !{ref_fa} !{reads_se} | \
       samtools sort -@ !{task.cpus} -l 1 -o !{sampleId}__!{runId}.se.sorted.bam -
     '''
+
+    stub:
+    """
+    touch ${sampleId}__${runId}.se.sorted.bam
+    """
 }
 
 process MERGE_AND_MARKDUP {
@@ -135,6 +146,15 @@ process MERGE_AND_MARKDUP {
     # 4. Cleanup (only the merge intermediate exists, and only in the multi-BAM case)
     rm -f merged.bam
     '''
+
+    stub:
+    """
+    touch ${sampleId}.${refId}.final.bam
+    touch ${sampleId}.${refId}.final.bam.bai
+    touch ${sampleId}.${refId}.dedup.stats
+    touch ${sampleId}.${refId}.final.cram
+    touch ${sampleId}.${refId}.final.cram.crai
+    """
 }
 
 process FILTER_READS {
@@ -212,4 +232,14 @@ process FILTER_READS {
         echo "[FILTER_READS] WARNING: !{sampleId}.!{refId} dropped ${pct}% of reads (> !{params.filter_max_drop_pct}%) -- check contamination / read length / reference" >&2
     fi
     '''
+
+    stub:
+    """
+    touch ${sampleId}.${refId}.filtered.bam
+    touch ${sampleId}.${refId}.filtered.bam.bai
+    touch ${sampleId}.${refId}.exclude.txt
+    touch ${sampleId}.${refId}.filter_mqc.tsv
+    touch ${sampleId}.${refId}.filtered.cram
+    touch ${sampleId}.${refId}.filtered.cram.crai
+    """
 }

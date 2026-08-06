@@ -74,4 +74,10 @@ process CONSENSUS_FASTA {
         sed -i "s/^>.*/>${sampleId}${outLabel}/" ${sampleId}.${refId}${outLabel}.consensus.fasta
     fi
     """
+
+    stub:
+    """
+    touch ${sampleId}.${refId}${outLabel}.consensus.fasta
+    touch ${sampleId}.${refId}${outLabel}.consensus.log
+    """
 }

@@ -155,6 +155,19 @@ process CALL_FREEBAYES {
     
     safe_tabix valid_snps_formatted.vcf.gz
     """
+
+    // Stubs create only the NEW outputs; note valid_snps_formatted.* is a fixed, non-interpolated name.
+    stub:
+    """
+    touch valid_snps_formatted.vcf.gz
+    touch valid_snps_formatted.vcf.gz.tbi
+    touch ${sampleId}.${refId}.mask_sites.tsv
+    touch ${sampleId}.${refId}.freebayes.raw.vcf.gz
+    touch ${sampleId}.${refId}.freebayes.raw.vcf.gz.tbi
+    touch ${sampleId}.${refId}.var.homo.SNPs.vcf
+    touch ${sampleId}.${refId}.var.het.SNPs.vcf
+    touch ${sampleId}.${refId}.var.homo.indel.vcf
+    """
 }
 
 process CALL_BACKBONE {
@@ -281,6 +294,13 @@ process CALL_BACKBONE {
     safe_tabix backbone.vcf.gz
     rm -f mpileup_nobaq.txt mpileup_baq.txt
     """
+
+    stub:
+    """
+    touch backbone.vcf.gz
+    touch backbone.vcf.gz.tbi
+    touch header_template.txt
+    """
 }
 
 process MERGE_VCFS {
@@ -361,6 +381,14 @@ process MERGE_VCFS {
     # (never a fake empty index here).
     bgzip -t !{sampleId}.!{refId}!{outLabel}.all.pos.vcf.gz
     tabix -f -p vcf !{sampleId}.!{refId}!{outLabel}.all.pos.vcf.gz
+    """
+
+    stub:
+    """
+    touch ${sampleId}.${refId}${outLabel}.all.pos.vcf.gz
+    touch ${sampleId}.${refId}${outLabel}.all.pos.vcf.gz.tbi
+    touch ${sampleId}.${refId}${outLabel}.vcf.gz
+    touch ${sampleId}.${refId}${outLabel}.vcf.gz.tbi
     """
 }
 
@@ -447,5 +475,11 @@ process CALL_FREEBAYES_RAW {
 
     set +e; tabix -f -p vcf valid_snps_formatted.vcf.gz; st=\$?; set -e
     if [ \$st -ne 0 ]; then : > valid_snps_formatted.vcf.gz.tbi; fi
+    """
+
+    stub:
+    """
+    touch valid_snps_formatted.vcf.gz
+    touch valid_snps_formatted.vcf.gz.tbi
     """
 }

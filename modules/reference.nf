@@ -111,6 +111,14 @@ process PREPARE_REFERENCE {
         fi
     fi
     '''
+
+    stub:
+    """
+    touch reference.fa
+    # main.nf picks the .fai out of this index list, so it has to be part of the glob
+    touch reference.fa.amb reference.fa.ann reference.fa.bwt.2bit.64 reference.fa.pac reference.fa.0123 reference.fa.fai
+    touch Locus_to_exclude_${refId}.txt
+    """
 }
 
 
@@ -169,6 +177,12 @@ process BUILD_MAPPABILITY {
         --mask-window !{params.genmap_max_k} \
         --out-prefix !{refId}
     '''
+
+    stub:
+    """
+    touch ${refId}.min_unique_len.npz
+    touch Locus_to_exclude_mappability_${refId}.txt
+    """
 }
 
 
@@ -214,4 +228,10 @@ EOF
     # Build Database
     snpEff build -c snpEff.config -gff3 -noCheckCds -noCheckProtein -v !{refId}
     '''
+
+    stub:
+    """
+    touch snpEff.config
+    mkdir -p data/${refId}
+    """
 }

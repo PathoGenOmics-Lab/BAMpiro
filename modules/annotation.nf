@@ -37,6 +37,11 @@ process ANNOTATE_CANONICAL {
       | bgzip -c > ${sampleId}.${refId}.canonical.ann.vcf.gz
     tabix -f -p vcf ${sampleId}.${refId}.canonical.ann.vcf.gz 2>/dev/null || : > ${sampleId}.${refId}.canonical.ann.vcf.gz.tbi
     """
+
+    stub:
+    """
+    touch ${sampleId}.${refId}.canonical.ann.vcf.gz
+    """
 }
 
 process ANNOTATE_LEGACY_VCF {
@@ -80,6 +85,14 @@ process ANNOTATE_LEGACY_VCF {
 
     safe_tabix !{sampleId}.!{refId}.!{label}.ann.vcf.gz
     """
+
+    // label must stay in the name: main.nf picks the freebayes.raw VCF by filename
+    stub:
+    """
+    touch ${sampleId}.${refId}.${label}.ann.vcf.gz
+    touch ${sampleId}.${refId}.${label}.ann.vcf.gz.tbi
+    touch ${sampleId}.${refId}.${label}.snpeff.stderr.log
+    """
 }
 
 process ANNOTATE_MAIN_VCF {
@@ -117,6 +130,14 @@ process ANNOTATE_MAIN_VCF {
 
     safe_tabix !{sampleId}.!{refId}.ann.vcf.gz
     """
+
+    stub:
+    """
+    touch ${sampleId}.${refId}.ann.vcf.gz
+    touch ${sampleId}.${refId}.ann.vcf.gz.tbi
+    touch ${sampleId}.${refId}.snpeff.csv
+    touch ${sampleId}.${refId}.snpeff.stderr.log
+    """
 }
 
 process GENERATE_LEGACY_STATS {
@@ -149,5 +170,10 @@ process GENERATE_LEGACY_STATS {
         --ref-fai ${ref_fai} \\
         ${patho_arg}
     mv "${sampleId}.log" "${sampleId}.${refId}.log"
+    """
+
+    stub:
+    """
+    touch ${sampleId}.${refId}.log
     """
 }
