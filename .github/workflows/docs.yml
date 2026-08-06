@@ -15,7 +15,14 @@ name: docs
 
 on:
   push:
-    branches: [main, indel-mask]
+    branches: [main]
+    paths:
+      - docs/**
+      - mkdocs.yml
+      - .github/workflows/docs.yml
+  # Validate the site on pull requests too, so a broken link fails review rather than main.
+  # Only `build` runs there: `deploy` is gated on a push below.
+  pull_request:
     paths:
       - docs/**
       - mkdocs.yml

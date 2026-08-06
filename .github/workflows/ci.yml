@@ -1,7 +1,8 @@
 name: CI
 
 # The gate for every change: linting, unit tests for the Python under bin/, tests for the report's
-# hand-written front-end statistics, a full stub run of the DAG, and a strict docs build.
+# hand-written front-end statistics, and a full stub run of the DAG. (The docs build lives in
+# docs.yml, which runs on pull requests too.)
 #
 # Nothing here needs a container, a reference genome or real reads: the fixture cohort under
 # tests/data/ is 170 kB and `-stub-run` executes each process's stub: block instead of the tool.
@@ -104,14 +105,5 @@ jobs:
           version: ${{ matrix.nxf_ver }}
       - run: python -m pytest tests/pipeline -q
 
-  docs:
-    name: Docs build (strict)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install -r docs/requirements.txt
-      # --strict turns a broken internal link or a missing nav entry into a failure.
-      - run: mkdocs build --strict
+# The docs are validated by docs.yml, which already installs the cairo/pango libraries the
+# social plugin needs and now runs on pull requests too. Nothing to duplicate here.
