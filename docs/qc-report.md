@@ -8,12 +8,12 @@ by `bin/qc_report.py` and controlled by `--make_qc_report` (default `true`).
 
 !!! tip "See it live"
 
-    Explore a full example report built from a 17-sample demo cohort — every panel
+    Explore a full example report built from a 17-sample demo cohort - every panel
     populated, fully interactive (live thresholds, the exclusion basket, dark mode):
 
     [:octicons-play-16: Open the interactive demo report](examples/qc_report_demo.html){ .md-button .md-button--primary target="_blank" rel="noopener" }
 
-    *Synthetic demo data. It opens as a standalone page — the very same self-contained
+    *Synthetic demo data. It opens as a standalone page - the very same self-contained
     HTML file each real run produces.*
 
 ## Live & interactive
@@ -52,7 +52,7 @@ Grouped as in the sidebar:
 
 | Group | Panels |
 | :--- | :--- |
-| **Overview** | **Executive summary** (cohort health & headline findings at a glance — the first panel) · General statistics (value-coloured, sortable, filterable, TSV export) · **Flagged samples** (worst-first, each failing margin shown inline) · Per-lineage summary (canonical *mycolorsTB* palette) · Distributions (beeswarm / bar / histogram) · **Taxonomic composition** (Kraken2: primary taxon / contaminants / unclassified, worst-first) |
+| **Overview** | **Executive summary** (cohort health & headline findings at a glance - the first panel) · General statistics (value-coloured, sortable, filterable, TSV export) · **Flagged samples** (worst-first, each failing margin shown inline) · Per-lineage summary (canonical *mycolorsTB* palette) · Distributions (beeswarm / bar / histogram) · **Taxonomic composition** (Kraken2: primary taxon / contaminants / unclassified, worst-first) |
 | **Correlation & structure** | Metric-pair scatter (box-select to basket, with a Spearman *r* + *p* read-out) · Metric correlation heatmap · QC-space PCA (+ most-unusual-samples table) · Divergence vs completeness · **Dose × treatment** (per-group dose distribution + Kruskal–Wallis test) |
 | **Genome & genes** | Consensus completeness · Genome landscape (per-position callability / variant heatmap, gene search, mask-region toggle) · Functional annotation (snpEff classes) · Functional gene burden · Variable genes (SNP-density hotspots) |
 | **Evolution** | Temporal sampling overview · Selection pN/pS (dN/dS, eskaks) · aDNA damage authentication (mapDamage) |
@@ -60,7 +60,7 @@ Grouped as in the sidebar:
 
 ## Optional inputs
 
-Nothing below is required — each optional input just lights up the matching panel or
+Nothing below is required - each optional input just lights up the matching panel or
 feature, and any panel with no data hides itself and its nav link. The pipeline wires
 these from the run's own outputs; you only get what you have.
 
@@ -69,8 +69,8 @@ these from the run's own outputs; you only get what you have.
 | `--metadata <samplesheet.tsv>` | SNP-dynamics grouping + the SNP-matrix column-header levels (see **Optional metadata** below) |
 | `--vcfs <sample.vcf …>` | Per-SNP allele frequencies → SNP dynamics, epistasis, SNP matrix |
 | `--gff <genes.gff3>` | Variable-genes hotspots, genome-landscape gene search, and the **gene → Mycobrowser (H37Rv) locus-tag** links |
-| `--dr-report <dr.tsv>` | **Drug resistance** panel (WHO-grade sample × drug matrix) — the [pathotypr](pathotypr.md) DR calls |
-| `--kraken <sample.report …>` | Taxonomic composition / contamination panel (Kraken2) |
+| `--dr-report <dr.tsv>` | **Drug resistance** panel (WHO-grade sample × drug matrix) - the [pathotypr](pathotypr.md) DR calls |
+| `--kraken <sample.report …>` | Taxonomic composition / contamination panel (Kraken2). The pipeline only has these reports to pass when you set `--kraken2_db`, which has no default, so the panel hides itself otherwise |
 | `--gene-burden <burden.tsv>` | Functional gene-burden panel |
 | `--pnps <dnds.tsv>` | Selection pN/pS panel ([eskaks](https://github.com/PathoGenOmics-Lab/eskaks)) |
 | `--mapdamage-dir <dir>` | aDNA damage-authentication panel (mapDamage) |
@@ -85,7 +85,7 @@ these from the run's own outputs; you only get what you have.
 
 The report reads richer context from the run **samplesheet** (or any TSV passed as
 `--metadata`). Every column is optional and matched **by name** (case-insensitive), so
-there is nothing to configure — add a column and the matching panel reacts.
+there is nothing to configure - add a column and the matching panel reacts.
 
 | Column (matched by name) | Examples | What it drives |
 | :--- | :--- | :--- |
@@ -95,7 +95,7 @@ there is nothing to configure — add a column and the matching panel reacts.
 | **any other column** | `treatment`, `site`, `region`, `ward`, `batch`… | A categorical annotation - becomes a **cohort filter** dropdown in the toolbar (restrict the whole QC view to one value) and a SNP-matrix header level. |
 | **dose** | `dose`, `dosis` | A **numeric** column - becomes a first-class metric (selectable on the scatter axes + the correlation matrix, with a Spearman *r* + *p* read-out) and drives the **Dose × treatment** test. |
 
-**Every** annotation column — including the time and group ones — also becomes a
+**Every** annotation column - including the time and group ones - also becomes a
 **column-header level** in the **SNP matrix** (filter the matrix by it, hover a header
 for its value); the time and group columns *additionally* drive the dynamics, and each
 plain categorical column *additionally* becomes a **cohort filter** in the toolbar. The
@@ -122,9 +122,9 @@ singleton `TB-2020-C` (no series) simply has no dynamics trajectory.
 ### Dose × treatment and quantitative metadata
 
 A numeric **`dose`** column is treated as a quantitative variable rather than a category.
-It becomes a first-class **metric** — pick it on either **Correlations** scatter axis (or
+It becomes a first-class **metric** - pick it on either **Correlations** scatter axis (or
 in the **Metric correlation** matrix) to get a Spearman *r* with a two-sided *p*-value
-against any QC or genomic metric — and it powers a dedicated **Dose × treatment** panel:
+against any QC or genomic metric - and it powers a dedicated **Dose × treatment** panel:
 a per-treatment dose distribution (box + points) with a **Kruskal–Wallis** rank test of
 whether dose differs across the treatment groups (a Mann–Whitney-equivalent when there
 are two groups). The test runs over the whole cohort; groups with fewer than two dosed
@@ -137,7 +137,7 @@ When per-sample **VCFs** are also present, a **Variant × dose** panel (under *V
 over time*) runs an association scan: for every variant site it correlates the per-sample
 **allele frequency** (0 where the site is reference) with dose across the dosed samples
 (**Spearman** ρ + two-sided *p*), applies a **Benjamini–Hochberg FDR** across all tested
-variants, and ranks them — so you can see which mutations track the dose while the
+variants, and ranks them - so you can see which mutations track the dose while the
 multiple-testing correction keeps incidental hits in check. Click any row to plot that
 variant's allele-frequency-vs-dose scatter, click a column header to re-sort (by ρ, *p*,
 *q* or carrier count), search by gene / position / amino acid, and click a point to

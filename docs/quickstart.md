@@ -2,33 +2,40 @@
 
 By default BAMpiro assumes *M. tuberculosis* settings (ploidy = 2 to detect mixed
 infections). Lineage/DR typing is **off** by default - enable it with
-`--run_pathotypr true`. **Working with a different organism?** Add `-profile
-standard,generic` (ploidy 1 + the MTBC-only features off) — see the
-[example configs](configuration.md#example-configs) (a ready-made TB config and a
-non-TB template).
+`--run_pathotypr true`. **Working with a different organism?** Add `generic` to your
+profile list (ploidy 1 + the MTBC-only features off), e.g. `-profile local,docker,generic`.
+The [example configs](configuration.md#example-configs) have a ready-made TB config and a
+non-TB template.
 
 ```bash
 nextflow run main.nf \
     --tsv samples.tsv \         # (1)!
     --outdir results_bampiro \  # (2)!
-    -profile standard           # (3)!
+    -profile local,docker       # (3)!
 ```
 
-1.  **Required.** Your Tab-Separated samplesheet — one row per `(sample, run, reference)`. There is no usable default.
+1.  **Required.** Your Tab-Separated samplesheet, one row per `(sample, run, reference)`. There is no default.
 2.  Where results are written (the directory is created if it does not exist).
-3.  Execution profile. `standard` targets a **SLURM** cluster; use `local` (or `local,docker`) off-cluster.
+3.  Execution profile. `local` runs on this machine; use `slurm` on a cluster, or `garnatxa` on the I2SysBio one.
 
-`--tsv` is **required** — there is no usable default samplesheet, so omitting it fails
-with `Samplesheet not found: samples_legio.tsv` (a leftover placeholder). `-profile
-standard` targets a **SLURM cluster**; on a laptop / VM / non-SLURM host use
-`-profile local` (or `-profile local,docker` for Docker) — see
-[Running without SLURM](installation.md#running-without-slurm).
+`--tsv` is **required**: there is no default samplesheet, so omitting it stops the run
+immediately with a message naming the columns it expects (`sampleId`, `runId`, `r1`, `r2`,
+`refId`, `refFasta`, `refGff`, `taxId`). `-profile` decides where the work lands: with no
+`-profile` everything runs on the **current host**, which on a cluster login node means the
+login node. Pass `-profile slurm` (or `-profile garnatxa`) to submit to the scheduler - see
+[Choosing where it runs](installation.md#choosing-where-it-runs).
+
+Two things the command line does for you:
+
+- `nextflow run main.nf --help` prints every parameter with its default, then exits.
+- A misspelled `--parameter` is **rejected** with a suggestion instead of being silently
+  ignored, so a typo can no longer cost you a run that quietly used the default.
 
 Enable alignment-free lineage / drug-resistance typing and dual amino-acid numbering:
 
 ```bash
 nextflow run main.nf \
-    --tsv samples.tsv --outdir results_bampiro -profile standard \
+    --tsv samples.tsv --outdir results_bampiro -profile local,docker \
     --run_pathotypr true --annotate_canonical true
 ```
 
@@ -40,7 +47,7 @@ the full result layout and [Configuration](configuration.md) for every parameter
 
     The [Jupyter tutorial](tutorial/bampiro_tutorial.ipynb) runs the same journey
     end-to-end and lets you explore an example cohort's outputs with `pandas` /
-    `matplotlib` — no pipeline run needed.
+    `matplotlib` - no pipeline run needed.
 
 ## Samplesheet
 
@@ -69,7 +76,7 @@ Reads, `refFasta` and `refGff` may be **plain or gzipped** (`.gz` is auto-detect
 
 ### Reference requirements
 
-- **`refGff` is required** (a mandatory column), even if you don't care about annotation —
+- **`refGff` is required** (a mandatory column), even if you don't care about annotation:
   it builds the per-sample SnpEff database. If you truly have no annotation, give a minimal
   GFF3 stub: a `##gff-version 3` line plus one `region`/`gene` feature whose seqid matches
   the FASTA header.

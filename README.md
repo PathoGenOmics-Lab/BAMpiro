@@ -45,7 +45,7 @@ tuberculosis* but is **organism-agnostic** - point it at any reference genome + 
 - Alignment-free MTBC lineage + WHO drug-resistance typing ([Pathotypr](docs/pathotypr.md))
 - A self-contained, interactive [HTML QC report](docs/qc-report.md) with 21 panels
 - Dual amino-acid numbering (used reference + H37Rv / Mycobrowser)
-- One pinned container with every tool and marker panel built in
+- One digest-pinned container with every tool and marker panel built in
 
 ## Features
 
@@ -57,18 +57,24 @@ tuberculosis* but is **organism-agnostic** - point it at any reference genome + 
 | 🩺 Lineage & drug resistance | Alignment-free MTBC lineage + WHO DR typing ([Pathotypr](docs/pathotypr.md)), reference-agnostic |
 | 📊 Interactive QC report | Self-contained HTML dashboard, [21 panels](docs/qc-report.md) + per-sample `qc_flags.tsv` |
 | 🔤 Dual amino-acid numbering | Protein changes in both the used reference and H37Rv/Mycobrowser numbering |
-| 📦 Containerized & reproducible | A single pinned image with every tool + bundled marker panels ([details](docs/installation.md)) |
+| 📦 Containerized & reproducible | A single image, pinned by digest, with every tool + bundled marker panels ([details](docs/installation.md)) |
 | ⚙️ Fully configurable | Every step exposed as a Nextflow parameter ([reference](docs/configuration.md)) |
 
 ## Installation
 
 Requires **Nextflow ≥ 24.04.2** and **Docker** or **Singularity**. The pipeline
-pulls a pinned `paururo/bampiro` image with every tool built in - nothing else to
-install.
+pulls the `paururo/bampiro` image, pinned by digest, with every tool built in - nothing
+else to install.
 
 ```bash
-nextflow run main.nf --tsv samples.tsv --outdir results_bampiro -profile standard
+nextflow run main.nf --tsv samples.tsv --outdir results_bampiro -profile local,docker
 ```
+
+`--tsv` is required, and `-profile` says where the work runs: `local` on this machine,
+`slurm` on any SLURM cluster, `garnatxa` on the I2SysBio one. With no `-profile` everything
+runs on the current host, which on a cluster login node means the login node - so choose
+one deliberately there. `nextflow run main.nf --help` lists every parameter with its
+default.
 
 Full requirements and the bundled software versions: [Installation](docs/installation.md).
 
@@ -80,7 +86,7 @@ amino-acid numbering) with:
 
 ```bash
 nextflow run main.nf \
-    --tsv samples.tsv --outdir results_bampiro -profile standard \
+    --tsv samples.tsv --outdir results_bampiro -profile local,docker \
     --run_pathotypr true --annotate_canonical true
 ```
 
@@ -89,7 +95,7 @@ See the [Quick Start guide](docs/quickstart.md) for the full format and multi-ru
 merging, and [Outputs](docs/outputs.md) for the result layout.
 
 **New to BAMpiro?** Follow the hands-on
-[**Jupyter tutorial**](docs/tutorial/bampiro_tutorial.ipynb) — install → samplesheet →
+[**Jupyter tutorial**](docs/tutorial/bampiro_tutorial.ipynb) - install → samplesheet →
 run → explore the outputs with `pandas` / `matplotlib` on a bundled 17-sample example
 cohort (runnable without running the pipeline first).
 
@@ -97,13 +103,13 @@ cohort (runnable without running the pipeline first).
 
 <p align="center">
   <a href="https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html">
-    <img src=".github/qc_report_preview.png" alt="BAMpiro interactive QC report — click to open the live demo" width="100%" />
+    <img src=".github/qc_report_preview.png" alt="BAMpiro interactive QC report - click to open the live demo" width="100%" />
   </a>
 </p>
 
 <p align="center">
   <b><a href="https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html">▶ Open the live interactive demo report</a></b>
-  — a full 17-sample demo cohort, every panel populated, right in your browser
+  - a full 17-sample demo cohort, every panel populated, right in your browser
 </p>
 
 Every run writes a single self-contained `<samplesheet>_qc_report.html` (no internet,
@@ -119,13 +125,13 @@ Full panel list and interactive features: [Interactive QC Report](https://pathog
 
 ## Documentation
 
-📖 **[Read the full documentation online → pathogenomics-lab.github.io/BAMpiro](https://pathogenomics-lab.github.io/BAMpiro/)**
-— a searchable site with a pipeline diagram, a hover glossary, a step-by-step
+📖 **[Read the full documentation online → pathogenomics-lab.github.io/BAMpiro](https://pathogenomics-lab.github.io/BAMpiro/)**:
+a searchable site with a pipeline diagram, a hover glossary, a step-by-step
 [**tutorial series**](https://pathogenomics-lab.github.io/BAMpiro/tutorials/), a hands-on
 Jupyter notebook, and the [live QC-report demo](https://pathogenomics-lab.github.io/BAMpiro/examples/qc_report_demo.html).
 
 > [!TIP]
-> **New here?** Follow the [**Tutorials**](https://pathogenomics-lab.github.io/BAMpiro/tutorials/) —
+> **New here?** Follow the [**Tutorials**](https://pathogenomics-lab.github.io/BAMpiro/tutorials/):
 > a guided path from your first run to a finished phylogeny.
 
 | Document | Description |

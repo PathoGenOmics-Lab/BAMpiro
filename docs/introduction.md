@@ -32,7 +32,8 @@ sequences, and a consolidated interactive quality-control report.
 
     ---
 
-    `FastP` cleaning and `Kraken2` taxonomic contamination checks on every sample.
+    `FastP` cleaning on every sample, plus `Kraken2` taxonomic contamination checks
+    whenever you point `--kraken2_db` at a database.
 
 -   :material-target:{ .lg .middle } &nbsp; **Variant calling & backbone**
 
@@ -46,7 +47,7 @@ sequences, and a consolidated interactive quality-control report.
     ---
 
     Alignment-free (k-mer) MTBC lineage + WHO drug-resistance genotyping with
-    [Pathotypr](pathotypr.md) — reference-agnostic and bundled in the container.
+    [Pathotypr](pathotypr.md) - reference-agnostic and bundled in the container.
 
 -   :material-chart-box:{ .lg .middle } &nbsp; **Interactive QC report**
 
@@ -100,7 +101,8 @@ flowchart TD
 ```
 
 1. **Reference** - indexing + repeat masking + SnpEff DB building.
-2. **QC** - read validation → Kraken2 (taxonomy) → FastP (trimming).
+2. **QC** - read validation → Kraken2 (taxonomy, only with `--kraken2_db`) → FastP
+   (trimming).
 3. **Pathotypr** *(optional)* - alignment-free MTBC lineage (nested sub-lineage)
    **and** WHO drug-resistance typing from reads.
 4. **Mapping** - `bwa-mem2` alignment → merge runs → mark duplicates (`samtools`) →

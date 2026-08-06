@@ -54,7 +54,7 @@ results_bampiro/
         ├── MP00091.LENS.filter_mqc.tsv     # -> Length-aware read-filter drop counts (input/kept/dropped; MultiQC table)
         ├── MP00091.LENS.mask_sites.tsv     # -> Specific positions masked due to low confidence
         ├── MP00091...fastp.html/.json      # -> Trimming quality reports
-        ├── MP00091...kraken.report         # -> Taxonomic classification report
+        ├── MP00091...kraken.report         # -> Taxonomic classification report (only with --kraken2_db)
         ├── MP00091.LENS.snpeff.csv         # -> Variant effect statistics
         ├── MP00091__<runId>.dr_mutations.tsv  # -> Pathotypr per-sample DR mutations (only if --run_pathotypr)
         └── Locus_to_exclude_LENS.txt       # -> List of repetitive regions excluded from calling
@@ -72,7 +72,7 @@ live-adjustable inside the HTML report.
 | `LOW_DEPTH` | mean depth below | `--report_depth_min` | :octicons-x-circle-fill-16:{ .red } **FAIL** |
 | `LOW_BREADTH` | genome breadth below | `--report_breadth_min` | :octicons-x-circle-fill-16:{ .red } **FAIL** |
 | `HIGH_MISSING` | missing % above | `--report_missing_max` | :octicons-x-circle-fill-16:{ .red } **FAIL** |
-| `NO_DATA` | no QC metrics for the sample | — | :octicons-x-circle-fill-16:{ .red } **FAIL** |
+| `NO_DATA` | no QC metrics for the sample | - | :octicons-x-circle-fill-16:{ .red } **FAIL** |
 | `MAPPING_LOW` | mapped % below | `--report_mapping_min` | :octicons-alert-fill-16:{ .amber } WARN |
 | `HIGH_DUP` | duplication % above | `--report_dup_max` | :octicons-alert-fill-16:{ .amber } WARN |
 | `HIGH_IUPAC` | ambiguous/IUPAC % above | `--report_iupac_max` | :octicons-alert-fill-16:{ .amber } WARN |
@@ -111,7 +111,8 @@ BAMpiro/
 │   ├── reference.nf         # Reference Prep
 │   └── utils.nf             # Publish-path routing / clean publish dir
 ├── .github/dockerfile/      # Container recipe (bundles pathotypr + Zenodo panels + H37Rv snpEff DB)
-├── conf/                    # Ready-made example configs (tuberculosis.config, organism.config)
+├── conf/                    # Ready-made configs: sites (garnatxa.config -> -profile garnatxa),
+│                            #   organisms (tuberculosis.config, organism.config), tests (test*.config)
 ├── docs/                    # This documentation (MkDocs Material; built via mkdocs.yml)
 ├── nextflow.config          # Global configuration & params
 └── main.nf                  # Main workflow entry point
