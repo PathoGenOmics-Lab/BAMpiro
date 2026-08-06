@@ -1,0 +1,3 @@
+#pos	ref	alt	drug	resistance	marker_name	grade	gene	mutation
+1750	T	G	rifampicin	R	rpoB_S450L	1) Assoc w R	rpoB	p.Ser450Leu
+3500	C	C	isoniazid	R	katG_S315T	1) Assoc w R	katG	p.Ser315Thr

@@ -15,6 +15,11 @@ dag*.dot
 results_bampiro/
 mappability_cache/
 
+# Test-suite scratch (tests/run_tests.sh clears these)
+results_test/
+.test_cache/
+.pytest_cache/
+
 # Python
 __pycache__/
 *.pyc
