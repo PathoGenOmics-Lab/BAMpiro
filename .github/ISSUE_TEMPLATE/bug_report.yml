@@ -8,8 +8,8 @@ body:
       value: |
         Thanks for the report. Most first-run failures are already covered in
         [Troubleshooting](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/main/docs/troubleshooting.md);
-        the most common by far is `-profile standard` targeting a SLURM cluster on a machine
-        that is not one (use `-profile local` or `-profile local,docker`).
+        a common one is a request that exceeds the machine ("Process requirement exceeds
+        available memory"), which `--max_cpus` and `--max_memory` cap.
 
         When a task fails, Nextflow prints its **work directory**. `cd` there before filing:
         `.command.err`, `.command.sh` and `.command.log` are what make the bug reproducible for us.

@@ -123,7 +123,7 @@ reformatting cannot be reviewed. If you think a rule should be added, propose it
 own, separately from the change that prompted it.
 
 `bin/extract_kraken_reads.py` is excluded from linting entirely. See
-[Known technical debt](#known-technical-debt) below.
+[Two things worth knowing](#two-things-worth-knowing) below.
 
 ## Commit messages
 
@@ -193,21 +193,16 @@ section at the top if there is not one yet.
 Internal work with no user-visible effect (refactors, tests, CI, most docs changes) does not need an
 entry.
 
-## Known technical debt
+## Two things worth knowing
 
-Two things will surprise you if nobody mentions them first.
-
-**`main.nf` needs `NXF_SYNTAX_PARSER=v1` on Nextflow >= 25.10.** The samplesheet parsing happens at
-script level, outside any `workflow` block, which the strict (v2) parser rejects with
-`Statements cannot be mixed with script declarations`. The pipeline still runs on those versions
-through the v1 fallback, which is why the test harness and CI both set the variable. That fallback
-will not last forever; moving the parsing into a function called from the workflow is a separate
-piece of work, and CI runs against `latest-stable` as the early warning. If you are running Nextflow
-25.10 or later by hand:
-
-```bash
-export NXF_SYNTAX_PARSER=v1
-```
+**`main.nf` has to satisfy the strict Nextflow parser.** From 25.10 that parser is the default, and
+it is stricter than the language you may be used to: no statements at the top level of a script
+(everything lives in a `workflow` or a function), no `while` loops, no C-style `for`, no assignment
+used as an expression, and a dynamic process directive must be a closure -
+`publishDir path: { "..." }`, not `publishDir "..."`. If a run dies with
+`Statements cannot be mixed with script declarations`, that is what you have hit. CI runs both the
+minimum supported 24.04.2 and `latest-stable`, so either parser rejecting your change fails the
+build.
 
 **`bin/extract_kraken_reads.py` is vendored and must stay byte-identical to upstream.** It comes
 from [KrakenTools](https://github.com/jenniferlu717/KrakenTools) (the URL is `params.krakentools_url`
@@ -231,5 +226,4 @@ contents of its work directory (`.command.err`, `.command.sh`, `.command.log`). 
 work directory of a failed task, so `cd` there first.
 
 Before you file, check [Troubleshooting](docs/troubleshooting.md). Most first-run failures are one of
-the entries in that table, and `-profile standard` targeting a SLURM cluster is by far the most
-common of them.
+the entries in that table.
