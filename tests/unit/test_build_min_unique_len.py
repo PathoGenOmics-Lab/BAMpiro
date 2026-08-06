@@ -194,11 +194,12 @@ def test_a_repetitive_tail_position_is_not_zeroed(repo_root, tmp_path):
 
 
 def test_coverage_comes_only_from_the_smallest_k(repo_root, tmp_path):
-    """Pinning current behaviour: `covered` is filled only while processing the smallest
-    K, so a region scored at a larger K but not at the smallest one still counts as an
-    unscored tail. Real genmap output is contiguous per K, so the pipeline never hits it,
-    but a mid-contig gap in the smallest-K bedgraph becomes min_unique_len 0 (fully
-    permissive) rather than the sentinel."""
+    """Documented behaviour: `covered` is filled only while processing the smallest K, so a
+    region scored at a larger K but not at the smallest one still counts as an unscored tail
+    and becomes min_unique_len 0, which is fully permissive. Real genmap output is contiguous
+    per K, so the pipeline does not hit it, and deriving coverage from the union of all K
+    would change masking in a way no fixture can validate against real genmap output. It is
+    no longer silent: see test_an_unscored_hole_away_from_the_contig_ends_is_reported."""
     fai = _fai(tmp_path, [("chr1", 10)])
     b10 = _bedgraph(tmp_path, "k10.bedgraph", [("chr1", 0, 3, "1"), ("chr1", 7, 10, "1")])
     b20 = _bedgraph(tmp_path, "k20.bedgraph", [("chr1", 3, 7, "0")])
