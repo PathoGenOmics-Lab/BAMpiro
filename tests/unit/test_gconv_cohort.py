@@ -253,6 +253,65 @@ def test_a_tract_at_exactly_the_corroboration_threshold_is_corroborated(bf, resc
     assert (out[1]["cohort_verdict"] == "gene_conversion") is rescued
 
 
+@pytest.mark.parametrize("bf_null,resolved", [("30.0", True), ("29.0", False), ("40.0", True)])
+def test_a_donor_ahead_by_exactly_the_margin_is_resolved(bf_null, resolved):
+    """`--donor-margin` is the lead a source needs, in evidence per marker, to be named.
+
+    The runner-up sits at 2.0 per marker over 10 markers, so the leader clears the margin of 1.0
+    exactly at 30.0 over 10. Below it the two are compatible with the reads and the call is
+    ambiguous, which is the honest answer short reads allow.
+    """
+    rows = [tract("S0", pair="1", don_start=5000, don_end=5200, bf_null=bf_null, n_sites="10"),
+            tract("S0", pair="2", don_start=9000, don_end=9200, bf_null="20.0", n_sites="10")]
+
+    out, _ = gcc.annotate(rows, cohort(10), donor_margin=1.0)
+
+    assert (out[0]["donor_call"] == "resolved") is resolved
+
+
+@pytest.mark.parametrize("first,second", [((5000, 5200), (5200, 5400)),
+                                          ((5200, 5400), (5000, 5200))])
+def test_donor_spans_that_touch_are_the_same_stretch(first, second):
+    """Adjacent self-alignments meeting end to start describe one stretch of donor, not two.
+
+    Treating them as two makes the source ambiguous where it is not, and the tract then reports
+    a donor it could have named. Both orders are asked because the comparison is not symmetric in
+    the code: rows arrive in whatever order the pair ids fall, and only the second order here
+    reaches the test against the candidate's start.
+    """
+    rows = [tract("S0", pair="1", don_start=first[0], don_end=first[1]),
+            tract("S0", pair="2", don_start=second[0], don_end=second[1])]
+
+    out, _ = gcc.annotate(rows, cohort(10))
+
+    assert all(r["n_donors"] == 1 for r in out)
+
+
+def test_a_merged_candidate_reaches_back_to_the_earlier_of_the_two():
+    """The union runs from the earliest start, so a third row to the left of it still belongs.
+
+    Keeping the later start instead leaves the candidate covering only part of what it merged,
+    and the next relationship pointing into the part left out is counted as another source.
+    """
+    rows = [tract("S0", pair="1", don_start=5200, don_end=5400),
+            tract("S0", pair="2", don_start=5000, don_end=5250),
+            tract("S0", pair="3", don_start=5050, don_end=5100)]
+
+    out, _ = gcc.annotate(rows, cohort(10))
+
+    assert all(r["n_donors"] == 1 for r in out), "one stretch, however it was assembled"
+
+
+def test_a_row_without_a_verdict_column_is_read_as_having_none():
+    """The same case as the missing reason, on the column every later decision is compared with."""
+    row = tract("S0")
+    del row["verdict"]
+
+    out, _ = gcc.annotate([row], cohort(10))
+
+    assert out[0]["cohort_verdict"] == ""
+
+
 def test_a_row_without_a_reason_column_still_gets_a_verdict():
     """Files written before a column existed are the normal case for a tool used across runs, and
     a missing reason is a blank one, not something to fall over on the way to the verdict.
