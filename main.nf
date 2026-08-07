@@ -21,6 +21,7 @@ include { ANNOTATE }           from './subworkflows/annotate'             // 8. 
 include { LEGACY_STATS }       from './subworkflows/legacy_stats'         // 9. Legacy stats
 include { MULTIQC_REPORT }     from './subworkflows/multiqc_report'       // 10. MultiQC
 include { COHORT_REPORT }      from './subworkflows/cohort_report'        // 11. Cohort outputs
+include { GENE_CONVERSION }    from './subworkflows/gene_conversion'      // 12. Gene conversion (opt-in)
 
 // --- MODULE IMPORTS ---
 include { cleanStr; nullish; sanitizeId; validateParams; paramsHelp } from './modules/utils'
@@ -253,6 +254,10 @@ Run Pathotypr    : ${params.run_pathotypr}
 
     // 6. Variant Calling
     def variants = CALL_VARIANTS(bams.variant_base)
+
+    // 12. Gene conversion (opt-in). Reads the PRE-FILTER bam and the reference self-alignment,
+    // because the masking the rest of the pipeline applies removes exactly this signal.
+    GENE_CONVERSION(refs.delta, bams.dedup_bam, tsv_name)
 
     // 7. Consensus Generation (Optional)
     def consensus = MAKE_CONSENSUS(bams.variant_base, bams.dedup_bam,

@@ -26,6 +26,12 @@ process PREPARE_REFERENCE {
 
     output:
     tuple val(refId), path("reference.fa"), path("reference.fa.*"), path("Locus_to_exclude_${refId}.txt"), emit: bundle
+    // The self-alignment is already computed here for repeat masking, which collapses it to a flat
+    // interval list and discards which copy aligns to which. Gene-conversion detection needs that
+    // pairing, so the delta is emitted rather than left in the work directory. Optional because
+    // nucmer only runs when exclude_repeats is on. Kept as its OWN channel so the bundle tuple that
+    // every other consumer destructures is unchanged.
+    tuple val(refId), path("self_aln.delta"), optional: true, emit: delta
 
     shell:
     '''
@@ -118,6 +124,9 @@ process PREPARE_REFERENCE {
     # main.nf picks the .fai out of this index list, so it has to be part of the glob
     touch reference.fa.amb reference.fa.ann reference.fa.bwt.2bit.64 reference.fa.pac reference.fa.0123 reference.fa.fai
     touch Locus_to_exclude_${refId}.txt
+    # The gene-conversion stage reads this. It is an optional output, so without it here the whole
+    # stage is silently skipped in a stub run and stops being covered.
+    touch self_aln.delta
     """
 }
 
