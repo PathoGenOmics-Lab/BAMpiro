@@ -792,6 +792,62 @@ def test_a_locus_covered_on_both_sides_reports_no_depletion():
     assert gc.depleted_runs(positions, counts, donor, min_depth=5, min_sites=3) == []
 
 
+def _depth_case(acc, don):
+    positions = sorted(acc)
+    counts = {p: {"acceptor": 0, "donor": 0, "other": 0, "depth": acc[p], "donor_af": None}
+              for p in positions}
+    return positions, counts, don
+
+
+def test_a_low_coverage_locus_is_not_a_shift_of_reads():
+    """Regression, and the reason the test above is not enough.
+
+    The check used to be an absolute one: the acceptor under `min_depth` while the donor held
+    most of the reads. That is true of every low-coverage paralog whether or not anything moved,
+    and on a clean negative control over 411 real pairs it reported two shifts on a locus running
+    at 4x throughout, where the acceptor was barely dipping (0.75 of its own level) and the donor
+    barely gaining (1.12 of its own). Both numbers now have to say the reads MOVED.
+    """
+    positions, counts, donor = _depth_case(
+        {10: 5, 20: 5, 30: 4, 40: 4, 50: 4, 60: 4, 70: 5, 80: 5},
+        {10: 14, 20: 14, 30: 16, 40: 16, 50: 16, 60: 16, 70: 14, 80: 14})
+
+    assert gc.depleted_runs(positions, counts, donor, min_depth=5, min_sites=3) == []
+
+
+def test_an_acceptor_dropout_the_donor_did_not_absorb_is_not_a_shift():
+    """A hole in the coverage is a hole. Reads that moved arrive somewhere."""
+    positions, counts, donor = _depth_case(
+        {10: 80, 20: 80, 30: 1, 40: 0, 50: 1, 60: 2, 70: 80, 80: 80},
+        dict.fromkeys([10, 20, 30, 40, 50, 60, 70, 80], 80))
+
+    assert gc.depleted_runs(positions, counts, donor, min_depth=5, min_sites=3) == []
+
+
+def test_the_measured_migration_is_still_reported():
+    """The case the check exists for, at the depths measured on the 99.7% paralog pair: the
+    acceptor's tract fell from 84x to 37x while the donor's matching region rose from 83x to
+    127x, and the reads were conserved between them."""
+    positions, counts, donor = _depth_case(
+        {10: 84, 20: 84, 30: 37, 40: 37, 50: 37, 60: 37, 70: 84, 80: 84},
+        {10: 83, 20: 83, 30: 127, 40: 127, 50: 127, 60: 127, 70: 83, 80: 83})
+
+    assert gc.depleted_runs(positions, counts, donor, min_depth=50, min_sites=3) == [[30, 40, 50, 60]]
+
+
+def test_the_baseline_comes_from_the_sites_that_are_not_suspect():
+    """A depletion covering half the locus must not drag down the level it is compared against.
+
+    Taken over every site, the median is inside the depletion itself, and the run then breaks up
+    on its own deepest site.
+    """
+    positions, counts, donor = _depth_case(
+        {10: 40, 20: 1, 30: 0, 40: 2, 50: 40},
+        {10: 40, 20: 80, 30: 90, 40: 85, 50: 40})
+
+    assert gc.depleted_runs(positions, counts, donor, min_depth=5, min_sites=3) == [[20, 30, 40]]
+
+
 def test_depletion_needs_the_reads_to_be_somewhere():
     """A locus with no coverage on either copy is missing data, not a shift of reads."""
     positions = [10, 20, 30, 40]

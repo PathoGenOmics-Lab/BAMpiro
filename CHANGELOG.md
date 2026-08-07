@@ -56,6 +56,17 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
     no unique anchor left, so the acceptor loses its coverage to the donor and every
     allele-based signal evaporates exactly when the conversion is most complete. It
     is not a conversion call: a deletion of the acceptor looks the same.
+ - The paralog map attaches each diagnostic site to EVERY pair that spans it. A gene
+    family produces overlapping and nested alignments on purpose, so stopping at the
+    first one cost 140 sites on H37Rv and left 12 pairs with none at all, among them
+    a 5.8 kb paralog at 98% identity that the caller then skipped for having nothing
+    to work with. Where two nested alignments compete for one acceptor position, the
+    offset between the copies says which pair it belongs to.
+ - `coverage_shift` requires the reads to have MOVED, not merely to be scarce: the
+    acceptor below its own level elsewhere in the locus AND the donor above its own.
+    The absolute depth floor it used before fired on any low-coverage paralog, which
+    is how a clean negative control reported two shifts over a locus running at 4x
+    throughout.
  - A **Gene conversion** panel in the QC report leads with the Bayes factor and puts
     the observable evidence beside it. See
     [gene conversion](docs/gene-conversion.md).

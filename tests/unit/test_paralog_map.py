@@ -270,16 +270,49 @@ def test_sites_within_pairs_requires_matching_contigs():
     assert pm.sites_within_pairs(sites, pairs) == []
 
 
-def test_sites_within_pairs_labels_a_site_with_the_first_pair_that_contains_it():
-    """Nested or overlapping pairs are possible in a self-alignment; the loop stops at the
-    first match, so a site belongs to exactly one pair."""
+def test_a_site_belongs_to_every_pair_that_spans_it():
+    """`--maxmatch --nosimplify` emits overlapping and nested alignments on purpose, so a tandem
+    repeat produces several pairs over the same bases and one difference is diagnostic for all of
+    them.
+
+    This used to stop at the first pair found. On H37Rv that cost 140 sites and left 12 pairs with
+    NO diagnostic site at all, among them a 5.8 kb paralog at 98% identity, which the tract caller
+    then skipped for having nothing to work with. A locus the tool cannot see is worse than one it
+    gets wrong.
+    """
     pairs = pm.parse_coords(COORDS_ROWS + _coords_row(401, 1000, 1301, 1900, idy=97.00))
     sites, _ = pm.parse_snps(_snps_row(471, "A", "G", 1371))
 
     kept = pm.sites_within_pairs(sites, pairs)
 
+    assert sorted(k["pair_id"] for k in kept) == [0, 2]
+
+
+def test_the_alignment_offset_picks_which_nested_alignment_a_site_belongs_to():
+    """Taking every span brings back an ambiguity that stopping early used to hide.
+
+    Two nested alignments can put two different donor positions against the SAME acceptor
+    position inside one pair's coordinate box, and only one of them is that pair's own alignment.
+    The offset between the copies is constant along an alignment and drifting only with indels,
+    so it is what tells them apart. On H37Rv this is 196 positions, all of them resolved.
+    """
+    pairs = pm.parse_coords(_coords_row(401, 1000, 1301, 1900))     # offset +900
+    sites, _ = pm.parse_snps(_snps_row(471, "A", "G", 1371)         # offset +900: this alignment
+                             + _snps_row(471, "A", "T", 1500))      # offset +1029: a nested one
+
+    kept = pm.sites_within_pairs(sites, pairs)
+
     assert len(kept) == 1
-    assert kept[0]["pair_id"] == 0
+    assert (kept[0]["don_pos"], kept[0]["don_base"]) == (1371, "G")
+
+
+def test_a_site_on_the_other_strand_does_not_belong_to_the_pair():
+    """A pair is one alignment in one orientation. A difference reported on the other strand
+    came from a different one, however well its coordinates happen to fit."""
+    pairs = pm.parse_coords(_coords_row(401, 1000, 1301, 1900))     # a plus-strand pair
+    sites, _ = pm.parse_snps(_snps_row(471, "A", "G", 1371, frm2="-1"))
+
+    assert pm.sites_within_pairs(sites, pairs) == []
 
 
 # ------------------------------------------------------------------------------- _run

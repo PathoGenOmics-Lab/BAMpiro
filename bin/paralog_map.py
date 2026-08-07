@@ -101,21 +101,54 @@ def parse_snps(text):
     return sites, indels
 
 
+def alignment_offset(start, end, acc_start, strand):
+    """Where the donor sits relative to the acceptor along an alignment.
+
+    Constant along a gap-free alignment and drifting only with indels, which makes it the thing
+    that tells two nested alignments between the same two intervals apart when nothing else can.
+    """
+    return start - acc_start if strand == "+" else end + acc_start
+
+
 def sites_within_pairs(sites, pairs):
-    """Keep only sites that fall inside a reported pair, and label them with it.
+    """Attach each diagnostic site to every paralog pair it belongs to.
 
     show-snps reports every difference in the delta, including ones from alignments too short or
-    too divergent to be a credible paralog. Tying each site to a pair is also what lets the caller
-    group sites by locus.
+    too divergent to be a credible paralog. Tying each site to a pair is what lets the caller
+    group sites by locus, and it is less simple than it looks in a SELF-alignment.
+
+    A site belongs to EVERY pair that spans it, not just the first one found. `--maxmatch
+    --nosimplify` emits overlapping and nested alignments on purpose, so a tandem repeat produces
+    several pairs covering the same bases and one difference is diagnostic for all of them.
+    Stopping at the first match cost 140 sites on H37Rv and, worse, left 12 pairs with NO sites at
+    all, among them a 5.8 kb paralog at 98% identity that the tract caller then skipped entirely
+    for having nothing to work with.
+
+    Taking every span brings back an ambiguity, though: two nested alignments can put two
+    different donor positions against the same acceptor position inside one pair's coordinate box,
+    and only one of them is that pair's own alignment. The offset picks it out. On H37Rv that is
+    196 positions, every one of them resolved.
     """
-    out = []
+    chosen = {}
     for site in sites:
         for i, p in enumerate(pairs):
-            if (site["acceptor"] == p["acceptor"] and p["acc_start"] <= site["acc_pos"] <= p["acc_end"]
-                    and site["donor"] == p["donor"] and p["don_start"] <= site["don_pos"] <= p["don_end"]):
-                out.append({**site, "pair_id": i, "identity": p["identity"]})
-                break
-    return out
+            if site["acceptor"] != p["acceptor"] or site["donor"] != p["donor"]:
+                continue
+            if not p["acc_start"] <= site["acc_pos"] <= p["acc_end"]:
+                continue
+            if not p["don_start"] <= site["don_pos"] <= p["don_end"]:
+                continue
+            if site["strand"] != p["strand"]:
+                continue
+            drift = abs(alignment_offset(site["don_pos"], site["don_pos"], site["acc_pos"],
+                                         site["strand"])
+                        - alignment_offset(p["don_start"], p["don_end"], p["acc_start"],
+                                           p["strand"]))
+            key = (i, site["acc_pos"])
+            if key not in chosen or drift < chosen[key][1]:
+                chosen[key] = (site, drift)
+    return [{**site, "pair_id": i, "identity": pairs[i]["identity"]}
+            for (i, _), (site, _) in sorted(chosen.items())]
 
 
 PAIR_COLS = ["pair_id", "acceptor", "acc_start", "acc_end", "donor", "don_start", "don_end",

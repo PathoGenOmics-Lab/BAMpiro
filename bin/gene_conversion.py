@@ -239,7 +239,7 @@ def tract_evidence(tract, positions, counts, per_read, in_any_tract=None, min_de
 
 
 def depleted_runs(positions, counts, donor_counts, min_depth=5, max_ratio=0.4, min_sites=3,
-                  exclude=None):
+                  exclude=None, max_local=0.6, min_enrichment=1.25):
     """Runs of diagnostic sites where the acceptor has lost its reads to the donor.
 
     A conversion makes the acceptor identical to the donor over the tract. Once the tract is
@@ -258,21 +258,38 @@ def depleted_runs(positions, counts, donor_counts, min_depth=5, max_ratio=0.4, m
     side by side in the same locus. An excluded site ends the run it is in rather than
     disqualifying it, which would throw away the depleted part of exactly the tract that was
     hardest to see.
+
+    Everything here is measured against the LOCUS's own coverage, not against an absolute depth.
+    It used to fire whenever the acceptor sat under `min_depth` while the donor held most of the
+    reads, which is true of every low-coverage paralog whether or not anything moved: on a clean
+    negative control it reported a shift over a locus running at 4x throughout, where the acceptor
+    was barely dipping and the donor barely gaining. Reads that MOVED leave two marks, and both
+    are now required: the acceptor falls well below its own level elsewhere, and the donor rises
+    above its own. On the measured case those were 0.46 and 1.53; on the false one, 0.75 and 1.12.
     """
     skip = set(exclude) if exclude else set()
+    usable = [p for p in positions if p not in skip]
+    if len(usable) < min_sites:
+        return []
+
+    def lopsided(p):
+        """The donor holds the reads at this site."""
+        acc_dp, don_dp = counts[p]["depth"], donor_counts.get(p, 0)
+        total = acc_dp + don_dp
+        return (acc_dp < min_depth and total >= 2 * min_depth
+                and (acc_dp / total if total else 1.0) <= max_ratio)
+
+    # What the acceptor runs at where it is NOT suspected of having lost anything. Taking the
+    # median over the whole locus instead would be circular: a depletion covering half the sites
+    # drags the very number it is being compared against down with it, and the run then breaks up
+    # on its own deepest site.
+    healthy = [counts[p]["depth"] for p in usable if not lopsided(p)]
+    acc_base = _median(healthy) if len(healthy) >= 2 else None
+
     runs, run = [], []
     for p in positions:
-        if p in skip:
-            if len(run) >= min_sites:
-                runs.append(run)
-            run = []
-            continue
-        acc_dp = counts[p]["depth"]
-        don_dp = donor_counts.get(p, 0)
-        total = acc_dp + don_dp
-        depleted = (acc_dp < min_depth and total >= 2 * min_depth
-                    and (acc_dp / total if total else 1.0) <= max_ratio)
-        if depleted:
+        if p not in skip and lopsided(p) and (acc_base is None
+                                              or counts[p]["depth"] <= max_local * acc_base):
             run.append(p)
         else:
             if len(run) >= min_sites:
@@ -280,7 +297,27 @@ def depleted_runs(positions, counts, donor_counts, min_depth=5, max_ratio=0.4, m
             run = []
     if len(run) >= min_sites:
         runs.append(run)
-    return runs
+
+    # And the donor has to have GAINED. Without this, an ordinary coverage hole reads exactly
+    # like a tract whose reads walked next door, and a locus simply running at 4x throughout
+    # reported a shift on a clean negative control.
+    kept = []
+    for r in runs:
+        inside = set(r)
+        elsewhere = [donor_counts.get(p, 0) for p in usable if p not in inside]
+        don_base = _median(elsewhere) if elsewhere else 0.0
+        don_here = _median([donor_counts.get(p, 0) for p in r])
+        if don_base > 0 and don_here >= min_enrichment * don_base:
+            kept.append(r)
+    return kept
+
+
+def _median(values):
+    v = sorted(values)
+    if not v:
+        return 0.0
+    mid = len(v) // 2
+    return float(v[mid]) if len(v) % 2 else (v[mid - 1] + v[mid]) / 2.0
 
 
 def load_sites(path):

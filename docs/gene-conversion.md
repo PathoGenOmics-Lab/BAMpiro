@@ -41,6 +41,12 @@ masking, and the masking step collapses the result to a flat list of intervals, 
 copy aligns to which. That pairing is recovered here, and `show-snps` on the same alignment gives
 the positions where the two copies differ.
 
+`--maxmatch --nosimplify` emits overlapping and nested alignments deliberately, so a gene family
+produces several pairs covering the same bases, and one difference is diagnostic for all of them.
+Where two nested alignments put different donor positions against the same acceptor position, the
+offset between the copies says which pair each belongs to: it is constant along an alignment and
+drifts only with indels.
+
 **2. Diagnostic sites.** Only those differing positions can carry evidence. Everywhere else the two
 copies are identical and a read is uninformative by construction, so the analysis works over that
 list rather than over the whole locus.
@@ -107,7 +113,7 @@ reads to the acceptor. The second is not an edge case, and this is worth stating
 | `gene_conversion` | The Bayes factor clears `--gconv_min_bf` against both alternatives |
 | `mismapping` | The locus is explained by a fitted fraction of reads arriving from the donor, with nothing left for a tract to account for |
 | `ambiguous` | Reported, but not called. The `reason` column says what came closest |
-| `coverage_shift` | The acceptor lost its reads to the donor over a run of sites. Consistent with a conversion longer than the library insert, and equally with a deletion. See below |
+| `coverage_shift` | The acceptor lost its reads to the donor over a run of sites: it falls well below its own level elsewhere AND the donor rises above its own. Consistent with a conversion longer than the library insert, and equally with a deletion. See below |
 
 A tract covering **every** diagnostic site of the locus is a special case that needs no special
 handling: "the whole locus was converted" and "every read here came from the donor" predict
@@ -204,7 +210,7 @@ then mapped and deduplicated exactly as the pipeline does.
 | Conversion tracts implanted across 23 real paralog pairs, at 2 to 20 diagnostic sites and 25% to 100% frequency | **21 of 23 found** at the default threshold, at 30x and at 12x alike |
 | Breakpoints on the clonal tracts | exact, with the credible interval covering the truth |
 | False positives over the 388 pairs with nothing implanted | **0**, at every threshold down to `log10_bf` 1 |
-| A negative control isolate: 411 real pairs, no conversion anywhere | **no conversion call at all** |
+| A negative control isolate: 411 real pairs, no conversion anywhere | **no output row at all**, of any verdict |
 | 22 isolated substitutions that happen to match the donor's base | **0 called** |
 | Hypervariable loci, 10% of diagnostic sites substituted | **3% called**, against 39% with a fixed genome-average substitution rate, with the same 10 of 10 real tracts found either way |
 
@@ -231,11 +237,16 @@ control. Every allele-based signal this tool depends on evaporates exactly when 
 most complete, which is why the same detector finds a 350 bp tract at 98% identity without
 difficulty and misses a 1.4 kb one at 99.7%.
 
-That failure would otherwise be silent, so a run of diagnostic sites where the acceptor is
-depleted while the donor carries the reads is reported with the verdict `coverage_shift`. **It is
-not a conversion call.** A deletion of the acceptor produces exactly the same picture, and telling
-them apart needs evidence short reads do not carry: longer reads spanning the whole tract, or a
-read-depth analysis over the paralog pair as a whole.
+That failure would otherwise be silent, so it is reported with the verdict `coverage_shift`. Reads
+that moved leave two marks and both are required: the acceptor falls well below its own level
+elsewhere in the locus, and the donor rises above its own. Measured on the case above those were
+0.46 and 1.53. Requiring only the first, against an absolute depth floor, meant every low-coverage
+paralog qualified: on a clean negative control it reported a shift over a locus running at 4x
+throughout, where the acceptor was barely dipping and the donor barely gaining.
+
+**It is still not a conversion call.** A deletion of the acceptor produces exactly the same
+picture, and telling them apart needs evidence short reads do not carry: longer reads spanning the
+whole tract, or a read-depth analysis over the paralog pair as a whole.
 
 ## What it does not do
 
