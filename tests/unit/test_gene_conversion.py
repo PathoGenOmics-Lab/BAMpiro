@@ -284,13 +284,24 @@ def test_collect_read_alleles_keeps_reverse_strand_and_duplicate_records():
 
 def test_collect_read_alleles_skips_headers_blank_and_malformed_lines():
     lines = ["@HD\tVN:1.6", "@SQ\tSN:chr\tLN:2300", "", "truncated\t0\tchr",
+             # A header line is recognised by its @, not by being short. Read groups carry a tag
+             # per sequencing run and go past eleven fields easily, and one that reaches the
+             # record parser meets int() on a tag name rather than on a FLAG.
+             "@RG\tID:1\tSM:S1\tLB:l\tPL:ILLUMINA\tPU:u\tCN:c\tDS:d\tDT:2026-01-01\tPI:300\tPM:m\tPG:p",
              _sam_line("r", 100, "1M", "G")]
 
     assert gc.collect_read_alleles(lines, SITES) == {"r": {100: "donor"}}
 
 
 def test_collect_read_alleles_skips_records_without_an_alignment():
-    lines = [_sam_line("nocigar", 100, "*", "G"), _sam_line("nopos", 0, "1M", "G")]
+    """Both records reach the diagnostic sites if they are let through, which is the point.
+
+    A record with POS 0 is one the aligner declined to place, and reading it anyway lays the
+    read down from the start of the contig: the calls it produces are at real diagnostic sites
+    and look like any other, which is the failure that reports a tract nobody sequenced.
+    """
+    lines = [_sam_line("nocigar", 100, "*", "G" * 200),
+             _sam_line("nopos", 0, "200M", "G" * 200, qual="I" * 200)]
 
     assert gc.collect_read_alleles(lines, SITES) == {}
 
@@ -871,6 +882,131 @@ def test_a_run_at_the_end_still_has_to_be_long_enough():
     assert gc.depleted_runs(positions, counts, donor, min_depth=5, min_sites=3) == []
 
 
+# Every constant in `depleted_runs` is a threshold, and each one reads perfectly well when it is
+# a step out. The cases below sit exactly ON each of them, in the direction that has to pass.
+#
+# They all share a shape: healthy flanks either side of a depleted middle. The flanks are not
+# decoration. The donor has to have GAINED over its own level ELSEWHERE, so a locus whose every
+# site is in the run has no elsewhere to be compared with and is never reported at all, which is
+# how the first version of these tests managed to assert nothing four times over.
+
+FLANKS, MIDDLE = [10, 20, 70, 80], [30, 40, 50]
+
+
+def _shift(acc, don, **kw):
+    """A locus described by its two depth profiles: {position: acceptor}, {position: donor}."""
+    positions = sorted(acc)
+    counts = {p: {"acceptor": 0, "donor": 0, "other": 0, "depth": acc[p], "donor_af": None}
+              for p in positions}
+    return gc.depleted_runs(positions, counts, don, **kw)
+
+
+def _locus(acc_mid, don_mid, acc_flank=40, don_flank=40):
+    acc = {p: acc_flank for p in FLANKS} | {p: acc_mid for p in MIDDLE}
+    don = {p: don_flank for p in FLANKS} | {p: don_mid for p in MIDDLE}
+    return acc, don
+
+
+def test_a_depletion_over_the_minimum_number_of_sites_is_reported():
+    """The base case the rest are nudged away from, and it carries two of the checks on its own.
+
+    Both marks of a shift are required, not either: loosen the acceptor test and the healthy
+    flanks become part of the run, which leaves no baseline and reports nothing at all.
+    """
+    assert _shift(*_locus(0, 100), min_depth=5, min_sites=3) == [MIDDLE]
+
+
+@pytest.mark.parametrize("acc_mid,depleted", [(4, True), (5, False)])
+def test_a_site_at_exactly_the_depth_floor_is_not_depleted(acc_mid, depleted):
+    """`min_depth` is the depth a site needs to count as covered, so at it, it is covered."""
+    runs = _shift(*_locus(acc_mid, 100), min_depth=5, min_sites=3)
+
+    assert (runs == [MIDDLE]) is depleted
+
+
+@pytest.mark.parametrize("don_mid,enough", [(10, True), (9, False)])
+def test_the_two_copies_need_twice_the_floor_between_them_before_anything_is_said(don_mid, enough):
+    """Under `2 * min_depth` across both copies there is not enough sequence to tell reads that
+    moved from reads that never arrived, and exactly that much is enough.
+
+    The donor's level in the flanks is kept low here so that the enrichment check clears in both
+    arms and only the one condition under test decides the answer.
+    """
+    runs = _shift(*_locus(0, don_mid, don_flank=4), min_depth=5, min_sites=3)
+
+    assert (runs == [MIDDLE]) is enough
+
+
+@pytest.mark.parametrize("max_ratio,lopsided", [(0.4, True), (0.39, False)])
+def test_a_site_holding_exactly_the_permitted_share_still_counts_as_lopsided(max_ratio, lopsided):
+    """`max_ratio` is the largest share of the reads the acceptor may still hold: 4 of 10 here."""
+    runs = _shift(*_locus(4, 6, don_flank=4), min_depth=5, max_ratio=max_ratio, min_sites=3)
+
+    assert (runs == [MIDDLE]) is lopsided
+
+
+def test_a_well_covered_acceptor_is_not_depleted_however_deep_the_donor_is():
+    """The share of the reads is not on its own a statement that any were lost.
+
+    A tandem repeat can pull an order of magnitude more reads than its paralog while the paralog
+    itself is perfectly covered. Nothing moved: there is simply more of the other copy.
+    """
+    assert _shift(*_locus(40, 400), min_depth=5, min_sites=3) == []
+
+
+@pytest.mark.parametrize("max_local,inside", [(0.6, True), (0.59, False)])
+def test_a_site_at_exactly_the_local_ceiling_is_part_of_the_depletion(max_local, inside):
+    """The run is cut where the acceptor is back up to `max_local` of its own level elsewhere,
+    and a site sitting exactly at that fraction is still down. 24 is 0.6 of 40."""
+    runs = _shift(*_locus(24, 400), min_depth=25, max_local=max_local, min_sites=3)
+
+    assert (runs == [MIDDLE]) is inside
+
+
+def test_two_healthy_sites_are_enough_to_know_what_the_locus_runs_at():
+    """With two the baseline is a measurement and the local ceiling applies; with fewer it is not
+    and the ceiling is skipped, which lets through a site that is down but not down far.
+
+    Here the first site of the would-be run sits at 30 against a baseline of 40, well above the
+    ceiling, so it breaks the run and what is left is too short to report. Refusing to measure a
+    baseline from two sites reports it instead.
+    """
+    acc = {10: 40, 30: 30, 40: 0, 50: 0, 80: 40}
+    don = {10: 40, 30: 400, 40: 400, 50: 400, 80: 40}
+
+    assert _shift(acc, don, min_depth=35, min_sites=3) == []
+
+
+@pytest.mark.parametrize("don_mid,gained", [(50, True), (49, False)])
+def test_a_donor_gaining_exactly_the_required_amount_has_gained(don_mid, gained):
+    """`min_enrichment` is the rise the donor must show over its own level elsewhere: 50 over 40
+    is exactly 1.25."""
+    runs = _shift(*_locus(0, don_mid), min_depth=5, min_enrichment=1.25, min_sites=3)
+
+    assert (runs == [MIDDLE]) is gained
+
+
+def test_a_donor_with_no_reads_outside_the_run_has_not_gained_anything():
+    """There is no level to have risen above, and zero clears any ratio you care to name.
+
+    This is the shape a paralog on a contig edge has: the donor copy is only covered where the
+    reads piled up, and nowhere else. Comparing against nothing and calling the result a rise
+    turns every one of those into a reported shift.
+    """
+    acc = {p: 40 for p in FLANKS} | {p: 0 for p in MIDDLE}
+    don = {p: 0 for p in FLANKS} | {p: 100 for p in MIDDLE}
+
+    assert _shift(acc, don, min_depth=5, min_sites=3) == []
+
+
+def test_a_locus_covered_at_neither_copy_says_nothing():
+    positions = [10, 20, 30]
+    counts = {p: {"acceptor": 0, "donor": 0, "other": 0, "depth": 0, "donor_af": None}
+              for p in positions}
+
+    assert gc.depleted_runs(positions, counts, {}, min_depth=5, min_sites=3) == []
+
+
 def test_a_locus_covered_on_both_sides_reports_no_depletion():
     """Ordinary coverage on both copies is not a shift, however low it is overall."""
     positions = [10, 20, 30, 40]
@@ -1087,3 +1223,80 @@ def test_a_coverage_shift_row_reports_the_stretch_it_actually_covers(tmp_path, s
     assert int(row["span_bp"]) == 1030 - 1010 + 1
     assert int(row["n_sites"]) == 3 and int(row["n_sites_outside"]) == 1
     assert int(row["min_depth"]) == 0, "the shallowest site in the run, not the deepest"
+
+
+def _one_locus(tmp_path, tract, name, positions=(100, 110, 120, 130, 140, 150, 160, 170)):
+    """A BAM and a sites file for one locus whose molecules carry the donor base over `tract`."""
+    seq = ["A"] * 90
+    for p in tract:
+        seq[p - 95] = "G"
+    records = [_sam_line(f"r{i}", 95, "90M", "".join(seq), qual="I" * 90) for i in range(14)]
+    return (_bam(tmp_path, records),
+            _sites_tsv(tmp_path / f"{name}.sites", {0: list(positions)}))
+
+
+def _only_row(path):
+    body = [ln for ln in path.read_text().splitlines() if not ln.startswith("#")]
+    return dict(zip(body[0].split("\t"), body[1].split("\t")))
+
+
+def test_a_tract_touching_one_end_of_a_locus_does_not_cover_it(tmp_path, samtools):
+    """Covering the locus means covering ALL of it, and it is not a detail of wording.
+
+    A tract over every diagnostic site has exactly the likelihood of every read having come from
+    the donor, so the model cannot separate the two and says so. A tract that merely STARTS at
+    the first site is nothing of the kind, and treating it as such takes a clean call and returns
+    ambiguous, which is the answer that looks like caution rather than like a defect.
+    """
+    bam, sites = _one_locus(tmp_path, {100, 110, 120}, "edge")
+    out = tmp_path / "edge.tsv"
+
+    assert gc.main(["--sites", sites, "--bam", bam, "--sample", "S1", "-o", str(out),
+                    "--samtools", samtools, "--min-sites", "2", "--report-bf", "-99"]) == 0
+
+    row = _only_row(out)
+    assert (row["start"], row["end"]) == ("100", "120")
+    assert row["verdict"] == "gene_conversion"
+
+    # Covering the locus only decides anything once the evidence is short of a call, so the
+    # threshold is put out of reach and the reason is read instead of the verdict.
+    weak = tmp_path / "edge_weak.tsv"
+    assert gc.main(["--sites", sites, "--bam", bam, "--sample", "S1", "-o", str(weak),
+                    "--samtools", samtools, "--min-sites", "2", "--report-bf", "-99",
+                    "--min-bf", "99"]) == 0
+
+    assert "covers every diagnostic site" not in _only_row(weak)["reason"]
+
+
+def test_a_locus_searched_exhaustively_is_not_told_it_was_not(tmp_path, samtools):
+    """The note about coarse breakpoints belongs on the loci that got them.
+
+    At stride 1 every interval was evaluated, and appending the note anyway tells a reader their
+    breakpoints were placed every 1 diagnostic sites, which is both untrue and unreadable.
+    """
+    bam, sites = _one_locus(tmp_path, {110, 120, 130}, "fine")
+    out = tmp_path / "fine.tsv"
+
+    assert gc.main(["--sites", sites, "--bam", bam, "--sample", "S1", "-o", str(out),
+                    "--samtools", samtools, "--min-sites", "2", "--report-bf", "-99"]) == 0
+
+    assert "resolved to every" not in _only_row(out)["reason"]
+
+
+@pytest.mark.parametrize("bf,mismap,kept", [
+    (3.0, 0.0, True),        # exactly the reporting threshold
+    (2.9999, 0.0, False),
+    (0.0, 0.2, True),        # exactly the mismapping rate
+    (0.0, 0.1999, False),
+    (2.9999, 0.1999, False), # neither, which is the only way to be dropped
+])
+def test_a_fit_is_written_out_at_the_thresholds_not_past_them(bf, mismap, kept):
+    """`--report-bf` and `--min-mismap` decide whether a row exists at all.
+
+    Both were unreachable from outside: the only view of either number is a column rounded to two
+    decimals, where a fit sitting on the threshold and a fit just past it read the same, so the
+    first attempt at this test asserted nothing twice over.
+    """
+    fit = {"log10_bf": bf, "mismap_frac": mismap}
+
+    assert gc.worth_reporting(fit, report_bf=3.0, min_mismap=0.2) is kept

@@ -197,6 +197,20 @@ def pileup(per_read, positions):
     return counts
 
 
+def worth_reporting(fit, report_bf, min_mismap):
+    """Whether a fit is written out at all.
+
+    Either it clears the reporting threshold, or the locus is explained by reads arriving from
+    the paralog, which is a result too and not a silence: a reader looking for a conversion there
+    needs to be told the reads plainly came from next door.
+
+    A function rather than the condition inline, because both thresholds are settings a user
+    picks and the only way their edges were visible from outside was through a column rounded to
+    two decimals, where a value on the threshold and a value just past it read the same.
+    """
+    return fit["log10_bf"] >= report_bf or fit["mismap_frac"] >= min_mismap
+
+
 def tract_evidence(tract, positions, counts, per_read, in_any_tract=None, min_depth=5):
     """Descriptive statistics for a tract the model has already located.
 
@@ -520,10 +534,7 @@ def main(argv=None) -> int:
                 "mismap_frac": round(f0["mismap_frac"], 4),
                 "mut_rate": round(f0["mut_rate"], 5)})
 
-        # A locus whose reads plainly came from its paralog is a result too, so it is written out
-        # even when no tract clears the reporting threshold.
-        keep = [f for f in fits
-                if f["log10_bf"] >= a.report_bf or f["mismap_frac"] >= a.min_mismap]
+        keep = [f for f in fits if worth_reporting(f, a.report_bf, a.min_mismap)]
         tracts = [positions[f["map_i"]:f["map_j"] + 1] for f in keep]
         in_any = {p for t in tracts for p in t}
         for fit, tract in zip(keep, tracts):
