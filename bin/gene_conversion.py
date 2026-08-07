@@ -131,12 +131,20 @@ def call_tracts(positions, counts, min_af=0.7, min_sites=3, min_depth=5):
 
     Consecutive means adjacent in the diagnostic-site list, not in base coordinates: the sites
     between them are identical in both copies and cannot testify either way.
+
+    A site with too little depth to genotype is UNDETERMINED, and undetermined is not the same as
+    "the acceptor allele is here". It bridges rather than breaks: a single coverage dip inside an
+    otherwise clean tract would otherwise shatter it into fragments that each fall below
+    min_sites, and the whole tract disappears. Coverage dips are ordinary, so that failure mode is
+    ordinary too. The bridged sites do not count towards min_sites and do not become tract
+    members; tract_evidence reports how many were skipped.
     """
     tracts, run = [], []
     for p in positions:
         c = counts[p]
-        donor_here = (c["depth"] >= min_depth and c["donor_af"] is not None and c["donor_af"] >= min_af)
-        if donor_here:
+        if c["depth"] < min_depth or c["donor_af"] is None:
+            continue                                    # undetermined: no evidence either way
+        if c["donor_af"] >= min_af:
             run.append(p)
         else:
             if len(run) >= min_sites:
@@ -147,7 +155,7 @@ def call_tracts(positions, counts, min_af=0.7, min_sites=3, min_depth=5):
     return tracts
 
 
-def tract_evidence(tract, positions, counts, per_read, in_any_tract=None):
+def tract_evidence(tract, positions, counts, per_read, in_any_tract=None, min_depth=5):
     """The evidence that separates a real conversion from reads arriving from the donor.
 
     `in_any_tract` is every site belonging to ANY tract called in this locus. Sites of a second,
@@ -157,7 +165,13 @@ def tract_evidence(tract, positions, counts, per_read, in_any_tract=None):
     """
     inside = set(tract)
     excluded = set(in_any_tract) if in_any_tract else inside
-    outside = [p for p in positions if p not in excluded]
+    # A site too shallow to genotype is undetermined, and undetermined testifies in NEITHER
+    # direction. Excluding it from the tract but still counting it as "outside" lets an unreliable
+    # fraction, measured off a handful of reads, drag the outside average over the threshold and
+    # flip a real conversion to mismapping.
+    determined = {p for p in positions
+                  if counts[p]["depth"] >= min_depth and counts[p]["donor_af"] is not None}
+    outside = [p for p in positions if p not in excluded and p in determined]
 
     outside_af = [counts[p]["donor_af"] for p in outside if counts[p]["donor_af"] is not None]
     donor_af_outside = sum(outside_af) / len(outside_af) if outside_af else None
@@ -167,8 +181,10 @@ def tract_evidence(tract, positions, counts, per_read, in_any_tract=None):
     donor_only_reads = 0   # carries donor everywhere it reaches: what a mismapped read looks like
     for calls in per_read.values():
         in_donor = [p for p, w in calls.items() if p in inside and w == "donor"]
-        out_acc = [p for p, w in calls.items() if p not in excluded and w == "acceptor"]
-        out_donor = [p for p, w in calls.items() if p not in excluded and w == "donor"]
+        out_acc = [p for p, w in calls.items()
+                   if p not in excluded and p in determined and w == "acceptor"]
+        out_donor = [p for p, w in calls.items()
+                     if p not in excluded and p in determined and w == "donor"]
         if len(in_donor) >= 2:
             cis_reads += 1
         if in_donor and out_acc:
@@ -176,9 +192,16 @@ def tract_evidence(tract, positions, counts, per_read, in_any_tract=None):
         if in_donor and out_donor and not out_acc:
             donor_only_reads += 1
 
+    # Diagnostic sites inside the tract's span that were too shallow to genotype. They were
+    # bridged rather than allowed to break the tract, so say how many, or the tract looks more
+    # solid than the data supports.
+    n_undetermined = sum(1 for p in positions
+                         if min(tract) < p < max(tract) and p not in inside)
+
     afs = [counts[p]["donor_af"] for p in tract if counts[p]["donor_af"] is not None]
     return {
         "n_sites": len(tract),
+        "n_undetermined": n_undetermined,
         "start": min(tract),
         "end": max(tract),
         "span_bp": max(tract) - min(tract) + 1,
@@ -240,7 +263,7 @@ def load_sites(path):
 
 
 COLUMNS = ["sample", "pair_id", "contig", "donor", "verdict", "reason", "start", "end", "span_bp",
-           "n_sites", "n_sites_outside", "donor_af_in", "donor_af_outside", "min_depth", "cis_reads",
+           "n_sites", "n_sites_outside", "n_undetermined", "donor_af_in", "donor_af_outside", "min_depth", "cis_reads",
            "breakpoint_reads", "donor_only_reads"]
 
 
@@ -281,7 +304,7 @@ def main(argv=None) -> int:
         tracts = call_tracts(positions, counts, a.min_af, a.min_sites, a.min_depth)
         in_any = {p for t in tracts for p in t}
         for tract in tracts:
-            ev = tract_evidence(tract, positions, counts, per_read, in_any)
+            ev = tract_evidence(tract, positions, counts, per_read, in_any, a.min_depth)
             verdict, reason = classify(ev)
             rows.append({"sample": a.sample, "pair_id": pair_id, "contig": loc["contig"],
                          "donor": loc["donor"], "verdict": verdict, "reason": reason, **ev})

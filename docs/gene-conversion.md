@@ -59,6 +59,13 @@ separate them, and all three are reported rather than collapsed into one score:
 | `donor_af_in` | Near 1 in a clonal sample | Intermediate, and much the same at every site |
 | `breakpoint_reads` | Above 0 | Always 0 |
 
+A site with too little depth to genotype is **undetermined**, and undetermined testifies in
+neither direction. It neither joins a tract nor ends one, and it stays out of the
+`donor_af_outside` average. Treating it as "the acceptor allele is here" would mean one ordinary
+coverage dip inside a clean tract splits it into fragments that each fall below
+`--gconv_min_sites`, and the tract disappears. `n_undetermined` reports how many sites inside a
+tract were skipped that way, so a tract does not look more solid than the data supports.
+
 `breakpoint_reads` is the one a mismapping cannot fake. It counts single molecules carrying donor
 alleles on one side of a breakpoint and acceptor alleles on the other, in cis. A mismapped read is
 a donor read: it carries donor alleles everywhere it reaches and never crosses back.
@@ -86,8 +93,8 @@ Per sample, next to the other per-sample files:
 
 and one cohort-level `<samplesheet>_gene_conversion.tsv`. Columns: `sample`, `pair_id`, `contig`,
 `donor`, `verdict`, `reason`, `start`, `end`, `span_bp`, `n_sites`, `n_sites_outside`,
-`donor_af_in`, `donor_af_outside`, `min_depth`, `cis_reads`, `breakpoint_reads`,
-`donor_only_reads`.
+`donor_af_in`, `donor_af_outside`, `n_undetermined`, `min_depth`, `cis_reads`,
+`breakpoint_reads`, `donor_only_reads`.
 
 The paralog map itself is published under `references/<refId>/` as
 `<refId>.paralog_pairs.tsv` and `<refId>.paralog_sites.tsv`, and is worth a look on its own: it is

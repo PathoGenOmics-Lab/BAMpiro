@@ -385,21 +385,37 @@ def test_call_tracts_requires_min_af():
     assert gc.call_tracts(positions, counts, min_af=0.61, min_sites=2) == [[30, 40]]
 
 
-def test_call_tracts_requires_min_depth():
-    """A site with too few reads breaks the run rather than joining it: a donor fraction
-    computed from two reads is not evidence of anything."""
+def test_a_shallow_site_bridges_a_tract_instead_of_breaking_it():
+    """A donor fraction computed from two reads is not evidence of anything, in EITHER direction.
+
+    It used to break the run, which meant one ordinary coverage dip inside a clean tract split it
+    into fragments that each fell below min_sites, and the whole tract vanished. Found on a
+    simulated cohort: a real four-site conversion went undetected because one site sat at depth 2.
+    The shallow site is skipped, so it neither joins the tract nor ends it.
+    """
     positions = [10, 20, 30, 40]
     counts = _counts(dict.fromkeys(positions, 1.0), depth={10: 10, 20: 10, 30: 2, 40: 10})
 
-    assert gc.call_tracts(positions, counts, min_sites=2, min_depth=5) == [[10, 20]]
+    # The shallow site is not a member, but the sites either side still form one tract.
+    assert gc.call_tracts(positions, counts, min_sites=2, min_depth=5) == [[10, 20, 40]]
+    # With the floor low enough to genotype it, it joins like any other site.
     assert gc.call_tracts(positions, counts, min_sites=2, min_depth=2) == [[10, 20, 30, 40]]
 
 
-def test_call_tracts_treats_an_undefined_fraction_as_not_donor():
+def test_a_site_carrying_the_acceptor_allele_does_end_a_tract():
+    """The counterpart: a MEASURED acceptor site is evidence, and it bounds the tract."""
+    positions = [10, 20, 30, 40]
+    counts = _counts({10: 1.0, 20: 1.0, 30: 0.0, 40: 1.0}, depth=20)
+
+    assert gc.call_tracts(positions, counts, min_sites=2, min_depth=5) == [[10, 20]]
+
+
+def test_a_site_with_no_informative_reads_also_bridges():
+    """No informative read at all is the same situation as too few: undetermined, not acceptor."""
     positions = [10, 20, 30, 40, 50]
     counts = _counts({10: 1.0, 20: 1.0, 30: None, 40: 1.0, 50: 1.0})
 
-    assert gc.call_tracts(positions, counts, min_sites=2, min_depth=1) == [[10, 20], [40, 50]]
+    assert gc.call_tracts(positions, counts, min_sites=2, min_depth=1) == [[10, 20, 40, 50]]
 
 
 # ---------------------------------------------------------------------- tract_evidence
@@ -468,14 +484,33 @@ def test_tract_evidence_averages_the_donor_fraction_outside_the_tract():
     assert ev["n_sites_outside"] == 2
 
 
-def test_tract_evidence_skips_uninformative_sites_when_averaging_outside():
+def test_an_undetermined_site_counts_as_outside_in_neither_direction():
+    """A site too shallow to genotype must not land in the "outside" average either.
+
+    Excluding it from the tract but still averaging its fraction into donor_af_outside lets a
+    number measured off a couple of reads push the mean past the mismapping threshold and flip a
+    real conversion. Found on a simulated cohort, where exactly that turned a true positive into
+    a mismapping call.
+    """
     positions = [10, 20, 30, 40]
     counts = _counts({10: 0.4, 20: 1.0, 30: 1.0, 40: None})
 
-    ev = gc.tract_evidence([20, 30], positions, counts, {})
+    ev = gc.tract_evidence([20, 30], positions, counts, {}, min_depth=5)
 
     assert ev["donor_af_outside"] == pytest.approx(0.4)
-    assert ev["n_sites_outside"] == 2           # still counted as a site outside
+    assert ev["n_sites_outside"] == 1, "the undetermined site must not be counted as outside"
+
+
+def test_a_shallow_site_does_not_drag_the_outside_average():
+    """The regression in full: one shallow donor-looking site outside a clean bounded tract."""
+    positions = [10, 20, 30, 40, 50]
+    counts = _counts({10: 0.0, 20: 1.0, 30: 1.0, 40: 1.0, 50: 0.0},
+                     depth={10: 30, 20: 30, 30: 30, 40: 2, 50: 30})
+
+    ev = gc.tract_evidence([20, 30], positions, counts, {}, min_depth=5)
+
+    assert ev["donor_af_outside"] == pytest.approx(0.0)
+    assert gc.classify(ev)[0] != "mismapping"
 
 
 def test_two_tracts_in_one_locus_shadow_each_other():
