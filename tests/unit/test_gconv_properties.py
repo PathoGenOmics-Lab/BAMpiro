@@ -30,6 +30,8 @@ from conftest import load_script
 
 gm = load_script("gconv_model")
 gc = load_script("gene_conversion")
+gcc = load_script("gconv_cohort")
+pm = load_script("paralog_map")
 
 CASES = 60          # per property; the whole file stays under a few seconds
 
@@ -368,3 +370,135 @@ def test_the_tool_produces_a_well_formed_file_from_any_alignment(seed, samtools,
         if r["post_conv"]:
             assert 0.0 <= float(r["post_conv"]) <= 1.0
         assert "\t" not in r["reason"] and "\n" not in r["reason"]
+
+
+# --------------------------------------------------------------------------------------------
+# The map parsers and the cohort pass, which had no randomised coverage at all.
+
+VERDICTS = ["gene_conversion", "ambiguous", "mismapping", "coverage_shift"]
+
+
+def _snp_text(rng):
+    """`show-snps` output, including deliberate multi-base deletion runs.
+
+    Drawing every position independently, which is the obvious way to write this, means a run of
+    consecutive acceptor positions sharing one donor position essentially never comes up, so the
+    branch that collapses a run into one site is never reached however the rows are checked
+    afterwards. The runs are therefore built on purpose.
+    """
+    def row(p1, b1, b2, p2, strand):
+        return "\t".join([str(p1), b1, b2, str(p2), "10", "10", "1", "1", "3000", "3000", "1",
+                          strand, "chr", "chr"])
+
+    out = []
+    for _ in range(rng.randint(0, 10)):
+        out.append(row(rng.randint(1, 5000), rng.choice(["A", "C", ".", "N"]),
+                       rng.choice(["A", "G", ".", "N"]), rng.randint(1, 5000),
+                       rng.choice(["1", "-1"])))
+    for _ in range(rng.randint(0, 3)):
+        p1, p2 = rng.randint(1, 4900), rng.randint(1, 5000)
+        strand = rng.choice(["1", "-1"])
+        for k in range(rng.randint(1, 6)):
+            out.append(row(p1 + k, rng.choice("ACGT"), ".", p2, strand))
+        if rng.random() < 0.5:          # a run broken by a gap in the acceptor positions
+            out.append(row(p1 + 20, rng.choice("ACGT"), ".", p2, strand))
+    return out
+
+
+def _expected_deletions(rows):
+    """What the deletion runs in `rows` have to come back as, worked out independently.
+
+    Deliberately not an invariant over the output. A mistake in collapsing a run corrupts the
+    length and the bases it was built from together, so the two stay consistent with each other
+    and every check that compares one against the other passes. Only an expectation built from
+    the INPUT can see it.
+    """
+    gaps = sorted((r[12], r[13], "-" if r[11] == "-1" else "+", int(r[0]), int(r[3]), r[1].upper())
+                  for r in rows if r[2].upper() == "." and r[1].upper() != ".")
+    want, i = {}, 0
+    while i < len(gaps):
+        t1, t2, strand, acc, don, base = gaps[i]
+        j, bases = i, [base]
+        while (j + 1 < len(gaps) and gaps[j + 1][:3] == (t1, t2, strand)
+               and gaps[j + 1][3] == gaps[j][3] + 1 and gaps[j + 1][4] == don):
+            j += 1
+            bases.append(gaps[j][5])
+        want[(t1, t2, strand, acc)] = "".join(bases)
+        i = j + 1
+    return want
+
+
+@pytest.mark.parametrize("seed", range(CASES))
+def test_the_map_parsers_survive_whatever_mummer_prints(seed):
+    rng = random.Random(9000 + seed)
+    lines = []
+    for _ in range(rng.randint(0, 8)):
+        if rng.random() < 0.15:
+            lines.append(rng.choice(["", "\t", "NUCMER", "junk", "1\t2\t3"]))
+        else:
+            lines.append("\t".join(
+                [str(rng.randint(1, 5000)) for _ in range(4)]
+                + ["600", "600", f"{rng.uniform(80, 100):.2f}", "3000", "3000", "20", "20",
+                   rng.choice(["chr", "ctg2"]), rng.choice(["chr", "ctg2"])]))
+    pairs = pm.parse_coords("\n".join(lines) + "\n", min_identity=rng.choice([0.0, 95.0]),
+                            min_length=rng.choice([0, 300]))
+    for pair in pairs:
+        assert pair["acc_start"] <= pair["acc_end"] and pair["don_start"] <= pair["don_end"]
+        assert pair["length"] == pair["acc_end"] - pair["acc_start"] + 1
+        assert pair["strand"] in "+-"
+
+    snp = _snp_text(rng)
+    sites, _skipped = pm.parse_snps("\n".join(snp) + "\n")
+    pm.sites_within_pairs(sites, pairs)
+
+    found = {(s["acceptor"], s["donor"], s["strand"], s["acc_pos"]): s
+             for s in sites if s["kind"] == "del"}
+    want = _expected_deletions([ln.split("\t") for ln in snp])
+    assert set(found) == set(want), f"seed {seed}: the deletion sites are not the ones in the text"
+    for key, bases in want.items():
+        site = found[key]
+        assert (site["acc_base"], site["length"]) == (bases, len(bases)), f"seed {seed}: {key}"
+
+    for site in sites:
+        assert site["kind"] in ("snp", "del")
+        assert site["acc_pos"] >= 1 and site["don_pos"] >= 1 and site["strand"] in "+-"
+        if site["kind"] == "del":
+            assert site["don_base"] == gm.GAP
+        else:
+            assert site["length"] == 1 and len(site["acc_base"]) == 1
+            assert site["acc_base"] != site["don_base"]
+
+
+@pytest.mark.parametrize("seed", range(CASES))
+def test_the_cohort_pass_annotates_every_row_it_is_given(seed):
+    rng = random.Random(4000 + seed)
+    rows = [{"sample": rng.choice(["A", "B", "C", ""]), "pair_id": str(rng.randint(0, 3)),
+             "contig": rng.choice(["chr", "ctg2", ""]), "donor": "chr",
+             "verdict": rng.choice(VERDICTS), "reason": "r",
+             "start": str(rng.randint(1, 500)), "end": str(rng.randint(1, 500)),
+             "don_start": rng.choice([str(rng.randint(1, 500)), "", "NA"]),
+             "don_end": rng.choice([str(rng.randint(1, 500)), "", "NA"]),
+             "log10_bf": rng.choice([str(round(rng.uniform(-9, 40), 2)), "", "NA"]),
+             "log10_bf_vs_null": rng.choice([str(round(rng.uniform(-9, 900), 2)), ""]),
+             "n_sites": rng.choice([str(rng.randint(0, 30)), "", "0"]),
+             "tract_af": "0.9", "mismap_frac": rng.choice(["0.01", "", "NA"])}
+            for _ in range(rng.randint(0, 15))]
+    loci = [{"sample": rng.choice(["A", "B", "C"]), "pair_id": str(rng.randint(0, 3)),
+             "log10_bf": rng.choice(["1.0", ""]), "mismap_frac": rng.choice(["0.02", ""]),
+             "mut_rate": "0.0003"} for _ in range(rng.randint(0, 10))]
+
+    out, n_samples = gcc.annotate(rows, loci, ubiquitous=rng.choice([0.1, 0.9]),
+                                  min_samples=rng.choice([0, 5]),
+                                  donor_margin=rng.choice([0.0, 1.0]))
+
+    assert len(out) == len(rows), f"seed {seed}: the cohort pass must not drop or invent rows"
+    for r in out:
+        assert r["cohort_verdict"] in VERDICTS + ["reference_artifact"]
+        for column in gcc.COHORT_COLUMNS:
+            assert column in r, f"seed {seed}: {column} missing"
+        assert r["is_representative"] in ("", 0, 1)
+        assert r["donor_call"] in ("", "resolved", "ambiguous", "only candidate")
+        if r["donor_rank"] != "":
+            assert 1 <= r["donor_rank"] <= r["n_donors"], f"seed {seed}: rank outside the field"
+        if r["event_samples"]:
+            assert r["event_samples"] <= n_samples, f"seed {seed}: more samples than the cohort has"
