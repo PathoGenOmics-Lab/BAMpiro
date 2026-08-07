@@ -123,11 +123,21 @@ def checkout(into):
     return into
 
 
-def run(root, only):
+def run(only):
+    """One target at a time, each in a checkout of its own.
+
+    Sharing a checkout across targets was measurably wrong: the same mutant survived when its
+    file was processed alone and was reported killed when another file had been processed first,
+    which is the failure that hides gaps rather than inventing them. The mechanism was never
+    pinned down, and a tool whose answer depends on what ran before it is not worth reasoning
+    about. A copy costs nothing next to a pytest run.
+    """
     survivors, killed, total = [], 0, 0
     for target in TARGETS:
         if only and only not in target:
             continue
+        work = Path(tempfile.mkdtemp(prefix="bampiro-mutants-"))
+        root = checkout(work)
         path = root / target
         original = path.read_text()
         backup = original
@@ -155,18 +165,14 @@ def run(root, only):
                     killed += 1
         finally:
             path.write_text(backup)
+            shutil.rmtree(work, ignore_errors=True)
 
     print(f"\n{killed}/{total} killed, {len(survivors)} survived")
     return survivors
 
 
 def main():
-    only = sys.argv[1] if len(sys.argv) > 1 else None
-    work = Path(tempfile.mkdtemp(prefix="bampiro-mutants-"))
-    try:
-        run(checkout(work), only)
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
+    run(sys.argv[1] if len(sys.argv) > 1 else None)
     return 0
 
 
