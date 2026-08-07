@@ -157,6 +157,27 @@ A sample never corroborates itself. A gene family reports the same converted str
 several relationships, so events are grouped on the acceptor's coordinates rather than on the
 paralog pair, and one sample's echoes count once.
 
+**Which relative did it come from?** Those several rows are two different things wearing the same
+shape, and the donor coordinates tell them apart. Where they name the SAME stretch of donor there
+is no source to choose between and the extra rows are redundancy; overlapping self-alignments of a
+tandem repeat do this, and their evidence ties to two decimal places. Where they name genuinely
+different places, one of them is the source, and the evidence per marker picks it out: how well
+that donor's sequence accounts for the reads, divided by how many markers it had to work with.
+
+Measured on the real genome, that separates a true source from a bystander by 19.1 against 1.4 per
+marker. It also fails, honestly, on four relatives separated by 0.17, where guessing would be
+wrong as often as right. Below `--gconv_donor_margin` the source is reported as `ambiguous`
+rather than picked. Across the benchmark: 14 sources named correctly, 1 called ambiguous, none
+named wrongly, with 27 rows collapsing to 19 events.
+
+| Column | What it says |
+| :--- | :--- |
+| `don_start`, `don_end` | Where in the donor the copied stretch sits |
+| `n_donors` | Distinct places in the genome the tract could have come from |
+| `donor_call` | `resolved`, `ambiguous`, or `only candidate` |
+| `donor_margin` | Evidence per marker between the best candidate and the next |
+| `is_representative` | One row per event and donor, for counting events rather than relationships |
+
 | Column | What it says |
 | :--- | :--- |
 | `event_id` | The same converted stretch across samples and across the relationships it is seen through |
@@ -253,6 +274,7 @@ the donor/acceptor graph of your reference.
 | `--gconv_ubiquitous` | `0.9` | Fraction of the cohort at which an event is a reference artifact |
 | `--gconv_corroborated_bf` | `2.0` | Bayes factor a sub-threshold tract needs before another sample's outright call can vouch for it |
 | `--gconv_cohort_min_samples` | `5` | Cohort size below which recurrence says too little to act on |
+| `--gconv_donor_margin` | `1.0` | Evidence per marker the best donor must beat the next distinct one by before the source is called resolved |
 
 !!! note "`--gconv_min_bq` is a floor, not a stringency dial"
 
@@ -337,6 +359,8 @@ between the last site carrying the acceptor allele and the first carrying the do
 crossover is somewhere in between. Pinning it down needs local reassembly of the region, which
 this does not do.
 
-It also reports each paralog pair independently. In a family where three or more copies are
-mutually similar, the same tract can appear against more than one donor, and choosing between them
-needs evidence this analysis does not gather.
+In a family where three or more copies are mutually similar, the same tract appears against more
+than one donor. The cohort pass collapses those into one event and names the source where the
+reads can name it, but when two relatives fit equally well it says so instead of choosing: what
+would settle it is which relative the acceptor matches at positions where the CANDIDATES differ
+from each other, and a short read spanning both copies is what carries that.

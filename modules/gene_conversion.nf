@@ -12,6 +12,7 @@ include { getSampleDir; getSavePath } from './utils'
 // tests/unit/test_gene_conversion.py checks this list against the tool.
 def gconvHeader() {
     return ['sample', 'pair_id', 'contig', 'donor', 'verdict', 'reason', 'start', 'end', 'span_bp',
+            'don_start', 'don_end',
             'post_conv', 'log10_bf', 'log10_bf_vs_null', 'tract_af', 'mismap_frac', 'mut_rate',
             'start_ci', 'end_ci',
             'n_sites', 'n_sites_outside', 'n_undetermined', 'donor_af_in', 'donor_af_outside',
@@ -130,11 +131,12 @@ process COLLECT_GENE_CONVERSION {
         --min-bf ${params.gconv_min_bf} \\
         --corroborated-bf ${params.gconv_corroborated_bf} \\
         --ubiquitous ${params.gconv_ubiquitous} \\
-        --min-samples ${params.gconv_cohort_min_samples}
+        --min-samples ${params.gconv_cohort_min_samples} \\
+        --donor-margin ${params.gconv_donor_margin}
     """
 
     stub:
     """
-    printf '${gconvHeader()}\\tevent_id\\tevent_samples\\tevent_frac\\tcohort_verdict\\tcohort_mismap\\tcohort_bf_median\\n' > ${basename}_gene_conversion.tsv
+    printf '${gconvHeader()}\\tevent_id\\tevent_samples\\tevent_frac\\tcohort_verdict\\tcohort_mismap\\tcohort_bf_median\\tdonor_rank\\tn_donors\\tdonor_margin\\tdonor_call\\tis_representative\\n' > ${basename}_gene_conversion.tsv
     """
 }

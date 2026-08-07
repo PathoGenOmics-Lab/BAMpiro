@@ -24,10 +24,12 @@ gcc = load_script("gconv_cohort")
 
 
 def tract(sample, pair="1", contig="chr", start=1000, end=1200, verdict="gene_conversion",
-          bf="12.0", **extra):
+          bf="12.0", don_start=5000, don_end=5200, bf_null="100.0", n_sites="5", **extra):
     row = {"sample": sample, "pair_id": pair, "contig": contig, "donor": "chr",
            "verdict": verdict, "reason": "because", "start": str(start), "end": str(end),
-           "log10_bf": bf, "tract_af": "0.9", "mismap_frac": "0.01"}
+           "don_start": str(don_start), "don_end": str(don_end),
+           "log10_bf": bf, "log10_bf_vs_null": bf_null, "n_sites": n_sites,
+           "tract_af": "0.9", "mismap_frac": "0.01"}
     row.update(extra)
     return row
 
@@ -222,3 +224,87 @@ def test_a_cohort_with_no_tract_at_all_is_not_an_error():
 
     assert out == []
     assert n == 10
+
+
+# ----------------------------------------------------------- which relative it came from
+
+
+def test_relationships_naming_the_same_stretch_of_donor_are_one_candidate():
+    """Overlapping self-alignments of a tandem repeat report one event several times and all
+    point at the same donor sequence. There is no source to choose between; the extra rows are
+    the family saying the same thing, and on the real genome their evidence ties to two decimals.
+    """
+    rows = [tract("S0", pair="5", don_start=5000, don_end=5200),
+            tract("S0", pair="6", don_start=5010, don_end=5210)]
+
+    out, _ = gcc.annotate(rows, cohort(10))
+
+    assert all(r["n_donors"] == 1 for r in out)
+    assert all(r["donor_call"] == "only candidate" for r in out)
+    assert sum(r["is_representative"] for r in out) == 1, "one row stands for the event"
+
+
+def test_the_relative_whose_sequence_fits_best_is_the_source():
+    """Where the candidates are genuinely different places in the genome, the evidence per marker
+    picks between them: how well that donor's sequence accounts for the reads, divided by how
+    many markers it had to work with. On the real genome the true source beat a bystander by
+    19.1 against 1.4 per site."""
+    rows = [tract("S0", pair="333", don_start=9000, don_end=9200, bf_null="12.0", n_sites="9"),
+            tract("S0", pair="334", don_start=5000, don_end=5200, bf_null="382.0", n_sites="20")]
+
+    out, _ = gcc.annotate(rows, cohort(10))
+
+    winner = next(r for r in out if r["is_representative"])
+    assert winner["pair_id"] == "334"
+    assert winner["n_donors"] == 2
+    assert winner["donor_call"] == "resolved"
+    assert winner["donor_margin"] > 1.0
+
+
+def test_two_relatives_that_fit_equally_well_are_not_chosen_between():
+    """The honest failure. In a family, several relatives can explain a tract equally well and
+    short reads do not carry what would settle it. Measured on the real genome: four candidates
+    separated by 0.17 per marker, where guessing would be wrong half the time."""
+    rows = [tract("S0", pair="124", don_start=1160539, don_end=1161165, bf_null="695.8", n_sites="20"),
+            tract("S0", pair="127", don_start=4059984, don_end=4060591, bf_null="692.3", n_sites="20")]
+
+    out, _ = gcc.annotate(rows, cohort(10))
+
+    assert all(r["donor_call"] == "ambiguous" for r in out)
+    assert all(r["n_donors"] == 2 for r in out)
+    assert sum(r["is_representative"] for r in out) == 1, "still one row per event to read"
+
+
+def test_the_margin_the_source_has_to_win_by_is_a_parameter():
+    rows = [tract("S0", pair="1", don_start=9000, don_end=9200, bf_null="90.0", n_sites="10"),
+            tract("S0", pair="2", don_start=5000, don_end=5200, bf_null="100.0", n_sites="10")]
+
+    lenient = gcc.annotate(rows, cohort(10), donor_margin=0.5)[0]
+    strict = gcc.annotate(rows, cohort(10), donor_margin=5.0)[0]
+
+    assert next(r for r in lenient if r["is_representative"])["donor_call"] == "resolved"
+    assert all(r["donor_call"] == "ambiguous" for r in strict)
+
+
+def test_each_sample_reads_the_donor_for_itself():
+    """Two samples carrying one event each get their own reading of where it came from, because
+    the evidence is theirs. Pooling them would let a well-covered sample speak for a thin one."""
+    rows = [tract("S0", pair="1", don_start=5000, don_end=5200),
+            tract("S1", pair="1", don_start=5000, don_end=5200)]
+
+    out, _ = gcc.annotate(rows, cohort(10))
+
+    assert sum(r["is_representative"] for r in out) == 2
+    assert {r["sample"] for r in out if r["is_representative"]} == {"S0", "S1"}
+
+
+def test_a_row_with_no_donor_coordinates_still_gets_a_verdict():
+    """A file written before the donor span was recorded must not lose its rows."""
+    rows = [tract("S0"), tract("S1")]
+    for r in rows:
+        del r["don_start"], r["don_end"]
+
+    out, _ = gcc.annotate(rows, cohort(10))
+
+    assert len(out) == 2
+    assert all(r["cohort_verdict"] == "gene_conversion" for r in out)

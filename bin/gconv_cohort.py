@@ -40,7 +40,8 @@ from gene_conversion import COLUMNS as TRACT_COLUMNS
 
 # Added to every row of the cohort file. The per-sample columns pass through untouched.
 COHORT_COLUMNS = ["event_id", "event_samples", "event_frac", "cohort_verdict",
-                  "cohort_mismap", "cohort_bf_median"]
+                  "cohort_mismap", "cohort_bf_median",
+                  "donor_rank", "n_donors", "donor_margin", "donor_call", "is_representative"]
 
 
 def read_tsv(paths):
@@ -98,6 +99,68 @@ def group_events(rows, slack=0):
                 cur_end = max(cur_end, end)
             event_of[i] = f"{contig}:{cur_id}" if contig else str(cur_id)
     return event_of
+
+
+def rank_donors(rows, indices, margin=1.0):
+    """Which relative the converted stretch actually came from, where the reads can say.
+
+    A gene family reports one event once per relationship, and those rows are two different
+    things wearing the same shape. Sometimes they point at the SAME stretch of donor, in which
+    case there is no choice to make and the extra rows are redundancy: overlapping self-alignments
+    of a tandem repeat do this, and their evidence comes out tied to two decimal places. Sometimes
+    they point at genuinely different places in the genome, and then one of them is the source.
+
+    The evidence is `log10_bf_vs_null` per marker: how well that relationship's donor sequence
+    accounts for what the reads carry, divided by how many markers it had to work with. Measured on
+    the real genome it separates a true source from a bystander by more than an order of magnitude
+    per site (19.1 against 1.4). It also honestly fails to separate two relatives that fit equally
+    well, which is why `donor_margin` is reported rather than a bare winner: below `margin` the
+    tract is compatible with either, and short reads do not carry what would settle it.
+    """
+    # Candidates are grouped by where in the DONOR the copied stretch sits, so the several
+    # relationships that name the same stretch count once.
+    cands = []
+    for i in indices:
+        r = rows[i]
+        try:
+            span = (int(r["don_start"]), int(r["don_end"]))
+        except (KeyError, TypeError, ValueError):
+            span = None
+        per = None
+        n = num(r, "n_sites")
+        bf = num(r, "log10_bf_vs_null")
+        if bf is not None and n:
+            per = bf / n
+        placed = False
+        for c in cands:
+            if span and c["span"] and not (span[1] < c["span"][0] or span[0] > c["span"][1]):
+                c["rows"].append(i)
+                c["span"] = (min(span[0], c["span"][0]), max(span[1], c["span"][1]))
+                if per is not None and (c["per"] is None or per > c["per"]):
+                    c["per"] = per
+                placed = True
+                break
+        if not placed:
+            cands.append({"span": span, "rows": [i], "per": per})
+
+    cands.sort(key=lambda c: (c["per"] is None, -(c["per"] or 0.0)))
+    gap = None
+    if len(cands) > 1 and cands[0]["per"] is not None and cands[1]["per"] is not None:
+        gap = cands[0]["per"] - cands[1]["per"]
+
+    out = {}
+    for rank, c in enumerate(cands, start=1):
+        # Inside one candidate the rows describe the same source, so the best-supported of them
+        # represents it and the rest are the family saying it again.
+        best = max(c["rows"], key=lambda i: (num(rows[i], "log10_bf_vs_null") or -1e9))
+        for i in c["rows"]:
+            out[i] = {"donor_rank": rank, "n_donors": len(cands),
+                      "donor_margin": "" if gap is None else round(gap, 2),
+                      "is_representative": int(rank == 1 and i == best),
+                      "donor_call": ("resolved" if rank == 1 and gap is not None and gap >= margin
+                                     else "only candidate" if len(cands) == 1
+                                     else "ambiguous")}
+    return out
 
 
 def locus_background(locus_rows):
@@ -160,7 +223,7 @@ def cohort_verdict(row, event, background, n_samples, min_bf, corroborated_bf,
 
 
 def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
-             ubiquitous=0.9, min_samples=5, slack=0):
+             ubiquitous=0.9, min_samples=5, slack=0, donor_margin=1.0):
     """Add the cohort columns to every tract row, revising the verdict where the cohort speaks."""
     event_of = group_events(tract_rows, slack)
     background = locus_background(locus_rows)
@@ -179,6 +242,17 @@ def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
         e["bf"].append(num(r, "log10_bf"))
         if (r.get("verdict") or "").strip() == "gene_conversion":
             e["called"].add(r.get("sample"))
+
+    # Donor resolution is per event PER SAMPLE: the several relationships are one sample's
+    # several views of one stretch, and two samples carrying the same event each get their own
+    # reading of where it came from.
+    by_event_sample = defaultdict(list)
+    for i, r in enumerate(tract_rows):
+        if event_of.get(i) is not None:
+            by_event_sample[(event_of[i], r.get("sample"))].append(i)
+    donors = {}
+    for idxs in by_event_sample.values():
+        donors.update(rank_donors(tract_rows, idxs, donor_margin))
 
     out = []
     for i, r in enumerate(tract_rows):
@@ -199,6 +273,8 @@ def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
             "cohort_mismap": "" if bg.get("mismap") is None else round(bg["mismap"], 4),
             "cohort_bf_median": "" if bg.get("bf") is None else round(bg["bf"], 2),
         })
+        row.update(donors.get(i, {"donor_rank": "", "n_donors": "", "donor_margin": "",
+                                  "donor_call": "", "is_representative": ""}))
         if verdict != (r.get("verdict") or "").strip():
             row["reason"] = reason
         out.append(row)
@@ -221,6 +297,9 @@ def parse_args(argv=None):
                    help="fraction of the cohort at which an event is called a reference artifact")
     p.add_argument("--min-samples", type=int, default=5,
                    help="cohort size below which recurrence says too little to act on")
+    p.add_argument("--donor-margin", type=float, default=1.0,
+                   help="evidence per marker, in log10, by which the best donor must beat the "
+                        "next distinct one before the source is called resolved")
     p.add_argument("--slack", type=int, default=0,
                    help="bases of tolerance when deciding two tracts are the same event")
     return p.parse_args(argv)
@@ -236,7 +315,7 @@ def main(argv=None) -> int:
     # a header made only of the columns this script adds.
     columns = (list(tracts[0].keys()) if tracts else list(TRACT_COLUMNS)) + COHORT_COLUMNS
     rows, n_samples = annotate(tracts, loci, a.min_bf, a.corroborated_bf,
-                               a.ubiquitous, a.min_samples, a.slack)
+                               a.ubiquitous, a.min_samples, a.slack, a.donor_margin)
 
     with open(a.output, "w") as fh:
         fh.write("\t".join(columns) + "\n")
@@ -247,8 +326,10 @@ def main(argv=None) -> int:
     artifacts = sum(1 for r in rows if r["cohort_verdict"] == "reference_artifact")
     rescued = sum(1 for r in rows if r["cohort_verdict"] == "gene_conversion"
                   and (r.get("verdict") or "").strip() != "gene_conversion")
+    reps = sum(1 for r in rows if r.get("is_representative") == 1)
     sys.stderr.write(
-        f"[gconv_cohort] {len(rows)} tract row(s) over {n_samples} sample(s), "
+        f"[gconv_cohort] {len(rows)} tract row(s) collapsing to {reps} event/donor call(s) "
+        f"over {n_samples} sample(s), "
         f"{len({r['event_id'] for r in rows})} distinct event(s); {changed} verdict(s) revised "
         f"({artifacts} as reference artifacts, {rescued} corroborated across samples)\n")
     return 0

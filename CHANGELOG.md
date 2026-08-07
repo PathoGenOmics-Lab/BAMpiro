@@ -78,6 +78,15 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
     donor's deletions as a real one would, 15 of 15 implanted tracts were found
     against 14, and the one that changed sides is a 99.4% pair with seven diagnostic
     sites in the whole locus.
+ - **A gene family's several views of one event collapse into one, with a source
+    named where the reads can name it.** Those rows are two different things wearing
+    the same shape, and the donor coordinates tell them apart: naming the same
+    stretch of donor is redundancy, naming different places is a real choice of
+    source. It is settled by evidence per marker, which on the real genome separates
+    a true source from a bystander by 19.1 against 1.4, and honestly fails to
+    separate four relatives sitting within 0.17 of each other. Across the benchmark:
+    14 sources named correctly, 1 reported ambiguous, none named wrongly, and 27
+    rows collapsing to 19 events.
  - **The cohort is read together, not one sample at a time.** Two questions cannot
     be answered from a single sample however good the model is. A tract in one
     sample of fifty is a finding; the same tract at the same coordinates in all

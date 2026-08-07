@@ -339,7 +339,10 @@ function renderGconv(){
       var d=gconvDef(t.verdict), bp=(t.bp_reads||0);
       return '<tr class="gcv-row" data-s="'+esc(t.s)+'"'+(st.hi==t.s?' style="background:'+TH.hl+'"':'')+'>'+
         '<td>'+esc(t.s)+'</td>'+
-        '<td>'+gconvLocus(t)+'</td>'+
+        '<td>'+gconvLocus(t)+(t.n_don>1?' <span class="gcv-mut" title="'+
+           (t.don_call==='resolved'?'the reads pick this relative out of '+t.n_don+' candidates':
+            'compatible with '+t.n_don+' relatives; short reads do not carry what would settle it')+
+           '">'+(t.don_call==='resolved'?'1 of ':'? of ')+t.n_don+'</span>':'')+'</td>'+
         '<td><span class="gcv-badge" style="background:'+d.c+'" title="'+esc(t.reason||d.tip)+'">'+d.lab+'</span></td>'+
         '<td class="gcv-num"><b'+(t.bf!=null&&t.bf>=3?' class="gcv-bp"':'')+'>'+gconvNum(t.bf,1)+'</b>'+
           (t.bf_null==null?'':' <span class="gcv-mut" title="log10 Bayes factor against no conversion at all. This is where depth, base quality and read linkage show up; the headline number is also limited by how implausible independent substitution is">/ '+t.bf_null.toFixed(0)+' vs none</span>')+'</td>'+
@@ -387,15 +390,19 @@ function renderGconv(){
       // cohort pass appends. The verdict column is the sample's own and cohort_verdict is what
       // the rest of the cohort made of it, which is the pair the file itself carries.
       var hdr=['sample','pair_id','contig','donor','verdict','reason','start','end','span_bp',
+               'don_start','don_end',
                'post_conv','log10_bf','log10_bf_vs_null','tract_af','mismap_frac','mut_rate','start_ci','end_ci',
                'n_sites','n_sites_outside','n_undetermined','donor_af_in','donor_af_outside',
                'min_depth','cis_reads','breakpoint_reads','donor_only_reads',
-               'event_id','event_samples','event_frac','cohort_verdict','cohort_mismap','cohort_bf_median'];
+               'event_id','event_samples','event_frac','cohort_verdict','cohort_mismap','cohort_bf_median',
+               'donor_rank','n_donors','donor_margin','donor_call','is_representative'];
       var lines=[hdr.join('\t')];
       ord.forEach(function(t){lines.push([t.s,t.pair,t.contig,t.donor,(t.sample_verdict||t.verdict),t.reason,t.start,t.end,t.span,
+        t.don_start,t.don_end,
         t.post,t.bf,t.bf_null,t.tract_af,t.mismap,t.mut_rate,t.start_ci,t.end_ci,
         t.n_sites,t.n_out,t.n_undet,t.af_in,t.af_out,t.depth,t.cis_reads,t.bp_reads,t.donor_only,
-        t.event,t.n_ev,t.ev_frac,t.verdict,t.co_mismap,t.co_bf].map(function(x){return x==null?'':x;}).join('\t'));});
+        t.event,t.n_ev,t.ev_frac,t.verdict,t.co_mismap,t.co_bf,
+        t.don_rank,t.n_don,t.don_margin,t.don_call,t.rep].map(function(x){return x==null?'':x;}).join('\t'));});
       dl(lines.join('\n')+'\n','gene_conversion.tsv','text/tab-separated-values');};
     if(cap){var nsamp={},ncall=counts.gene_conversion||0; rows.forEach(function(t){nsamp[t.s]=1;});
       cap.innerHTML=rows.length+' candidate tract(s) in '+Object.keys(nsamp).length+' sample(s) of the cohort in view &#183; <b'+

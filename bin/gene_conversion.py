@@ -379,6 +379,7 @@ LOCUS_COLUMNS = ["sample", "pair_id", "contig", "donor", "n_sites", "n_reads", "
                  "mut_rate"]
 
 COLUMNS = ["sample", "pair_id", "contig", "donor", "verdict", "reason", "start", "end", "span_bp",
+           "don_start", "don_end",
            "post_conv", "log10_bf", "log10_bf_vs_null", "tract_af", "mismap_frac", "mut_rate",
            "start_ci", "end_ci",
            "n_sites", "n_sites_outside", "n_undetermined", "donor_af_in", "donor_af_outside",
@@ -469,6 +470,7 @@ def main(argv=None) -> int:
         if proc.returncode != 0:
             raise RuntimeError(f"samtools view failed on {region}: {proc.stderr.strip()[:300]}")
 
+        don_pos_of = loc.get("donor_pos", {})
         obs = collect_read_observations(proc.stdout.splitlines(), loc["sites"])
         per_read = allele_view(obs, loc["sites"], a.min_bq)
         counts = pileup(per_read, positions)
@@ -509,6 +511,11 @@ def main(argv=None) -> int:
         in_any = {p for t in tracts for p in t}
         for fit, tract in zip(keep, tracts):
             ev = tract_evidence(tract, positions, counts, per_read, in_any, a.min_depth)
+            # Where in the DONOR the copied stretch came from. A gene family reports one event
+            # through several relationships, and this is what says whether they are pointing at
+            # the same piece of donor or at different ones, which is the difference between
+            # redundancy and a genuine choice of source.
+            dpos = [don_pos_of[p] for p in tract if p in don_pos_of]
             covers_locus = fit["map_i"] == 0 and fit["map_j"] == len(positions) - 1
             verdict, reason = gm.verdict(fit, covers_locus, a.min_bf, a.min_mismap,
                                          a.min_tract_af)
@@ -525,6 +532,8 @@ def main(argv=None) -> int:
                          "mut_rate": round(fit["mut_rate"], 5),
                          "start_ci": "{}-{}".format(*fit["start_ci"]),
                          "end_ci": "{}-{}".format(*fit["end_ci"]),
+                         "don_start": min(dpos) if dpos else None,
+                         "don_end": max(dpos) if dpos else None,
                          **ev})
 
         # Depth on the DONOR side of the same pair, to catch the tracts whose reads moved there.
