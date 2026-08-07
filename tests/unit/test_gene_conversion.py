@@ -16,6 +16,7 @@ reads have moved to the donor, which is the one thing no allele model can see.
 
 from __future__ import annotations
 
+import math
 import re
 import shutil
 import subprocess
@@ -211,6 +212,39 @@ def test_collect_read_alleles_labels_each_base_by_the_copy_it_belongs_to():
     # A third base is neither copy's allele: sequencing error or a real third state, but not
     # evidence about conversion either way, so it is kept out of the allele fraction.
     assert per_read["neither"] == {100: "other", 110: "other", 120: "other"}
+
+
+def test_a_deletion_site_is_read_as_presence_or_absence():
+    """Where the donor has no base, the question is whether the read has one, not which.
+
+    Inverting that reads every molecule backwards at exactly the sites the deletion markers were
+    added for, and it does so without changing anything else: the columns still fill in, the
+    verdict still comes out, and the tract is supported by the reads that contradict it.
+    """
+    sites = {100: ("A", gc.GAP), 110: ("A", "G")}
+    lines = [
+        # 13 aligned bases from 98, so 100 carries the base the donor does not have
+        _sam_line("kept", 98, "13M", "NN" + "A" + "N" * 9 + "G"),
+        # the same stretch with 100 deleted: no base there at all, which is the donor's state
+        _sam_line("lost", 98, "2M1D10M", "NN" + "N" * 9 + "G"),
+    ]
+
+    per_read = gc.collect_read_alleles(lines, sites)
+
+    assert per_read["kept"][100] == "acceptor"
+    assert per_read["lost"][100] == "donor"
+    assert per_read["lost"][110] == "donor", "the rest of the read still reads normally"
+
+
+@pytest.mark.parametrize("phred,kept", [(13, True), (12, False), (40, True)])
+def test_a_base_at_exactly_the_quality_floor_is_kept(phred, kept):
+    """`--min-bq` is the quality a base must reach, so reaching it is enough. The same floor is
+    applied in two places and only one of them was pinned."""
+    lines = [_sam_line("r", 100, "1M", "G", qual=chr(33 + phred))]
+
+    per_read = gc.collect_read_alleles(lines, SITES)
+
+    assert (per_read.get("r", {}).get(100) == "donor") is kept
 
 
 def test_collect_read_alleles_treats_two_mates_as_one_molecule():
@@ -467,14 +501,20 @@ def test_tract_evidence_min_depth_is_the_worst_site_inside_the_tract():
 # ------------------------------------------------------------------------- load_sites
 
 
-def _sites_tsv(path, loci, acc="A", don="G"):
-    """A sites.tsv in paralog_map.py's format: {pair_id: [acceptor positions]}."""
+def _sites_tsv(path, loci, acc="A", don="G", kinds=None):
+    """A sites.tsv in paralog_map.py's format: {pair_id: [acceptor positions]}.
+
+    `kinds` maps an acceptor position to "del", which is how the map records a base one copy has
+    and the other does not.
+    """
+    kinds = kinds or {}
     lines = ["\t".join(["pair_id", "acceptor", "acc_pos", "acc_base",
-                        "donor", "don_pos", "don_base", "strand"])]
+                        "donor", "don_pos", "don_base", "strand", "kind"])]
     for pair_id, positions in loci.items():
         for p in positions:
-            lines.append("\t".join([str(pair_id), CONTIG, str(p), acc,
-                                    CONTIG, str(p + 1200), don, "+"]))
+            kind = kinds.get(p, "snp")
+            lines.append("\t".join([str(pair_id), CONTIG, str(p), acc, CONTIG, str(p + 1200),
+                                    gc.GAP if kind == "del" else don, "+", kind]))
     path.write_text("\n".join(lines) + "\n")
     return str(path)
 
@@ -937,3 +977,57 @@ def test_a_setting_the_model_cannot_use_is_refused_before_any_reading_is_done(fl
         gc.parse_args(["--sites", "s.tsv", "--bam", "b.bam", "--sample", "S1", "-o", "o.tsv",
                        flag, value])
     assert e.value.code != 0
+
+
+@pytest.mark.parametrize("flag,value", [("--prior", "0"), ("--prior", "1"), ("--max-tracts", "1")])
+def test_a_setting_at_the_edge_of_what_is_allowed_is_allowed(flag, value):
+    """The other half of the guards above, and the half that stays broken quietly.
+
+    A guard one step too strict refuses a setting the tool documents, and the user reads a
+    refusal for a value the help told them to use. A prior of 0 and a prior of 1 are both
+    meaningful instructions, and one tract is the smallest number of tracts to look for.
+    """
+    a = gc.parse_args(["--sites", "s.tsv", "--bam", "b.bam", "--sample", "S1", "-o", "o.tsv",
+                       flag, value])
+
+    assert getattr(a, flag.lstrip("-").replace("-", "_")) == float(value)
+
+
+def test_a_deletion_marker_is_priced_as_an_indel_not_as_a_substitution(tmp_path, samtools):
+    """The KIND of each site has to reach the model, not just the position.
+
+    A base one copy has and the other does not is far rarer than a substitution, so a tract
+    carrying one has that much more going for it. Reading the column and then ignoring it, or
+    using it the wrong way round, changes no column in the output and no verdict here: only the
+    evidence moves, and nothing was asking about the evidence.
+
+    The tract has to leave sites outside it, because on a locus a tract covers entirely the
+    binding alternative is mismapping and the pricing of substitutions never comes into it. The
+    first version of this test made exactly that mistake and reported the same number twice.
+    """
+    pos = [100, 110, 120, 130, 140, 150, 160, 170]
+    # 25M covers 95-119, the 1D is 120, and 55M covers 121-175
+    read_at = lambda ref: ref - 95 if ref < 120 else 25 + (ref - 121)
+    seq = ["A"] * 80
+    for p in (110, 130):
+        seq[read_at(p)] = "G"                       # the donor base, either side of the deletion
+    records = [_sam_line(f"r{i}", 95, "25M1D55M", "".join(seq), qual="I" * 80) for i in range(14)]
+    bam = _bam(tmp_path, records)
+
+    def evidence(kinds, name):
+        out = tmp_path / f"{name}.tsv"
+        sites = _sites_tsv(tmp_path / f"{name}.sites", {0: pos}, kinds=kinds)
+        assert gc.main(["--sites", sites, "--bam", bam, "--sample", "S1", "-o", str(out),
+                        "--samtools", samtools, "--min-sites", "2", "--report-bf", "-99"]) == 0
+        body = [ln for ln in out.read_text().splitlines() if not ln.startswith("#")]
+        row = dict(zip(body[0].split("\t"), body[1].split("\t")))
+        assert (row["start"], row["end"]) == ("110", "130")
+        return float(row["log10_bf"])
+
+    as_indel = evidence({120: "del"}, "indel")
+    as_snp = evidence({}, "snp")
+
+    # An indel is priced at INDEL_MUT_FACTOR of a substitution, so the tract that carries one is
+    # ahead by exactly that ratio in log10. Asserting the amount rather than the direction is
+    # what makes this a test of the pricing instead of a test that the two runs differ.
+    assert as_indel - as_snp == pytest.approx(-math.log10(gc.gm.INDEL_MUT_FACTOR), abs=0.02)

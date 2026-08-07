@@ -203,6 +203,9 @@ def test_the_donor_coordinates_reach_the_cohort_pass_and_are_used(tmp_path, samt
     assert called["don_start"] and called["don_end"]
     # the donor stretch sits 1200 bases along, which is the offset the fixture alignment has
     assert int(called["don_start"]) - int(called["start"]) == 1200
+    assert int(called["don_end"]) - int(called["end"]) == 1200
+    # and it is a STRETCH: collapsing it to a point is what the cohort pass then merges donors on
+    assert int(called["don_end"]) > int(called["don_start"])
     # and having arrived, it was used: one relationship, so one candidate and nothing to choose
     assert called["n_donors"] == "1"
     assert called["donor_call"] == "only candidate"
