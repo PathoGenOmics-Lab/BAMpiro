@@ -1,3 +1,4 @@
+include { asBool } from './utils'
 nextflow.enable.dsl=2
 
 /* ====================================================================
@@ -131,7 +132,7 @@ process QC_REPORT {
     path("${basename}_qc_flags.tsv"),   emit: flags
 
     script:
-    def gate_arg = params.report_gate ? "--gate" : ""
+    def gate_arg = asBool(params.report_gate) ? "--gate" : ""
     def cons_arg = consensus ? "--consensus ${consensus}" : ""
     def palette  = "${projectDir}/assets/mycolorsTB_nature.tsv"
     """

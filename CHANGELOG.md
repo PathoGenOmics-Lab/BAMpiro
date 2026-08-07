@@ -115,6 +115,20 @@ to rebuild. A release only needs a new image when the Dockerfile changes.
 - **Community files** - CONTRIBUTING, a Code of Conduct, a security policy, issue
   forms, a pull-request template, `RELEASING.md` and `.zenodo.json`.
 
+### Fixed
+
+- **`--flag false` now means false on every supported Nextflow.** Up to Nextflow 24
+  a command-line parameter was coerced to the type of its config default; from
+  Nextflow 26 it arrives as the string `"false"`, which is truthy in Groovy. All 15
+  boolean flags were affected, so a run asked to skip the QC report, the consensus
+  or the SNP matrix produced them anyway, and the change arrived with a Nextflow
+  upgrade rather than with anything in this repository. Every Groovy-side test now
+  goes through `asBool()`, and the stub-run tests check both directions.
+- **`--find_gene_conversion` without `--exclude_repeats` stops the run.** The paralog
+  map comes from the self-alignment repeat masking computes, so with masking off the
+  stage produced a header-only file: an empty result that reads like "no conversion
+  anywhere" and means "this never ran".
+
 ### Changed
 
 - **`-profile standard` no longer submits to SLURM.** It is now the portable default

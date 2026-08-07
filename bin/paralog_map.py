@@ -31,6 +31,10 @@ COORDS_FIELDS = 13
 # show-snps -l -r -T -H: P1 SUB1 SUB2 P2 BUFF DIST R Q LENR LENQ FRM1 FRM2 TAG1 TAG2
 SNPS_FIELDS = 14
 
+# Coordinate bucket for the site-to-pair lookup. Paralogous alignments run to a few kb, so at
+# this size a pair lands in one or two buckets and a site only ever looks at its neighbours.
+BIN_SIZE = 100_000
+
 
 def _run(cmd):
     """Run a MUMmer command and return its stdout, failing loudly rather than silently empty."""
@@ -129,10 +133,20 @@ def sites_within_pairs(sites, pairs):
     and only one of them is that pair's own alignment. The offset picks it out. On H37Rv that is
     196 positions, every one of them resolved.
     """
+    # Bucketed by acceptor contig and coordinate, because without the early exit every site
+    # otherwise scans every pair. On a finished genome that is 411 pairs and does not matter; on
+    # a draft assembly, which is where the repeats are, 3000 pairs against 300k show-snps rows
+    # took a minute of quadratic scanning for an answer that touches a handful of them.
+    index = {}
+    for i, p in enumerate(pairs):
+        for b in range(p["acc_start"] // BIN_SIZE, p["acc_end"] // BIN_SIZE + 1):
+            index.setdefault((p["acceptor"], b), []).append(i)
+
     chosen = {}
     for site in sites:
-        for i, p in enumerate(pairs):
-            if site["acceptor"] != p["acceptor"] or site["donor"] != p["donor"]:
+        for i in index.get((site["acceptor"], site["acc_pos"] // BIN_SIZE), ()):
+            p = pairs[i]
+            if site["donor"] != p["donor"]:
                 continue
             if not p["acc_start"] <= site["acc_pos"] <= p["acc_end"]:
                 continue

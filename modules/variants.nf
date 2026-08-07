@@ -1,7 +1,7 @@
 nextflow.enable.dsl=2
 
 // Import centralized functions for path generation and file classification
-include { getSavePath; getSampleDir } from './utils'
+include { asBool; getSavePath; getSampleDir } from './utils'
 
 /* ====================================================================
     VARIANTS MODULES
@@ -16,7 +16,7 @@ process CALL_FREEBAYES {
     publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     
     // FreeBayes is single-threaded unless region-parallel is enabled; only bgzip uses extra cores.
-    cpus { params.freebayes_parallel ? (params.freebayes_parallel_jobs as int) : 2 }
+    cpus { asBool(params.freebayes_parallel) ? (params.freebayes_parallel_jobs as int) : 2 }
     memory { 8.GB * task.attempt }
 
     input:
@@ -48,7 +48,7 @@ process CALL_FREEBAYES {
         EXCL_ARG="-T ^exclude.regions.tsv"
     fi
 
-    # 2. Run FreeBayes (optionally region-parallel; params.freebayes_parallel)
+    # 2. Run FreeBayes (optionally region-parallel; asBool(params.freebayes_parallel))
     if [[ "!{params.freebayes_parallel}" == "true" ]]; then
       samtools faidx !{ref_fa}
       fasta_generate_regions.py !{ref_fa}.fai !{params.freebayes_parallel_chunk} > fb_regions.txt
@@ -278,7 +278,7 @@ process CALL_FREEBAYES_RAW {
     // consensus so it shows the pre-filter variant set. Mirrors CALL_FREEBAYES steps 2/3/5/6/8.
     tag "FreeBayes(raw): ${sampleId}"
     // FreeBayes is single-threaded unless region-parallel is enabled.
-    cpus { params.freebayes_parallel ? (params.freebayes_parallel_jobs as int) : 2 }
+    cpus { asBool(params.freebayes_parallel) ? (params.freebayes_parallel_jobs as int) : 2 }
     memory { 8.GB * task.attempt }
 
     input:

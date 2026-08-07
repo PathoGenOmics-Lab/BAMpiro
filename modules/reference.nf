@@ -1,3 +1,4 @@
+include { asBool } from './utils'
 nextflow.enable.dsl=2
 
 /* ====================================================================
@@ -14,7 +15,7 @@ process PREPARE_REFERENCE {
     publishDir path: { "${params.outdir}/references/${refId}" }, mode: params.publish_mode, saveAs: { filename ->
         // Hide the raw copy of reference.fa to save space (the original input already exists),
         // BUT keep it when publishing CRAM so the outputs are self-decodable.
-        if (filename == "reference.fa" && !params.output_cram) return null
+        if (filename == "reference.fa" && !asBool(params.output_cram)) return null
         return filename
     }
 

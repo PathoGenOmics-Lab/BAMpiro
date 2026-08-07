@@ -11,6 +11,7 @@ include { CALL_FREEBAYES_RAW } from '../modules/variants'
 // Aliases for the parallel virgin (unmasked) consensus path (a DSL2 process runs once per name)
 include { CALL_BACKBONE as CALL_BACKBONE_RAW; MERGE_VCFS as MERGE_VCFS_RAW } from '../modules/variants'
 include { CONSENSUS_FASTA as CONSENSUS_FASTA_RAW } from '../modules/consensus'
+include { asBool } from '../modules/utils'
 
 workflow MAKE_CONSENSUS {
 
@@ -25,7 +26,7 @@ workflow MAKE_CONSENSUS {
 
     // 7. Consensus Generation (Optional)
     def masked_consensus = Channel.empty()   // captured for the cohort QC report (section 11)
-    if (params.make_consensus) {
+    if (asBool(params.make_consensus)) {
         // Prepare inputs: VCF + Reference + Mask sites
         // Note: Script is called from bin/ directly in the module
         // refmeta from vbase so the masked consensus gets the combined (nucmer + genmap) exclude
@@ -36,11 +37,11 @@ workflow MAKE_CONSENSUS {
         masked_consensus = CONSENSUS_FASTA(cons_in).fasta
 
         // 7b. Virgin (unmasked) consensus from the ORIGINAL dedup BAM, in parallel with the masked one.
-        if (params.keep_virgin_consensus && params.dynamic_read_filter) {
+        if (asBool(params.keep_virgin_consensus) && asBool(params.dynamic_read_filter)) {
             def raw_bb_in = dedup_bam.map { sId, rId, bam, bai, ref_fa, excl -> tuple(sId, rId, bam, bai, ref_fa) }
             def bb_raw = CALL_BACKBONE_RAW(raw_bb_in)
             // Virgin SNPs: re-call FreeBayes on the raw bam (shows pre-filter variants) or reuse masked SNPs.
-            def raw_snps = params.virgin_full_freebayes ? CALL_FREEBAYES_RAW(dedup_bam).snps : fb_snps
+            def raw_snps = asBool(params.virgin_full_freebayes) ? CALL_FREEBAYES_RAW(dedup_bam).snps : fb_snps
             def merge_raw = raw_snps.join(bb_raw.backbone, by: [0,1]).join(bb_raw.header, by: [0,1])
                 .map { sId, rId, sv, st, bv, bt, hdr -> tuple(sId, rId, sv, st, bv, bt, hdr, ".raw") }
             def vcf_raw = MERGE_VCFS_RAW(merge_raw)

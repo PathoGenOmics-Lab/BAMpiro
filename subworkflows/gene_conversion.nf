@@ -14,6 +14,7 @@
  */
 
 include { PARALOG_MAP; FIND_GENE_CONVERSION; COLLECT_GENE_CONVERSION } from '../modules/gene_conversion'
+include { asBool } from '../modules/utils'
 
 workflow GENE_CONVERSION {
 
@@ -26,7 +27,7 @@ workflow GENE_CONVERSION {
     def cohort = Channel.empty()
     def tracts = Channel.empty()
 
-    if (params.find_gene_conversion) {
+    if (asBool(params.find_gene_conversion)) {
         def maps = PARALOG_MAP(ref_delta)
 
         // Fan the per-reference site list out to every sample mapped against that reference.

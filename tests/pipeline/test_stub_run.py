@@ -138,3 +138,59 @@ def test_single_end_and_paired_end_samples_both_flow_through(nextflow, nextflow_
     assert "MAPPING_SE" in ran, "the single-end mapping branch never ran"
     assert "MAPPING_PE" in ran, "the paired-end mapping branch never ran"
     assert "FASTP_SE" in ran and "FASTP_PE" in ran
+
+
+def test_gene_conversion_refuses_to_run_without_the_masking_it_reads_from(
+        nextflow, nextflow_env, tmp_path):
+    """The paralog map comes from the self-alignment repeat masking computes.
+
+    With `--exclude_repeats false` that alignment is never produced, and the stage used to run
+    anyway: no map, no sites, and a header-only cohort file. An empty result that reads exactly
+    like "no conversion anywhere" while meaning "this analysis never ran" is the worst of both,
+    so the run stops and says which flag to change.
+    """
+    result = run_pipeline(
+        nextflow, nextflow_env, tmp_path,
+        "-profile", "test", "-stub-run",
+        "--outdir", str(tmp_path / "out"),
+        "--mappability_dir", str(tmp_path / "mappability"),
+        "--find_gene_conversion", "true",
+        "--exclude_repeats", "false",
+        timeout=900,
+    )
+
+    assert result.returncode != 0
+    assert "--find_gene_conversion needs --exclude_repeats true" in result.stdout + result.stderr
+    assert not list((tmp_path / "out").glob("*_gene_conversion.tsv"))
+
+
+@pytest.mark.parametrize("flag,process", [
+    ("--make_qc_report", "QC_REPORT"),
+    ("--make_snp_matrix", "SNP_MATRIX"),
+    ("--make_consensus", "CONSENSUS_FASTA"),
+    ("--annotate_main_vcf", "ANNOTATE_MAIN_VCF"),
+])
+def test_turning_a_feature_off_from_the_command_line_turns_it_off(
+        nextflow, nextflow_env, tmp_path, flag, process):
+    """`--flag false` has to mean false, on every Nextflow the pipeline supports.
+
+    It did not. Up to Nextflow 24 a command-line parameter was coerced to the type of its config
+    default; from 26 it arrives as the STRING "false", and a non-empty String is truthy in Groovy.
+    So `if (params.make_qc_report)` was true and the report was produced by a run that had asked
+    for no report. Fifteen boolean flags had the same hole, and it opened on a Nextflow upgrade
+    rather than on any change here, which is the kind of thing only a test across versions finds.
+    """
+    trace = tmp_path / "trace.txt"
+    run_pipeline(
+        nextflow, nextflow_env, tmp_path,
+        "-profile", "test", "-stub-run",
+        "--outdir", str(tmp_path / "out"),
+        "--mappability_dir", str(tmp_path / "mappability"),
+        flag, "false",
+        "-with-trace", str(trace),
+        timeout=900,
+    )
+
+    # Compared on the LAST segment of "SUBWORKFLOW:PROCESS", and exactly: MULTIQC_REPORT contains
+    # QC_REPORT as a substring, so a loose match quietly tests a different process.
+    assert process not in executed_processes(trace)

@@ -7,6 +7,7 @@
 
 include { ANNOTATE_CANONICAL } from '../modules/annotation'
 include { COLLECT_SUMMARY; COLLECT_DR; LIFT_VARIANTS; QC_REPORT; SNP_MATRIX } from '../modules/report'
+include { asBool } from '../modules/utils'
 
 workflow COHORT_REPORT {
 
@@ -29,14 +30,14 @@ workflow COHORT_REPORT {
     // Per-sample annotated VCFs, shared by both: prefer the annotated freebayes VCF (per-alt AD ->
     // continuous AF + gene/effect); fall back to the annotated main VCF (GT-based AF) if legacy
     // annotation is off. reference name(s) the samples were mapped against.
-    def report_vcfs = (params.annotate_legacy_vcfs ? freebayes_ann
+    def report_vcfs = (asBool(params.annotate_legacy_vcfs) ? freebayes_ann
                                                    : vcf_for_stats.map { sId, rId, vcf -> vcf })
                       .collect().ifEmpty([])
     def ref_name = refMap.keySet().join(',')
 
     // 11a. Consolidated QC report: aggregate every per-sample legacy log into one summary TSV, then
     // render the self-contained interactive HTML + PASS/WARN/FAIL flags.
-    if (params.make_qc_report) {
+    if (asBool(params.make_qc_report)) {
         def all_logs = legacy_log.collect()
         def summ = COLLECT_SUMMARY(all_logs, tsv_name)
         def cons_files = masked_consensus.map { sId, rId, fa -> fa }.collect().ifEmpty([])
@@ -59,13 +60,13 @@ workflow COHORT_REPORT {
         // are referenced through projectDir so a stray NO_FILE in the launch directory is never picked up.
         // QC_REPORT recognises them by the NO_FILE* prefix.
         // Drug-resistance calls (pathotypr DR run -> one run TSV); placeholder when pathotypr is off.
-        def dr_report = params.run_pathotypr
+        def dr_report = asBool(params.run_pathotypr)
             ? COLLECT_DR(patho_dr_results.map { sId, f -> f }.collect().ifEmpty([]), tsv_name).dr
             : file("${projectDir}/assets/NO_FILE_DR")
         // Canonical-reference-annotated VCFs for the dual amino-acid numbering (off unless annotate_canonical).
         // vcf_for_stats is the per-sample (sId,rId,vcf) channel; its positions match report_vcfs, so the
         // report's sample+position merge finds each variant's canonical amino-acid change.
-        def report_vcfs_h37rv = params.annotate_canonical
+        def report_vcfs_h37rv = asBool(params.annotate_canonical)
             ? ANNOTATE_CANONICAL(vcf_for_stats, params.canonical_snpeff_db).out
                              .map { sId, vcf -> vcf }.collect().ifEmpty([])
             : file("${projectDir}/assets/NO_FILE_H37RV")
@@ -79,7 +80,7 @@ workflow COHORT_REPORT {
         // lift the run's variant positions (mapping-reference coords) onto H37Rv and hand the map to the report.
         def report_ref_fa = ref_bundle.filter { rId, fa, idx, excl -> rId == report_ref }
                                       .map { rId, fa, idx, excl -> fa }.first()
-        def pos_liftover  = params.variant_liftover
+        def pos_liftover  = asBool(params.variant_liftover)
             ? LIFT_VARIANTS(report_vcfs, report_ref_fa, report_ref, tsv_name).map
             : file("${projectDir}/assets/NO_FILE_LIFTOVER")
         QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
@@ -88,7 +89,7 @@ workflow COHORT_REPORT {
     }
 
     // 11b. Master SNP matrix: rows = SNP sites, columns = reference/annotation + per-sample AF & depth.
-    if (params.make_snp_matrix) {
+    if (asBool(params.make_snp_matrix)) {
         SNP_MATRIX(report_vcfs, ref_name, tsv_name)
     }
 }
