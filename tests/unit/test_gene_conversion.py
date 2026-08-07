@@ -571,7 +571,7 @@ def test_main_end_to_end(tmp_path, samtools, capsys):
     assert gc.main(["--sites", sites, "--bam", bam, "--sample", "S1", "-o", str(out),
                     "--samtools", samtools]) == 0
 
-    lines = out.read_text().rstrip("\n").split("\n")
+    lines = [ln for ln in out.read_text().rstrip("\n").split("\n") if not ln.startswith("#")]
     header = lines[0].split("\t")
     rows = [dict(zip(header, line.split("\t"))) for line in lines[1:]]
 
@@ -624,7 +624,8 @@ def test_main_skips_a_locus_with_too_few_diagnostic_sites(tmp_path, samtools):
     assert gc.main(["--sites", sites, "--bam", bam, "--sample", "S1", "-o", str(out),
                     "--samtools", samtools]) == 0
 
-    assert out.read_text() == "\t".join(gc.COLUMNS) + "\n"
+    body = [ln for ln in out.read_text().splitlines() if not ln.startswith("#")]
+    assert body == ["\t".join(gc.COLUMNS)]
 
 
 def test_main_model_thresholds_reach_the_model(tmp_path, samtools):
@@ -644,17 +645,18 @@ def test_main_model_thresholds_reach_the_model(tmp_path, samtools):
     argv = ["--sites", sites, "--bam", bam, "--sample", "S1", "-o", str(out),
             "--samtools", samtools]
 
+    def body():
+        return [ln for ln in out.read_text().splitlines() if not ln.startswith("#")]
+
     assert gc.main(argv) == 0
-    rows = out.read_text().splitlines()
-    assert len(rows) == 2 and "\tgene_conversion\t" in rows[1]
+    assert len(body()) == 2 and "\tgene_conversion\t" in body()[1]
 
     assert gc.main(argv + ["--min-bf", "99"]) == 0
-    rows = out.read_text().splitlines()
-    assert len(rows) == 2 and "\tambiguous\t" in rows[1]
+    assert len(body()) == 2 and "\tambiguous\t" in body()[1]
 
     # Past the reporting threshold the row goes away entirely.
     assert gc.main(argv + ["--report-bf", "99"]) == 0
-    assert len(out.read_text().splitlines()) == 1
+    assert len(body()) == 1
 
 
 def test_the_nextflow_module_writes_the_same_header_the_tool_does(repo_root):
@@ -707,7 +709,8 @@ def test_script_runs_as_a_subprocess(tmp_path, samtools, repo_root):
 
     assert res.returncode == 0, res.stderr
     assert "1 candidate tract(s)" in res.stderr
-    assert out.read_text().splitlines()[1].startswith("S1\t0\t")
+    body = [ln for ln in out.read_text().splitlines() if not ln.startswith("#")]
+    assert body[1].startswith("S1\t0\t")
 
 
 # --------------------------------------------------------------------------- #
@@ -856,3 +859,27 @@ def test_depletion_needs_the_reads_to_be_somewhere():
     donor = dict.fromkeys(positions, 0)
 
     assert gc.depleted_runs(positions, counts, donor, min_depth=5, min_sites=3) == []
+
+
+def test_the_output_records_the_settings_that_produced_it(tmp_path, samtools):
+    """A results table whose verdicts depend on seventeen settings, and which does not say what
+    they were, cannot be checked against another run or reproduced a year later.
+
+    Written as a `#` header so the file stays a plain TSV: every reader here skips those, and so
+    does the report's parser.
+    """
+    records = [_read_at(f"r{i}", 100, {100: "G", 110: "G", 120: "G"}, length=30) for i in range(6)]
+    bam = _bam(tmp_path, records)
+    sites = _sites_tsv(tmp_path / "sites.tsv", {0: [100, 110, 120]})
+    out = tmp_path / "tracts.tsv"
+
+    assert gc.main(["--sites", sites, "--bam", bam, "--sample", "S1", "-o", str(out),
+                    "--samtools", samtools, "--min-bf", "4.5", "--mut-rate", "0.002"]) == 0
+
+    head = out.read_text().splitlines()[0]
+    assert head.startswith("# gene_conversion.py")
+    assert "min_bf=4.5" in head and "mut_rate=0.002" in head
+    for name in gc.PROVENANCE_ARGS:
+        assert f"{name}=" in head, f"{name} moves the numbers but is not recorded"
+    # and the table underneath is still exactly a TSV
+    assert out.read_text().splitlines()[1] == "\t".join(gc.COLUMNS)

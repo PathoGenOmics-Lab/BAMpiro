@@ -242,7 +242,7 @@ function renderVarDose(){
 // fixed the donor allele is inside the tract (donor_af_in), whether it also turns up outside (
 // donor_af_outside), and whether one molecule carries donor alleles on one side of a breakpoint and
 // acceptor alleles on the other, in cis (breakpoint_reads) - the piece a mismapping cannot fake.
-var gconvState={q:'',v:'',sk:'bf',asc:false};
+var gconvState={q:'',v:'',sk:'bf',asc:false,oneper:true};
 var GCONV_MAXROWS=400;
 var GCONV_V=[{k:'gene_conversion',lab:'gene conversion',c:'#2ea36b',r:0,
               tip:'a tract explains the reads far better than an independent substitution or reads arriving from the donor'},
@@ -254,6 +254,17 @@ var GCONV_V=[{k:'gene_conversion',lab:'gene conversion',c:'#2ea36b',r:0,
               tip:'the acceptor lost its reads to the donor over a run of sites. Consistent with a conversion longer than the library insert, and equally with a deletion. Not a conversion call'},
              {k:'reference_artifact',lab:'reference artifact',c:'#7a8794',r:4,
               tip:'present in nearly every sample of the cohort. The reference being wrong here, or the aligner doing this to everybody, explains that more simply than the same conversion arising in every isolate. In a CLONAL cohort it may instead be shared ancestry, which recurrence alone cannot distinguish. Only a cohort can make this call at all'}];
+// The settings that produced these verdicts, shown beside them. A panel that displays a verdict
+// without saying under which rules cannot be checked against another run, and the global run
+// header only carries the reference and the container.
+function gconvSettings(){
+  var p=R.provenance||{}, keys=[], out=[];
+  for(var k in p){ if(k.indexOf('gconv_')===0)keys.push(k); }
+  if(!keys.length)return '';
+  keys.sort();
+  for(var i=0;i<keys.length;i++)out.push(esc(keys[i].replace('gconv_',''))+' '+esc(p[keys[i]]));
+  return '<div class="gcv-settings" title="Every setting here moves the verdicts above. The output TSV carries the full list as # header lines.">settings &#183; '+out.join(' &#183; ')+'</div>';
+}
 function gconvDef(v){for(var i=0;i<GCONV_V.length;i++){if(GCONV_V[i].k===v)return GCONV_V[i];}
   return {k:v||'',lab:(v||'unknown').replace(/_/g,' '),c:'#94a3b8',r:3,tip:'verdict not recognised'};}
 function gconvId(t){return t.s+'|'+t.pair+'|'+t.start;}
@@ -275,7 +286,12 @@ function renderGconv(){
   var rows=G.tracts.filter(function(t){return vis[t.s];});
   if(sb){ if(sb.value!==gconvState.q)sb.value=gconvState.q;
     sb.oninput=function(){ gconvState.q=this.value.trim(); draw(); }; }
+  var hasRep=rows.some(function(t){return t.rep!=null;});
   function match(t){
+    // A gene family reports one converted stretch once per relationship. Showing them all makes
+    // one event look like three findings, so by default only the row that stands for the event
+    // and its source is listed, and the rest are one click away.
+    if(hasRep&&gconvState.oneper&&t.rep!==1)return false;
     if(gconvState.v&&t.verdict!==gconvState.v)return false;
     var q=gconvState.q.toLowerCase(); if(!q)return true;
     return (t.s.toLowerCase().indexOf(q)>=0)||((t.contig||'').toLowerCase().indexOf(q)>=0)||
@@ -362,7 +378,9 @@ function renderGconv(){
       (rows.length?'no tract matches the filter.':'no tract in the samples currently in view.')+'</td></tr>';
     host.innerHTML='<div class="gcv-verdicts">'+chips+'</div>'+
       '<div class="gcv-plotscroll">'+svg+'</div>'+legend+
-      '<div class="dr-controls"><button class="dyn-btn" id="gcvdl" title="Download the tracts listed below as a TSV">'+icon('download')+'download tracts (TSV)</button>'+
+      '<div class="dr-controls">'+
+      (hasRep?'<label class="dyn-lab" title="A gene family reports one event once per relationship. Off, each of those rows is listed separately."><input type="checkbox" id="gcvrep"'+(gconvState.oneper?' checked':'')+'> one row per event</label>':'')+
+      '<button class="dyn-btn" id="gcvdl" title="Download the tracts listed below as a TSV">'+icon('download')+'download tracts (TSV)</button>'+
       '<span class="dyn-count">'+ord.length+' tract(s)'+(ord.length>GCONV_MAXROWS?' · showing first '+GCONV_MAXROWS+' (download for all)':'')+'</span></div>'+
       '<div class="epitbl-wrap gcv-tablewrap"><table class="epitbl gcv-table"><thead><tr>'+
         th('s','Sample')+th('locus','Locus','','the acceptor locus and the donor its alleles came from')+th('verdict','Verdict')+
@@ -385,6 +403,7 @@ function renderGconv(){
       if(gconvState.sk===k)gconvState.asc=!gconvState.asc; else{gconvState.sk=k; gconvState.asc=(k=='s'||k=='locus'||k=='verdict');}
       draw();};});
     Array.prototype.forEach.call(host.querySelectorAll('[data-s]'),function(e){e.onclick=function(){setHi(e.getAttribute('data-s'));};});
+    var rb=el('gcvrep'); if(rb)rb.onchange=function(){gconvState.oneper=this.checked; draw();};
     var db=el('gcvdl'); if(db)db.onclick=function(){
       // Laid out exactly like the cohort TSV on disk: the tool's own columns, then the ones the
       // cohort pass appends. The verdict column is the sample's own and cohort_verdict is what
@@ -404,10 +423,14 @@ function renderGconv(){
         t.event,t.n_ev,t.ev_frac,t.verdict,t.co_mismap,t.co_bf,
         t.don_rank,t.n_don,t.don_margin,t.don_call,t.rep].map(function(x){return x==null?'':x;}).join('\t'));});
       dl(lines.join('\n')+'\n','gene_conversion.tsv','text/tab-separated-values');};
-    if(cap){var nsamp={},ncall=counts.gene_conversion||0; rows.forEach(function(t){nsamp[t.s]=1;});
-      cap.innerHTML=rows.length+' candidate tract(s) in '+Object.keys(nsamp).length+' sample(s) of the cohort in view &#183; <b'+
+    if(cap){var nsamp={},ncall=0,nev={}; rows.forEach(function(t){nsamp[t.s]=1;
+        if(t.event!=null&&t.event!=='')nev[t.event]=1;
+        if(t.verdict==='gene_conversion'&&(t.rep==null||t.rep===1))ncall++;});
+      var evtxt=Object.keys(nev).length?(Object.keys(nev).length+' event(s) over '+rows.length+' row(s)')
+                                       :(rows.length+' candidate tract(s)');
+      cap.innerHTML=evtxt+' in '+Object.keys(nsamp).length+' sample(s) of the cohort in view &#183; <b'+
         (ncall?' class="sc-sig"':'')+'>'+ncall+' called gene conversion</b>, '+(counts.ambiguous||0)+' ambiguous, '+(counts.mismapping||0)+
-        ' mismapping, '+(counts.coverage_shift||0)+' coverage shift, '+(counts.reference_artifact||0)+' reference artifact &#183; <b>'+nbp+'</b> supported by a read crossing a breakpoint in cis. <span class="krk-mut">These loci are repeats, so they are excluded from variant calling and the consensus by design: a tract will not appear in the SNP matrix, and that is expected. Breakpoints are located to diagnostic-site resolution, not to the base, and each paralog pair is judged independently, so one tract can be reported against more than one donor. Candidates to inspect, not confirmed events.</span>';}
+        ' mismapping, '+(counts.coverage_shift||0)+' coverage shift, '+(counts.reference_artifact||0)+' reference artifact &#183; <b>'+nbp+'</b> supported by a read crossing a breakpoint in cis. <span class="krk-mut">These loci are repeats, so they are excluded from variant calling and the consensus by design: a tract will not appear in the SNP matrix, and that is expected. Breakpoints are located to diagnostic-site resolution, not to the base, and each paralog pair is judged independently, so one tract can be reported against more than one donor. Candidates to inspect, not confirmed events.</span>'+gconvSettings();}
   }
   draw();
 }

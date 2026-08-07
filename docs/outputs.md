@@ -57,8 +57,32 @@ results_bampiro/
         ├── MP00091...kraken.report         # -> Taxonomic classification report (only with --kraken2_db)
         ├── MP00091.LENS.snpeff.csv         # -> Variant effect statistics
         ├── MP00091__<runId>.dr_mutations.tsv  # -> Pathotypr per-sample DR mutations (only if --run_pathotypr)
+        ├── MP00091.LENS.gene_conversion.tsv       # -> Conversion tracts (only if --find_gene_conversion)
+        ├── MP00091.LENS.gene_conversion_loci.tsv  # -> One row per paralog pair looked at, found or not
         └── Locus_to_exclude_LENS.txt       # -> List of repetitive regions excluded from calling
 ```
+
+## Gene conversion
+
+Off unless `--find_gene_conversion true`. Four files, and which one to open depends on the
+question. Full detail in [gene conversion](gene-conversion.md).
+
+| File | Where | What it is |
+| :--- | :--- | :--- |
+| `<samplesheet>_gene_conversion.tsv` | `outdir/` | **Start here.** Every sample's tracts with the cohort's reading on top: how many samples carry each event, which relative it came from, and whether recurrence says the reference rather than the isolates |
+| `<sample>.<ref>.gene_conversion.tsv` | per sample, `stats/` | That sample's tracts on their own, before the cohort was consulted |
+| `<sample>.<ref>.gene_conversion_loci.tsv` | per sample, `stats/` | One row per paralog pair analysed, reported or not. Written for the cohort pass, and the place to look when you expected a call somewhere and got none |
+| `<refId>.paralog_pairs.tsv`, `<refId>.paralog_sites.tsv` | `references/<refId>/` | The donor/acceptor graph of your reference and every position the copies differ at. Computed once per reference and worth a look on its own |
+
+Every one of them opens with `#` lines naming the tool and each setting that moved a number in
+it, so a table can be checked against another run a year later. The cohort file carries the
+per-sample lines as well, which is what shows a cohort assembled from samples run differently.
+
+!!! note "These loci are excluded from variant calling by design"
+
+    A tract sits inside a repeat, so it will not appear in the SNP matrix or the consensus. That
+    is expected, and it is why the stage reads the deduplicated pre-filter alignment rather than
+    the one everything else uses.
 
 ## QC flag codes
 

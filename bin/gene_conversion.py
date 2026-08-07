@@ -39,6 +39,7 @@ MAPQ 0, so the usual quality gate would discard the entire signal this tool exis
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from collections import defaultdict
@@ -386,8 +387,24 @@ COLUMNS = ["sample", "pair_id", "contig", "donor", "verdict", "reason", "start",
            "min_depth", "cis_reads", "breakpoint_reads", "donor_only_reads"]
 
 
-def write_tsv(path, columns, rows):
+# Parameters that change the numbers in the output. Recorded in the file itself, because a
+# results table whose verdicts depend on seventeen settings and does not say what they were
+# cannot be checked, compared against another run, or reproduced a year later.
+PROVENANCE_ARGS = ["min_bf", "report_bf", "prior", "mean_tract_bp", "max_tract_bp", "max_tracts",
+                   "mut_rate", "indel_factor", "min_tract_af", "min_mismap", "min_sites",
+                   "min_depth", "min_bq"]
+
+
+def provenance_line(args):
+    """A `#` header naming the tool and every setting that moved a number in this file."""
+    kv = " ".join(f"{k}={getattr(args, k)}" for k in PROVENANCE_ARGS if hasattr(args, k))
+    return f"# gene_conversion.py sites={os.path.basename(args.sites)} {kv}"
+
+
+def write_tsv(path, columns, rows, header=None):
     with open(path, "w") as fh:
+        if header:
+            fh.write(header + "\n")
         fh.write("\t".join(columns) + "\n")
         for r in rows:
             fh.write("\t".join("" if r.get(c) is None else str(r.get(c, "")) for c in columns) + "\n")
@@ -566,9 +583,10 @@ def main(argv=None) -> int:
                 "min_depth": min(counts[p]["depth"] for p in run),
                 "cis_reads": 0, "breakpoint_reads": 0, "donor_only_reads": 0})
 
-    write_tsv(a.output, COLUMNS, rows)
+    prov = provenance_line(a)
+    write_tsv(a.output, COLUMNS, rows, prov)
     if a.output_loci:
-        write_tsv(a.output_loci, LOCUS_COLUMNS, locus_rows)
+        write_tsv(a.output_loci, LOCUS_COLUMNS, locus_rows, prov)
 
     called = sum(1 for r in rows if r["verdict"] == "gene_conversion")
     sys.stderr.write(f"[gene_conversion] {a.sample}: {len(rows)} candidate tract(s), "

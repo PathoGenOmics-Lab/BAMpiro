@@ -223,3 +223,10 @@ html.dark .dyn-search,html.dark .gsearch,html.dark .controls input[type=search]{
 table.epitbl th.gcv-sortable{user-select:none}
 table.epitbl th.gcv-sortable:hover{color:var(--accent)}
 table.epitbl.gcv-table td{vertical-align:middle}
+
+/* one-row-per-event toggle, sitting in the same control row as the download button */
+.dyn-lab{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);cursor:pointer;user-select:none}
+.dyn-lab input{margin:0;cursor:pointer}
+
+/* the settings that produced the verdicts, beside them rather than in the run header */
+.gcv-settings{margin-top:8px;font-size:11px;color:var(--mut);font-family:var(--mono,monospace);opacity:.85}

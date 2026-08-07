@@ -308,3 +308,46 @@ def test_a_row_with_no_donor_coordinates_still_gets_a_verdict():
 
     assert len(out) == 2
     assert all(r["cohort_verdict"] == "gene_conversion" for r in out)
+
+
+# ------------------------------------------------------------------ provenance
+
+
+def test_the_cohort_file_carries_every_sample_settings_and_its_own(tmp_path):
+    """A cohort file combines numbers produced by per-sample runs, so it has to say under which
+    settings, and a cohort assembled from samples run DIFFERENTLY is a thing a reader must see."""
+    a = tmp_path / "a.tsv"
+    b = tmp_path / "b.tsv"
+    header = "\t".join(["sample", "pair_id", "contig", "donor", "verdict", "reason",
+                        "start", "end", "log10_bf"])
+    a.write_text("# gene_conversion.py min_bf=3.0\n" + header +
+                 "\nS0\t1\tchr\tchr\tgene_conversion\tx\t100\t200\t9.0\n")
+    b.write_text("# gene_conversion.py min_bf=9.9\n" + header +
+                 "\nS1\t1\tchr\tchr\tgene_conversion\tx\t100\t200\t9.0\n")
+    out = tmp_path / "cohort.tsv"
+
+    assert gcc.main(["--tracts", str(a), str(b), "-o", str(out)]) == 0
+
+    notes = [ln for ln in out.read_text().splitlines() if ln.startswith("#")]
+    assert "# gene_conversion.py min_bf=3.0" in notes
+    assert "# gene_conversion.py min_bf=9.9" in notes, "a mixed cohort must show it was mixed"
+    assert any(n.startswith("# gconv_cohort.py") for n in notes)
+    assert any("ubiquitous=" in n for n in notes)
+
+
+def test_a_repeated_settings_line_is_recorded_once(tmp_path):
+    """Fifty samples run the same way should not put fifty identical lines in the header."""
+    files = []
+    header = "\t".join(["sample", "pair_id", "contig", "donor", "verdict", "reason",
+                        "start", "end", "log10_bf"])
+    for i in range(5):
+        f = tmp_path / f"s{i}.tsv"
+        f.write_text("# gene_conversion.py min_bf=3.0\n" + header +
+                     f"\nS{i}\t1\tchr\tchr\tgene_conversion\tx\t100\t200\t9.0\n")
+        files.append(str(f))
+    out = tmp_path / "cohort.tsv"
+
+    assert gcc.main(["--tracts", *files, "-o", str(out)]) == 0
+
+    notes = [ln for ln in out.read_text().splitlines() if ln.startswith("#")]
+    assert sum(1 for n in notes if n.startswith("# gene_conversion.py")) == 1

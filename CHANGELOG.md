@@ -98,9 +98,16 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
     isolates sharing one tract had all twelve of its rows demoted while their
     isolate-specific rows were left alone, and on an eight-isolate cohort three
     sub-threshold tracts were corroborated, all three of them real.
+ - **Every output records the settings that produced it**, as `#` header lines. A
+    results table whose verdicts depend on seventeen settings and does not say what
+    they were cannot be checked against another run or reproduced a year later. The
+    cohort file carries the per-sample lines too, which is what shows a cohort
+    assembled from samples run differently.
  - A **Gene conversion** panel in the QC report leads with the Bayes factor and puts
-    the observable evidence beside it, with how many samples of the cohort carry each
-    event. See [gene conversion](docs/gene-conversion.md).
+    the observable evidence beside it, one row per event by default, with how many
+    samples of the cohort carry each and the settings that produced the verdicts.
+    See [gene conversion](docs/gene-conversion.md), and the output reference for
+    which of the four files answers which question.
 
 Headline: a **test suite and CI**, and a pipeline that runs correctly on a machine
 that is not the authors' cluster.

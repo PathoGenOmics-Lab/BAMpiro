@@ -48,8 +48,20 @@ workflow COHORT_REPORT {
         def report_mask = ref_bundle.filter { rId, fa, idx, excl -> rId == report_ref }
                                     .map { rId, fa, idx, excl -> excl }.first()
         // Provenance footer: pinned container digest + reference(s).
-        def provenance  = (["container=${params.container}"] + refMap.keySet().collect { "reference=${it}" })
-                          .collect { "\"${it}\"" }.join(' ')
+        // The footer records what produced the numbers. When the gene-conversion panel is
+        // showing, its settings belong there too: its verdicts depend on them, and a report
+        // that displays a verdict without saying under which rules cannot be checked.
+        def prov_items = ["container=${params.container}"] + refMap.keySet().collect { "reference=${it}" }
+        if (asBool(params.find_gene_conversion)) {
+            prov_items += ["gconv_min_bf=${params.gconv_min_bf}",
+                           "gconv_prior=${params.gconv_prior}",
+                           "gconv_mut_rate=${params.gconv_mut_rate}",
+                           "gconv_indel_factor=${params.gconv_indel_factor}",
+                           "gconv_min_tract_af=${params.gconv_min_tract_af}",
+                           "gconv_ubiquitous=${params.gconv_ubiquitous}",
+                           "gconv_donor_margin=${params.gconv_donor_margin}"]
+        }
+        def provenance  = prov_items.collect { "\"${it}\"" }.join(' ')
         // SNP dynamics: the samplesheet is the metadata source (auto-detects time/group columns; the
         // panel self-hides if absent).
         def report_meta = file(params.tsv)

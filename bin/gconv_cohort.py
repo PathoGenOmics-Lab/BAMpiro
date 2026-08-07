@@ -45,14 +45,29 @@ COHORT_COLUMNS = ["event_id", "event_samples", "event_frac", "cohort_verdict",
 
 
 def read_tsv(paths):
-    rows = []
+    """Rows, and the `#` provenance lines the per-sample files carry.
+
+    Those lines say which settings produced the numbers being combined here. Dropping them would
+    leave a cohort file that cannot be reproduced or compared with another run, and a cohort
+    assembled from samples run with DIFFERENT settings is a thing a reader has to be able to see.
+    """
+    rows, notes = [], []
     for path in paths or []:
         try:
             with open(path) as fh:
-                rows.extend(csv.DictReader(fh, delimiter="\t"))
+                for line in fh:
+                    if line.startswith("#"):
+                        note = line.rstrip("\n")
+                        if note not in notes:
+                            notes.append(note)
+                    else:
+                        break
+                fh.seek(0)
+                rows.extend(r for r in csv.DictReader(
+                    (ln for ln in fh if not ln.startswith("#")), delimiter="\t"))
         except OSError:
             continue
-    return rows
+    return rows, notes
 
 
 def num(row, key):
@@ -307,8 +322,8 @@ def parse_args(argv=None):
 
 def main(argv=None) -> int:
     a = parse_args(argv)
-    tracts = read_tsv(a.tracts)
-    loci = read_tsv(a.loci)
+    tracts, notes = read_tsv(a.tracts)
+    loci, _ = read_tsv(a.loci)
 
     # Taken from the tool that wrote them when there are rows, and from its declared column list
     # when there are none, so an empty cohort still gets a file the report can parse rather than
@@ -318,6 +333,11 @@ def main(argv=None) -> int:
                                a.ubiquitous, a.min_samples, a.slack, a.donor_margin)
 
     with open(a.output, "w") as fh:
+        for note in notes:
+            fh.write(note + "\n")
+        fh.write(f"# gconv_cohort.py min_bf={a.min_bf} corroborated_bf={a.corroborated_bf} "
+                 f"ubiquitous={a.ubiquitous} min_samples={a.min_samples} "
+                 f"donor_margin={a.donor_margin} slack={a.slack}\n")
         fh.write("\t".join(columns) + "\n")
         for r in rows:
             fh.write("\t".join(str(r.get(c, "")) for c in columns) + "\n")
