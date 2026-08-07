@@ -73,7 +73,8 @@ def read_bases_at(pos, cigar, seq, qual, wanted, min_bq=13):
                 p = ref + i
                 if p in wanted:
                     q = qry + i
-                    if q < len(seq) and (not qual or qual == "*" or (ord(qual[q]) - 33) >= min_bq):
+                    if q < len(seq) and (not qual or qual == "*"
+                                         or (q < len(qual) and (ord(qual[q]) - 33) >= min_bq)):
                         out[p] = seq[q].upper()
             ref += length
             qry += length
@@ -84,7 +85,7 @@ def read_bases_at(pos, cigar, seq, qual, wanted, min_bq=13):
     return out
 
 
-def collect_read_alleles(sam_lines, sites):
+def collect_read_alleles(sam_lines, sites, min_bq=13):
     """Per-read allele calls at the diagnostic sites.
 
     `sites` maps a reference position to (acceptor_base, donor_base). Returns
@@ -105,7 +106,7 @@ def collect_read_alleles(sam_lines, sites):
         name, pos, cigar, seq, qual = f[0], int(f[3]), f[5], f[9], f[10]
         if cigar == "*" or pos <= 0:
             continue
-        for p, base in read_bases_at(pos, cigar, seq, qual, wanted).items():
+        for p, base in read_bases_at(pos, cigar, seq, qual, wanted, min_bq).items():
             acc, don = sites[p]
             per_read[name][p] = "acceptor" if base == acc else "donor" if base == don else "other"
     return per_read
@@ -146,10 +147,17 @@ def call_tracts(positions, counts, min_af=0.7, min_sites=3, min_depth=5):
     return tracts
 
 
-def tract_evidence(tract, positions, counts, per_read):
-    """The evidence that separates a real conversion from reads arriving from the donor."""
+def tract_evidence(tract, positions, counts, per_read, in_any_tract=None):
+    """The evidence that separates a real conversion from reads arriving from the donor.
+
+    `in_any_tract` is every site belonging to ANY tract called in this locus. Sites of a second,
+    genuine tract are not "outside" this one: counting them there inflates donor_af_outside, and
+    since the outside test runs first, two real tracts in one locus would each report the other as
+    mismapping. Two conversions in one locus is an ordinary outcome, not a pathological input.
+    """
     inside = set(tract)
-    outside = [p for p in positions if p not in inside]
+    excluded = set(in_any_tract) if in_any_tract else inside
+    outside = [p for p in positions if p not in excluded]
 
     outside_af = [counts[p]["donor_af"] for p in outside if counts[p]["donor_af"] is not None]
     donor_af_outside = sum(outside_af) / len(outside_af) if outside_af else None
@@ -159,8 +167,8 @@ def tract_evidence(tract, positions, counts, per_read):
     donor_only_reads = 0   # carries donor everywhere it reaches: what a mismapped read looks like
     for calls in per_read.values():
         in_donor = [p for p, w in calls.items() if p in inside and w == "donor"]
-        out_acc = [p for p, w in calls.items() if p not in inside and w == "acceptor"]
-        out_donor = [p for p, w in calls.items() if p not in inside and w == "donor"]
+        out_acc = [p for p, w in calls.items() if p not in excluded and w == "acceptor"]
+        out_donor = [p for p, w in calls.items() if p not in excluded and w == "donor"]
         if len(in_donor) >= 2:
             cis_reads += 1
         if in_donor and out_acc:
@@ -268,10 +276,12 @@ def main(argv=None) -> int:
         if proc.returncode != 0:
             raise RuntimeError(f"samtools view failed on {region}: {proc.stderr.strip()[:300]}")
 
-        per_read = collect_read_alleles(proc.stdout.splitlines(), loc["sites"])
+        per_read = collect_read_alleles(proc.stdout.splitlines(), loc["sites"], a.min_bq)
         counts = pileup(per_read, positions)
-        for tract in call_tracts(positions, counts, a.min_af, a.min_sites, a.min_depth):
-            ev = tract_evidence(tract, positions, counts, per_read)
+        tracts = call_tracts(positions, counts, a.min_af, a.min_sites, a.min_depth)
+        in_any = {p for t in tracts for p in t}
+        for tract in tracts:
+            ev = tract_evidence(tract, positions, counts, per_read, in_any)
             verdict, reason = classify(ev)
             rows.append({"sample": a.sample, "pair_id": pair_id, "contig": loc["contig"],
                          "donor": loc["donor"], "verdict": verdict, "reason": reason, **ev})

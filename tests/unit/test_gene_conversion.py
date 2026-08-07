@@ -816,3 +816,58 @@ def test_script_runs_as_a_subprocess(tmp_path, samtools, repo_root):
     assert res.returncode == 0, res.stderr
     assert "1 candidate tract(s)" in res.stderr
     assert out.read_text().splitlines()[1].startswith("S1\t0\t")
+
+
+# --------------------------------------------------------------------------- #
+# Regressions: two defects the first version of these tools shipped with
+# --------------------------------------------------------------------------- #
+
+def _flat_counts(positions, donor_positions, depth=30):
+    """Per-site counts where the given positions are pure donor and the rest pure acceptor."""
+    counts = {}
+    for p in positions:
+        donor = p in donor_positions
+        counts[p] = {"acceptor": 0 if donor else depth, "donor": depth if donor else 0,
+                     "other": 0, "depth": depth, "donor_af": 1.0 if donor else 0.0}
+    return counts
+
+
+def test_two_tracts_in_one_locus_do_not_shadow_each_other():
+    """A second genuine tract is not "outside" the first one.
+
+    Regression: `outside` used to be every site not in THIS tract, so a locus with two real
+    conversions had each one counting the other's donor alleles as evidence against itself.
+    Because the outside test runs before the breakpoint test, both came out as mismapping. Two
+    conversions in one locus is an ordinary outcome, not a pathological input.
+    """
+    positions = list(range(1, 13))
+    counts = _flat_counts(positions, donor_positions=set(range(1, 5)) | set(range(9, 13)))
+    per_read = {"r1": {1: "donor", 2: "donor", 5: "acceptor"}}
+
+    tracts = gc.call_tracts(positions, counts, 0.7, 3, 5)
+    assert [(min(t), max(t)) for t in tracts] == [(1, 4), (9, 12)]
+
+    in_any = {p for t in tracts for p in t}
+    for tract in tracts:
+        ev = gc.tract_evidence(tract, positions, counts, per_read, in_any)
+        assert ev["donor_af_outside"] == 0.0, "the other tract was counted as outside"
+        assert gc.classify(ev)[0] != "mismapping"
+
+
+def test_the_base_quality_floor_reaches_the_base_reader():
+    """Regression: --min-bq was parsed and then never forwarded, so it did nothing at all."""
+    sites = {10: ("A", "G")}
+    # One read whose base at position 10 is Phred 30 ('?').
+    sam = "\t".join(["r1", "0", "chr", "10", "0", "1M", "*", "0", "0", "G", "?"])
+
+    permissive = gc.collect_read_alleles([sam], sites, min_bq=13)
+    strict = gc.collect_read_alleles([sam], sites, min_bq=40)
+
+    assert permissive["r1"] == {10: "donor"}
+    assert strict == {}, "a base below the floor must not be read"
+
+
+def test_a_quality_string_shorter_than_the_sequence_does_not_crash():
+    """Malformed SAM should skip the base, not raise IndexError out of a CIGAR walk."""
+    got = gc.read_bases_at(10, "5M", "ACGTA", "II", {10, 11, 12, 13, 14}, min_bq=13)
+    assert got == {10: "A", 11: "C"}, "positions past the end of QUAL must be dropped, not crash"
