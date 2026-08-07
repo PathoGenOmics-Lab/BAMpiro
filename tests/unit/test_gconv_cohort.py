@@ -584,3 +584,78 @@ def test_a_repeated_settings_line_is_recorded_once(tmp_path):
 
     notes = [ln for ln in out.read_text().splitlines() if ln.startswith("#")]
     assert sum(1 for n in notes if n.startswith("# gene_conversion.py")) == 1
+
+
+def _cohort_files(tmp_path, rows, loci_samples):
+    """One tracts file per sample plus the per-locus census, as the pipeline writes them."""
+    header = "\t".join(["sample", "pair_id", "contig", "donor", "verdict", "reason",
+                        "start", "end", "don_start", "don_end", "log10_bf",
+                        "log10_bf_vs_null", "n_sites", "tract_af", "mismap_frac"])
+    tracts = []
+    by_sample = {}
+    for r in rows:
+        by_sample.setdefault(r["sample"], []).append(r)
+    for sample, rs in by_sample.items():
+        f = tmp_path / f"{sample}.tracts.tsv"
+        f.write_text("# gene_conversion.py min_bf=3.0\n" + header + "\n"
+                     + "".join("\t".join(r[c] for c in header.split("\t")) + "\n" for r in rs))
+        tracts.append(str(f))
+    lo = tmp_path / "loci.tsv"
+    lo.write_text("sample\tpair_id\tlog10_bf\tmismap_frac\tmut_rate\n"
+                  + "".join(f"S{i}\t1\t0.1\t0.02\t0.0003\n" for i in range(loci_samples)))
+    return tracts, [str(lo)]
+
+
+def test_the_summary_line_counts_what_the_run_actually_did(tmp_path, capsys):
+    """The line on stderr is what a reader sees without opening the file, and every count in it
+    is a filter that reads the same when it selects the opposite set.
+
+    The cohort here is deliberately mixed: one event demoted to a reference artifact, one tract
+    the cohort talks up from ambiguous, and one left exactly as its sample called it.
+    """
+    rows = [tract(f"S{i}", start=1000, end=1200) for i in range(9)]     # 9 of 10: demoted
+    # S0 reports the second event through two relationships onto the same stretch of donor, so
+    # one of those two rows stands for it and the other does not. Without that every row is its
+    # own representative and the count says nothing.
+    rows += [tract("S0", pair="2", start=5000, end=5200),
+             tract("S0", pair="3", start=5000, end=5200, don_start=5100, don_end=5300),
+             tract("S1", pair="2", start=5000, end=5200, verdict="ambiguous", bf="2.5")]
+    tracts, loci = _cohort_files(tmp_path, rows, loci_samples=10)
+    out = tmp_path / "cohort.tsv"
+
+    assert gcc.main(["--tracts", *tracts, "--loci", *loci, "-o", str(out)]) == 0
+
+    line = capsys.readouterr().err
+    assert "12 tract row(s)" in line
+    assert "over 10 sample(s)" in line
+    assert "2 distinct event(s)" in line
+    assert "10 verdict(s) revised" in line, "nine demotions and one corroboration"
+    assert "(9 as reference artifacts, 1 corroborated across samples)" in line
+    assert "collapsing to 11 event/donor call(s)" in line
+    # and the warning about an unknown cohort has no business on a run that had the census
+    assert "no --loci" not in line
+
+
+def test_the_summary_says_when_the_cohort_size_was_never_known(tmp_path, capsys):
+    rows = [tract("S0"), tract("S1")]
+    tracts, _ = _cohort_files(tmp_path, rows, loci_samples=0)
+    out = tmp_path / "cohort.tsv"
+
+    assert gcc.main(["--tracts", *tracts, "-o", str(out)]) == 0
+
+    err = capsys.readouterr().err
+    assert "over an unknown number of sample(s)" in err
+    assert "no --loci and no --cohort-size" in err
+    notes = [ln for ln in out.read_text().splitlines() if ln.startswith("#")]
+    assert any("cohort_size=unknown" in n for n in notes)
+
+
+def test_the_settings_line_records_the_cohort_size_it_used(tmp_path):
+    rows = [tract("S0")]
+    tracts, loci = _cohort_files(tmp_path, rows, loci_samples=7)
+    out = tmp_path / "cohort.tsv"
+
+    assert gcc.main(["--tracts", *tracts, "--loci", *loci, "-o", str(out)]) == 0
+
+    notes = [ln for ln in out.read_text().splitlines() if ln.startswith("#")]
+    assert any("cohort_size=7" in n for n in notes)
