@@ -54,6 +54,17 @@ CONSUMES_READ = set("MIS=X")
 # taking silence for certainty.
 NO_QUAL_PHRED = 60
 
+# A diagnostic site where the DONOR is missing bases the acceptor has. The observation is not
+# which base a read carries but whether it carries one at all: a read from the unconverted
+# acceptor has a base there, a read from the converted acceptor or from the donor spans it with a
+# deletion. Written into the site table as the donor's "base" so one code path serves both kinds.
+GAP = "-"
+
+# A deletion has no per-base quality to weigh it by, so one is assigned. Deliberately below what a
+# good base is worth: short-read aligners place indels less reliably than substitutions, and this
+# is an alignment-level call rather than a base call.
+INDEL_PHRED = 20
+
 
 def parse_cigar(cigar):
     """CIGAR string to [(length, op), ...]."""
@@ -97,7 +108,15 @@ def read_calls_at(pos, cigar, seq, qual, wanted):
                     out[p] = (seq[q].upper(), phred)
             ref += length
             qry += length
-        elif op in CONSUMES_REF:                                 # D, N: no base to read
+        elif op == "D":
+            # No base to read, and that IS the reading: at a site where the donor is missing
+            # bases, a deletion here is the donor's allele. N is left out on purpose, being a
+            # skipped region rather than a claim that the bases are absent.
+            for i in range(length):
+                if ref + i in wanted:
+                    out[ref + i] = (GAP, INDEL_PHRED)
+            ref += length
+        elif op in CONSUMES_REF:                                 # N: no base, and no claim
             ref += length
         elif op in CONSUMES_READ:                                # I, S: consumes no reference
             qry += length
@@ -105,9 +124,12 @@ def read_calls_at(pos, cigar, seq, qual, wanted):
 
 
 def read_bases_at(pos, cigar, seq, qual, wanted, min_bq=13):
-    """Bases this read carries at `wanted`, with everything below the quality floor dropped."""
+    """Bases this read carries at `wanted`, with everything below the quality floor dropped.
+
+    Deletions are not bases and are left out, so this keeps the meaning it always had.
+    """
     return {p: base for p, (base, phred) in read_calls_at(pos, cigar, seq, qual, wanted).items()
-            if phred >= min_bq}
+            if phred >= min_bq and base != GAP}
 
 
 def collect_read_observations(sam_lines, sites):
@@ -147,7 +169,11 @@ def allele_view(observations, sites, min_bq=13):
             if phred < min_bq:
                 continue
             acc, don = sites[p]
-            per_read[name][p] = "acceptor" if base == acc else "donor" if base == don else "other"
+            if don == GAP:                    # presence or absence, not which base
+                per_read[name][p] = "donor" if base == GAP else "acceptor"
+            else:
+                per_read[name][p] = ("acceptor" if base == acc else
+                                     "donor" if base == don else "other")
     return per_read
 
 
@@ -336,6 +362,10 @@ def load_sites(path):
             loc["donor"] = f[idx["donor"]]
             loc["sites"][int(f[idx["acc_pos"]])] = (f[idx["acc_base"]].upper(),
                                                     f[idx["don_base"]].upper())
+            # Which markers are deletions, so the model can price them differently: two copies
+            # sharing an indel is a far longer coincidence than two copies sharing a base.
+            if "kind" in idx:
+                loc.setdefault("kind", {})[int(f[idx["acc_pos"]])] = f[idx["kind"]].strip()
             # Optional: only the depletion check needs it, and a hand-made sites file may omit it.
             if "don_pos" in idx and f[idx["don_pos"]].strip().isdigit():
                 loc.setdefault("donor_pos", {})[int(f[idx["acc_pos"]])] = int(f[idx["don_pos"]])
@@ -392,6 +422,10 @@ def parse_args(argv=None):
     p.add_argument("--mut-rate", type=float, default=gm.MUT_RATE,
                    help="probability that a diagnostic site carries the donor base by independent "
                         "substitution. This is what sets how many sites a tract needs")
+    p.add_argument("--indel-factor", type=float, default=gm.INDEL_MUT_FACTOR,
+                   help="how much less likely a shared DELETION is to have arisen twice by "
+                        "chance than a shared substitution. This is the whole value of an indel "
+                        "marker: it is worth more, not merely one more")
     p.add_argument("--min-tract-af", type=float, default=0.25,
                    help="fraction of the reads that must carry a tract before it is called. "
                         "Under this a minority conversion cannot be told from contamination")
@@ -444,9 +478,12 @@ def main(argv=None) -> int:
         # two other ways donor bases turn up here: independent substitution, and reads that came
         # from the donor in the first place.
         _, delta = gm.delta_matrix(obs, positions, loc["sites"], a.min_bq)
+        kinds = loc.get("kind", {})
+        is_del = [kinds.get(p) == "del" for p in positions]
         fits = gm.segment(delta, positions, max_tracts=a.max_tracts, min_report_bf=a.report_bf,
                           prior=a.prior, mean_span_bp=a.mean_tract_bp, mut_rate=a.mut_rate,
-                          max_span_bp=a.max_tract_bp)
+                          max_span_bp=a.max_tract_bp, is_del=is_del,
+                          indel_factor=a.indel_factor)
         # What the best tract at this locus looked like, whatever it came to. The tracts file
         # holds findings and is what a person reads; this holds the evidence at EVERY locus,
         # including the loci where there was none, and it is what the cohort pass needs. A locus

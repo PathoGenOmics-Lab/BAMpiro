@@ -725,3 +725,86 @@ def test_the_calling_threshold_is_a_parameter_and_not_a_constant():
 
     assert gm.verdict(res, covers_locus=False, min_bf=3.0)[0] == "gene_conversion"
     assert gm.verdict(res, covers_locus=False, min_bf=5.0)[0] == "ambiguous"
+
+
+# ------------------------------------------------------------ deletion markers
+
+
+def _del_sites(positions, del_at):
+    """Site table where the positions in `del_at` are bases the donor does not have."""
+    return {p: (("T", gm.GAP) if i in del_at else ("A", "C"))
+            for i, p in enumerate(positions)}
+
+
+def _del_obs(reads, positions, phred=30):
+    return {n: {positions[i]: (b, phred) for i, b in c.items()} for n, c in reads.items()}
+
+
+def test_a_deletion_site_reads_presence_or_absence_not_which_base():
+    """There is no donor base to compare against, so the question changes: a read either carries
+    a base here, which is the acceptor's, or spans it with a deletion, which is the donor's."""
+    positions = _positions(3)
+    sites = _del_sites(positions, {1})
+    obs = _del_obs({"present": {1: "T"}, "absent": {1: gm.GAP}, "other": {1: "G"}}, positions)
+
+    names, delta = gm.delta_matrix(obs, positions, sites)
+
+    assert delta[names.index("present"), 1] == pytest.approx(-gm.INDEL_LR)
+    assert delta[names.index("absent"), 1] == pytest.approx(gm.INDEL_LR)
+    # Any base at all is the acceptor's: it is presence that is being read, not identity.
+    assert delta[names.index("other"), 1] == pytest.approx(-gm.INDEL_LR)
+
+
+def test_a_deletion_carries_a_fixed_weight_rather_than_a_base_quality():
+    """A base that is absent has no Phred score to be weighed by, and an aligner places indels
+    less reliably than substitutions, so the weight is fixed and deliberately modest."""
+    positions = _positions(3)
+    sites = _del_sites(positions, {1})
+
+    low = gm.delta_matrix(_del_obs({"r": {1: gm.GAP}}, positions, phred=13), positions, sites)[1]
+    high = gm.delta_matrix(_del_obs({"r": {1: gm.GAP}}, positions, phred=41), positions, sites)[1]
+
+    assert low[0, 1] == pytest.approx(high[0, 1]) == pytest.approx(gm.INDEL_LR)
+
+
+def test_a_tract_carrying_a_deletion_beats_coincidence_by_more():
+    """Where the whole value of an indel marker is.
+
+    The headline Bayes factor is capped by how implausible it is that the same markers arose
+    independently, so once a tract's sites are settled, more depth cannot move it. Two copies
+    losing the same bases at the same place is far longer odds than two copies mutating to the
+    same base, so a tract that includes a deletion has more to say against that coincidence.
+    """
+    positions = _positions(10)
+    reads = _tract_reads(8, 3, 10, tract={4, 5, 6})
+
+    all_snp = _fit(reads, positions)
+    with_del = gm.fit_locus(
+        gm.delta_matrix(_obs(reads, positions), positions, _sites(positions))[1],
+        positions, is_del=[i == 5 for i in range(10)])
+
+    assert with_del["log10_bf"] > all_snp["log10_bf"] + 0.5
+    assert with_del["log10_bf_mut"] > all_snp["log10_bf_mut"]
+
+
+def test_the_weight_given_to_a_deletion_marker_is_a_parameter():
+    positions = _positions(10)
+    reads = _tract_reads(8, 3, 10, tract={4, 5, 6})
+    delta = gm.delta_matrix(_obs(reads, positions), positions, _sites(positions))[1]
+    is_del = [i == 5 for i in range(10)]
+
+    modest = gm.fit_locus(delta, positions, is_del=is_del, indel_factor=0.5)
+    strong = gm.fit_locus(delta, positions, is_del=is_del, indel_factor=0.01)
+
+    assert strong["log10_bf"] > modest["log10_bf"]
+
+
+def test_a_locus_with_no_deletion_marker_is_unaffected():
+    positions = _positions(10)
+    reads = _tract_reads(8, 3, 10, tract={4, 5, 6})
+    delta = gm.delta_matrix(_obs(reads, positions), positions, _sites(positions))[1]
+
+    without = gm.fit_locus(delta, positions)
+    with_flags = gm.fit_locus(delta, positions, is_del=[False] * 10)
+
+    assert without["log10_bf"] == pytest.approx(with_flags["log10_bf"])

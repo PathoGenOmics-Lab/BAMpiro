@@ -155,6 +155,21 @@ TRACT_AF_SCALE = 0.18
 # happens to match the paralog a one-site conversion tract.
 MUT_RATE = 3e-4
 
+# What a shared DELETION is worth relative to a shared substitution, in the only comparison that
+# limits a clean tract: how likely the two copies came to agree independently. Two copies losing
+# the same bases at the same place by chance is far longer odds than two copies mutating to the
+# same base, so an indel marker is priced an order of magnitude lower and is worth about one more
+# order of magnitude of Bayes factor than a substitution in the same tract.
+INDEL_MUT_FACTOR = 0.1
+
+# The log-likelihood ratio a deletion observation carries. Fixed rather than read off a Phred
+# score, because there is no per-base quality for a base that is absent, and deliberately below
+# what a good base is worth: an aligner places indels less reliably than substitutions.
+INDEL_LR = 4.0
+
+# The donor "base" at a deletion site. There is none, so the observation is presence or absence.
+GAP = "-"
+
 # Ceiling on the rate estimated from a locus, and the log-likelihood ratio at which a site counts
 # as carrying the donor base at all. Without the ceiling a locus dense in substitutions could
 # explain away a long, clean tract as a run of coincidences.
@@ -219,14 +234,18 @@ def delta_matrix(observations, positions, sites, min_bq=13, max_phred=MAX_PHRED)
             if s is None or phred < min_bq:
                 continue
             acc, don = sites[p]
-            if base == acc:
-                sign = -1.0
+            if don == GAP:
+                # A deletion site asks whether the read has a base here at all, not which one.
+                # Anything present is the acceptor's; a gap is the donor's.
+                row[s] = INDEL_LR if base == GAP else -INDEL_LR
+            elif base == acc:
+                e = 10.0 ** (-min(phred, max_phred) / 10.0)
+                row[s] = -(math.log(1.0 - e) - math.log(e / 3.0))
             elif base == don:
-                sign = 1.0
+                e = 10.0 ** (-min(phred, max_phred) / 10.0)
+                row[s] = math.log(1.0 - e) - math.log(e / 3.0)
             else:
                 continue                    # equally unlikely under both: it separates nothing
-            e = 10.0 ** (-min(phred, max_phred) / 10.0)
-            row[s] = sign * (math.log(1.0 - e) - math.log(e / 3.0))
             informative = True
         if informative:
             names.append(name)
@@ -320,7 +339,7 @@ def _credible_interval(weights, point, mass=0.95):
 
 def fit_locus(delta, positions, free=None, prior=0.01, mean_span_bp=1000.0,
               m_grid=MISMAP_GRID, max_span_bp=None, mut_rate=MUT_RATE, max_grid=MAX_GRID,
-              af_grid=TRACT_AF_GRID):
+              af_grid=TRACT_AF_GRID, is_del=None, indel_factor=INDEL_MUT_FACTOR):
     """Evaluate every conversion tract against everything else that could produce donor bases.
 
     There are three ways an acceptor site can show the donor's base, and all three are in the
@@ -464,15 +483,23 @@ def fit_locus(delta, positions, free=None, prior=0.01, mean_span_bp=1000.0,
     # every site reading as donor without a single base of the acceptor having changed, and the
     # null already has the mismapping rate to say so. Charging it a substitution per site as well
     # turned wholesale mismapping into a called conversion at a Bayes factor of 33.
-    n_in = (ends - starts + 1).astype(float)
-    log_mu, log_1mu = math.log(mut_rate), math.log1p(-mut_rate)
-    log_bg_outside = (n_sites - n_in) * log_1mu
-    log_prior_mut = n_in * log_mu + log_bg_outside
+    # Per site, because not every marker is equally easy to arrive at twice. A deletion site is
+    # priced `indel_factor` times a substitution, so a tract carrying one has that much more to
+    # say against the coincidence it is being compared with.
+    rate = np.full(n_sites, float(mut_rate))
+    if is_del is not None:
+        rate[np.asarray(is_del, dtype=bool)] *= indel_factor
+    cum_mu = np.concatenate([[0.0], np.cumsum(np.log(rate))])
+    cum_1mu = np.concatenate([[0.0], np.cumsum(np.log1p(-rate))])
+    log_mu_in = cum_mu[ends + 1] - cum_mu[starts]
+    log_1mu_all = cum_1mu[-1]
+    log_bg_outside = log_1mu_all - (cum_1mu[ends + 1] - cum_1mu[starts])
+    log_prior_mut = log_mu_in + log_bg_outside
 
     joint = cand_ll + log_prior_span + log_bg_outside
     log_ev_conv = _logsumexp(joint)
     log_ev_mut = _logsumexp(cand_ll + log_prior_mut)
-    log_ev_null = null_ll + n_sites * log_1mu
+    log_ev_null = null_ll + log_1mu_all
 
     # Posterior over tracts, given that one exists.
     weights = np.exp(joint - log_ev_conv)

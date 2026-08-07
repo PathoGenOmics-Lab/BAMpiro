@@ -174,21 +174,51 @@ def test_parse_snps_reads_diagnostic_positions():
     assert indels == 0
     assert len(sites) == 4
     assert sites[0] == {"acceptor": "chr", "acc_pos": 471, "acc_base": "A",
-                        "donor": "chr", "don_pos": 1371, "don_base": "G", "strand": "+"}
+                        "donor": "chr", "don_pos": 1371, "don_base": "G", "strand": "+",
+                        "kind": "snp", "length": 1}
     assert (sites[2]["acc_pos"], sites[2]["acc_base"], sites[2]["don_base"]) == (1371, "G", "A")
 
 
-def test_parse_snps_skips_indels_and_counts_them():
-    """A '.' on either side is an indel: the position stops mapping one-to-one between the
-    copies, which is exactly what the tract caller assumes. Kept out of the set, counted so
-    the caller can report how many it skipped."""
-    text = SNPS + _snps_row(600, ".", "T", 1500) + _snps_row(700, "A", ".", 1600)
+def test_a_base_the_donor_is_missing_is_a_diagnostic_site_too():
+    """The acceptor's own copy has a coordinate there, so a read either carries a base or spans
+    it with a deletion, and that is as readable as any substitution. On H37Rv it is 423 more
+    markers, 11% on top of the substitutions."""
+    sites, skipped = pm.parse_snps(SNPS + _snps_row(700, "A", ".", 1600))
 
-    sites, indels = pm.parse_snps(text)
+    dels = [s for s in sites if s["kind"] == "del"]
+    assert len(dels) == 1
+    assert (dels[0]["acc_pos"], dels[0]["acc_base"], dels[0]["don_base"]) == (700, "A", "-")
+    assert dels[0]["length"] == 1
+    assert skipped == 0
 
-    assert len(sites) == 4
-    assert indels == 2
-    assert all(s["acc_base"] != "." and s["don_base"] != "." for s in sites)
+
+def test_a_run_of_missing_bases_is_one_site_and_not_five():
+    """A five-base deletion happened once. Counting it five times is the same overcounting the
+    caller avoids by treating molecules rather than sites as its unit of evidence, and show-snps
+    holding the donor position still across the run is what makes the run recognisable."""
+    text = "".join(_snps_row(700 + i, "ACGTA"[i], ".", 1600) for i in range(5))
+
+    sites, _ = pm.parse_snps(text)
+
+    assert len(sites) == 1
+    assert (sites[0]["acc_pos"], sites[0]["acc_base"], sites[0]["length"]) == (700, "ACGTA", 5)
+
+
+def test_two_deletions_that_are_not_adjacent_stay_two_sites():
+    text = _snps_row(700, "A", ".", 1600) + _snps_row(702, "C", ".", 1601)
+
+    sites, _ = pm.parse_snps(text)
+
+    assert [s["acc_pos"] for s in sites] == [700, 702]
+
+
+def test_a_base_the_ACCEPTOR_is_missing_is_skipped_and_counted():
+    """The donor's extra sequence has no acceptor coordinate to hang on. Every pair is emitted
+    in both directions, so the same difference is available as a donor gap from the other side."""
+    sites, skipped = pm.parse_snps(SNPS + _snps_row(600, ".", "T", 1500))
+
+    assert skipped == 1
+    assert all(s["don_base"] != "." for s in sites)
 
 
 def test_parse_snps_skips_rows_where_both_bases_are_equal():
@@ -425,15 +455,18 @@ def test_main_reports_n_diagnostic_per_pair(tmp_path):
     assert [r["n_diagnostic"] for r in pair_rows] == ["2", "2", "0"]
 
 
-def test_main_counts_skipped_indels_on_stderr(tmp_path, capsys):
-    snps = SNPS + _snps_row(600, ".", "T", 1500)
+def test_main_reports_what_it_used_and_what_it_skipped(tmp_path, capsys):
+    """A donor gap becomes a marker; an acceptor gap is skipped and counted."""
+    snps = SNPS + _snps_row(700, "A", ".", 1600) + _snps_row(600, ".", "T", 1500)
     ws = _cli_workspace(tmp_path, snps_text=snps)
 
     assert pm.main(_cli_argv(ws)) == 0
 
     _, site_rows = _read_tsv(tmp_path / "sites.tsv")
-    assert len(site_rows) == 4
-    assert "1 indel/ambiguous position(s) skipped" in capsys.readouterr().err
+    assert sum(1 for r in site_rows if r["kind"] == "del") == 1
+    err = capsys.readouterr().err
+    assert "1 of them deletions" in err
+    assert "1 position(s) skipped" in err
 
 
 def test_main_passes_the_filters_through(tmp_path):

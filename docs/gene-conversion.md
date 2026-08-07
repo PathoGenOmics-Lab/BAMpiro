@@ -51,6 +51,26 @@ drifts only with indels.
 copies are identical and a read is uninformative by construction, so the analysis works over that
 list rather than over the whole locus.
 
+Two kinds of difference count. A **substitution** is a position where the copies carry different
+bases. A **deletion** is a stretch the donor does not have: the acceptor's own copy still has a
+coordinate there, so a read either carries a base or spans it with a `D`, and that is as readable
+as any substitution. A run of missing bases is one marker, not one per base, because it happened
+once. On H37Rv that is 423 more markers, 11% on top of the substitutions.
+
+A deletion is also worth more than a substitution, which is the point of using them. The headline
+Bayes factor is capped by how implausible it is that the markers arose independently, so once a
+tract's sites are settled no amount of depth moves it. Two copies losing the same bases at the
+same place is far longer odds than two copies mutating to the same base, so a deletion is priced
+at `--gconv_indel_factor` of a substitution. Measured on the real genome, against conversions that
+copy the donor's deletions as a real one would: 15 of 15 implanted tracts found against 14, and
+the one that changed sides is a 99.4% pair with seven diagnostic sites in the whole locus, which
+had one usable marker without deletions and two with. Tracts already carrying deletions gained
+4 and 18 orders of magnitude.
+
+Where the donor has extra bases instead, the difference is skipped: it has no acceptor coordinate
+to hang on. Every pair is emitted in both directions, so the same difference is available as a
+deletion from the other side.
+
 **3. The model.** There are three ways an acceptor site can show the donor's base, and only one
 of them is a conversion:
 
@@ -221,6 +241,7 @@ the donor/acceptor graph of your reference.
 | `--gconv_report_bf` | `1.0` | log10 Bayes factor below which a tract is not written out |
 | `--gconv_prior` | `0.01` | Prior that a given paralog pair carries a tract |
 | `--gconv_mut_rate` | `0.0003` | FLOOR on the chance a site carries the donor base by plain substitution. The locus raises it when it turns out to be hypervariable |
+| `--gconv_indel_factor` | `0.1` | How much less likely a shared deletion is to have arisen twice than a shared substitution |
 | `--gconv_min_tract_af` | `0.25` | Read fraction a tract needs before it is called |
 | `--gconv_mean_tract_bp` | `1000` | Mean of the exponential prior on tract length |
 | `--gconv_max_tract_bp` | `10000` | Longest tract considered |

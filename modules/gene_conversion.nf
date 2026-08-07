@@ -51,7 +51,7 @@ process PARALOG_MAP {
     stub:
     """
     printf 'pair_id\\tacceptor\\tacc_start\\tacc_end\\tdonor\\tdon_start\\tdon_end\\tstrand\\tidentity\\tlength\\tn_diagnostic\\n' > ${refId}.paralog_pairs.tsv
-    printf 'pair_id\\tacceptor\\tacc_pos\\tacc_base\\tdonor\\tdon_pos\\tdon_base\\tstrand\\n' > ${refId}.paralog_sites.tsv
+    printf 'pair_id\\tacceptor\\tacc_pos\\tacc_base\\tdonor\\tdon_pos\\tdon_base\\tstrand\\tkind\\tlength\\n' > ${refId}.paralog_sites.tsv
     """
 }
 
@@ -88,6 +88,7 @@ process FIND_GENE_CONVERSION {
         --max-tract-bp ${params.gconv_max_tract_bp} \\
         --max-tracts ${params.gconv_max_tracts} \\
         --mut-rate ${params.gconv_mut_rate} \\
+        --indel-factor ${params.gconv_indel_factor} \\
         --min-tract-af ${params.gconv_min_tract_af} \\
         --min-mismap ${params.gconv_min_mismap} \\
         --min-sites ${params.gconv_min_sites} \\

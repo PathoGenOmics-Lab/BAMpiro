@@ -84,25 +84,61 @@ def parse_coords(text, min_identity=90.0, min_length=200):
 def parse_snps(text):
     """Paralog-diagnostic sites from `show-snps -l -r -T -H` output.
 
-    An indel is reported with '.' on one side. Those are kept out of the diagnostic set: a read
-    carrying one is still evidence, but the position no longer maps one-to-one between the copies,
-    which the tract caller assumes. They are counted so the caller can say how many it skipped.
+    Two kinds of difference come out of this, and both are diagnostic.
+
+    A **substitution** is one position where the copies carry different bases, and it is what the
+    tract caller was built on.
+
+    An **indel** is reported with '.' on one side, one row per base. Where the DONOR is the one
+    missing bases, the acceptor's own copy still has a coordinate, so a read either has a base
+    there or spans it with a deletion, and that is as readable as any substitution. Consecutive
+    rows are collapsed into ONE site: a five-base deletion is one event that happened once, not
+    five independent observations, and counting it five times is the same overcounting the caller
+    avoids by treating molecules rather than sites as its unit.
+
+    Rows where the ACCEPTOR is the one missing bases are skipped. The donor's extra sequence has
+    no acceptor coordinate to hang on, and every pair is emitted in both directions, so the same
+    difference is available as a donor gap from the other side. They are counted, not used.
     """
-    sites, indels = [], 0
+    sites, skipped = [], 0
+    gaps = []
     for line in text.splitlines():
         f = line.rstrip("\n").split("\t")
         if len(f) < SNPS_FIELDS or not f[0].isdigit():
             continue
         acc_base, don_base = f[1].upper(), f[2].upper()
-        if acc_base == "." or don_base == "." or acc_base == don_base:
-            indels += 1
+        strand = "-" if f[11] == "-1" else "+"
+        if acc_base == "." or acc_base == don_base:
+            skipped += 1
+            continue
+        if don_base == ".":
+            gaps.append((f[12], f[13], strand, int(f[0]), int(f[3]), acc_base))
             continue
         sites.append({
             "acceptor": f[12], "acc_pos": int(f[0]), "acc_base": acc_base,
             "donor": f[13], "don_pos": int(f[3]), "don_base": don_base,
-            "strand": "-" if f[11] == "-1" else "+",
+            "strand": strand, "kind": "snp", "length": 1,
         })
-    return sites, indels
+
+    # One site per run of consecutive acceptor positions the donor lacks. show-snps holds the
+    # donor position still across a run, which is what makes the run recognisable.
+    gaps.sort()
+    i = 0
+    while i < len(gaps):
+        tag1, tag2, strand, acc_pos, don_pos, base = gaps[i]
+        j, bases = i, [base]
+        while (j + 1 < len(gaps) and gaps[j + 1][:3] == (tag1, tag2, strand)
+               and gaps[j + 1][3] == gaps[j][3] + 1 and gaps[j + 1][4] == don_pos):
+            j += 1
+            bases.append(gaps[j][5])
+        sites.append({
+            "acceptor": tag1, "acc_pos": acc_pos, "acc_base": "".join(bases),
+            "donor": tag2, "don_pos": don_pos, "don_base": "-",
+            "strand": strand, "kind": "del", "length": len(bases),
+        })
+        i = j + 1
+    sites.sort(key=lambda s: (s["acceptor"], s["acc_pos"]))
+    return sites, skipped
 
 
 def alignment_offset(start, end, acc_start, strand):
@@ -167,7 +203,8 @@ def sites_within_pairs(sites, pairs):
 
 PAIR_COLS = ["pair_id", "acceptor", "acc_start", "acc_end", "donor", "don_start", "don_end",
              "strand", "identity", "length", "n_diagnostic"]
-SITE_COLS = ["pair_id", "acceptor", "acc_pos", "acc_base", "donor", "don_pos", "don_base", "strand"]
+SITE_COLS = ["pair_id", "acceptor", "acc_pos", "acc_base", "donor", "don_pos", "don_base",
+             "strand", "kind", "length"]
 
 
 def write_tsv(path, columns, rows):
@@ -213,8 +250,9 @@ def main(argv=None) -> int:
     write_tsv(a.out_sites, SITE_COLS, sites)
 
     sys.stderr.write(
-        f"[paralog_map] {len(pairs)} paralogous pair(s), {len(sites)} diagnostic site(s)"
-        f"{f', {indels} indel/ambiguous position(s) skipped' if indels else ''}\n")
+        f"[paralog_map] {len(pairs)} paralogous pair(s), {len(sites)} diagnostic site(s) "
+        f"({sum(1 for s in sites if s['kind'] == 'del')} of them deletions)"
+        f"{f', {indels} position(s) skipped' if indels else ''}\n")
     return 0
 
 

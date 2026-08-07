@@ -67,6 +67,17 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
     The absolute depth floor it used before fired on any low-coverage paralog, which
     is how a clean negative control reported two shifts over a locus running at 4x
     throughout.
+ - **Deletions between the copies count as markers.** A stretch the donor does not
+    have still has a coordinate in the acceptor, so a read either carries a base
+    there or spans it with a deletion. A run of missing bases is one marker rather
+    than one per base, because it happened once. That is 423 more markers on H37Rv,
+    11% on top of the substitutions, and each is worth more than a substitution: the
+    headline Bayes factor is capped by how implausible it is that the markers arose
+    independently, and two copies losing the same bases is far longer odds than two
+    copies mutating to the same base. Measured against conversions that copy the
+    donor's deletions as a real one would, 15 of 15 implanted tracts were found
+    against 14, and the one that changed sides is a 99.4% pair with seven diagnostic
+    sites in the whole locus.
  - **The cohort is read together, not one sample at a time.** Two questions cannot
     be answered from a single sample however good the model is. A tract in one
     sample of fifty is a finding; the same tract at the same coordinates in all
