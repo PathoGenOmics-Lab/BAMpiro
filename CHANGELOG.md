@@ -6,6 +6,30 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ## [Unreleased] - targeting 1.1.0
 
+### Added
+
+- **Gene conversion detection** (`--find_gene_conversion`, off by default). Finds
+  tracts where one paralog has been copied onto another, which on a reference that
+  never saw the event reads as a run of variants that are exactly the donor's
+  bases between two breakpoints.
+ - The donor/acceptor map is recovered from the reference self-alignment the
+    repeat-masking step already computes and then discards, so no alignment is
+    redone; `show-snps` on the same file gives the positions where the two copies
+    differ, which are the only ones that can carry evidence.
+ - The stage deliberately bypasses the pipeline's own masking. Repeat exclusion
+    and the length-aware read filter remove paralogous sequence and multi-mapping
+    reads, which is right for variant calling and removes exactly this signal, so
+    the analysis reads the deduplicated **pre-filter** alignment and does not
+    filter on mapping quality.
+ - The hard part is not finding tracts but deciding whether to believe them, since
+    reads mismapping from the donor look identical site by site. Three pieces of
+    evidence are reported rather than collapsed into a score: whether the donor
+    alleles stop at the tract edges, how fixed they are, and whether a single read
+    crosses a breakpoint carrying donor alleles on one side and acceptor alleles on
+    the other. Only the last cannot be faked by a mismapping.
+ - A **Gene conversion** panel in the QC report plots that evidence and says which
+    test decided each verdict. See [gene conversion](docs/gene-conversion.md).
+
 Headline: a **test suite and CI**, and a pipeline that runs correctly on a machine
 that is not the authors' cluster.
 
