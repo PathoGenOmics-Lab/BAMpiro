@@ -1300,3 +1300,31 @@ def test_a_fit_is_written_out_at_the_thresholds_not_past_them(bf, mismap, kept):
     fit = {"log10_bf": bf, "mismap_frac": mismap}
 
     assert gc.worth_reporting(fit, report_bf=3.0, min_mismap=0.2) is kept
+
+
+def test_the_summary_line_counts_the_calls_and_not_the_rest(tmp_path, samtools, capsys):
+    """What a reader sees per sample without opening the file.
+
+    The count reads the same when it selects the opposite set, so it is worth a locus that
+    produces both a call and a candidate that is not one. Here one locus carries a clean tract
+    and the other carries nothing, and only the first is a conversion.
+    """
+    positions = [100, 110, 120, 130, 140, 150, 160, 170]
+    seq = ["A"] * 90
+    for p in (110, 120, 130):
+        seq[p - 95] = "G"
+    records = [_sam_line(f"r{i}", 95, "90M", "".join(seq), qual="I" * 90) for i in range(14)]
+    records += [_sam_line(f"q{i}", 995, "90M", "A" * 90, qual="I" * 90) for i in range(14)]
+    bam = _bam(tmp_path, records)
+    sites = _sites_tsv(tmp_path / "sites.tsv",
+                       {0: positions, 1: [p + 900 for p in positions]})
+    out = tmp_path / "tracts.tsv"
+
+    assert gc.main(["--sites", sites, "--bam", bam, "--sample", "S1", "-o", str(out),
+                    "--output-loci", str(tmp_path / "loci.tsv"), "--samtools", samtools,
+                    "--min-sites", "2", "--report-bf", "-99"]) == 0
+
+    line = capsys.readouterr().err
+    assert "S1: 4 candidate tract(s)" in line, "two loci searched twice each"
+    assert "1 called as conversion" in line
+    assert "2 locus/loci measured" in line

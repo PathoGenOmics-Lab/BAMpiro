@@ -47,6 +47,37 @@ RULES = [
     (r"\bmax\(", "min("), (r"\bmin\(", "max("),
 ]
 
+# Mutants that cannot change what the code does, keyed by the text of the line they sit on and
+# the substitution. Reported apart from the real survivors, with the argument for each, because a
+# survivor list that is mostly noise stops being read and then the one real entry in it is missed.
+# Anything here has been argued for, not assumed: if the reasoning is wrong the entry is a way to
+# hide a defect, so each says what would have to be true for it to matter.
+EQUIVALENT = {
+    ('if s1 > e1:', ">="):
+        "swapping a value with itself. The interval is already ascending when the two are equal",
+    ('if s2 > e2:', ">="):
+        "swapping a value with itself, as above",
+    ('if stride > 1:', ">="):
+        "at stride 1 the coarse branch builds a grid of every index, which is the same set of "
+        "intervals the exhaustive branch builds. Verified as sets, not argued from the shape",
+    ('if gj >= gi:', ">"):
+        "drops the single-site intervals from the coarse grid, and the fine window has already "
+        "added every one of them. Only reachable at fine_len=0, which nothing calls",
+    ('if len(usable) < min_sites:', "<="):
+        "at exactly min_sites usable, any run long enough to report covers all of them, so the "
+        "donor has no sites left to establish a baseline from and the run is dropped anyway",
+    ('if per is not None and (c["per"] is None or per > c["per"]):', ">="):
+        "replaces a candidate's evidence per marker with a value equal to it",
+    ('carries = measured & (site_lr > 0)', ">="):
+        "`measured` already requires |site_lr| above the calling threshold, so nothing inside "
+        "the mask can be zero",
+    ('chunk = max(1, CHUNK_ELEMENTS // max(1, n_reads))', "min("):
+        "the chunk size is a memory bound. Every chunking of the same locus evaluates the same "
+        "candidates and returns the same numbers, which is the point of chunking at all",
+    ('post_conv = 1.0 / (1.0 + math.exp(-log_bf)) if log_bf > -700 else 0.0', ">="):
+        "a guard against exp() overflowing. At exactly -700 both arms give 0.0 to the last bit",
+}
+
 IGNORE = {tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT,
           tokenize.ENDMARKER, tokenize.ENCODING}
 TEXT = {tokenize.STRING, getattr(tokenize, "FSTRING_MIDDLE", tokenize.STRING)}
@@ -132,7 +163,7 @@ def run(only):
     pinned down, and a tool whose answer depends on what ran before it is not worth reasoning
     about. A copy costs nothing next to a pytest run.
     """
-    survivors, killed, total = [], 0, 0
+    survivors, expected, killed, total = [], [], 0, 0
     for target in TARGETS:
         if only and only not in target:
             continue
@@ -158,16 +189,25 @@ def run(only):
                                     "--no-header", "-p", "no:cacheprovider"],
                                    cwd=root, capture_output=True, text=True, timeout=600)
                 if r.returncode == 0:
-                    survivors.append((target, n, line.strip(), raw[a:b], rep))
-                    print(f"  SURVIVED {target}:{n}  {raw[a:b]!r} -> {rep!r}\n"
-                          f"           {line.strip()[:100]}", flush=True)
+                    why = EQUIVALENT.get((line.strip(), rep))
+                    if why:
+                        expected.append((target, n, why))
+                    else:
+                        survivors.append((target, n, line.strip(), raw[a:b], rep))
+                        print(f"  SURVIVED {target}:{n}  {raw[a:b]!r} -> {rep!r}\n"
+                              f"           {line.strip()[:100]}", flush=True)
                 else:
                     killed += 1
         finally:
             path.write_text(backup)
             shutil.rmtree(work, ignore_errors=True)
 
-    print(f"\n{killed}/{total} killed, {len(survivors)} survived")
+    if expected:
+        print("\nequivalent, argued for in EQUIVALENT above:")
+        for target, n, why in expected:
+            print(f"  {target}:{n}  {why}")
+    print(f"\n{killed}/{total} killed, {len(survivors)} survived, "
+          f"{len(expected)} equivalent")
     return survivors
 
 

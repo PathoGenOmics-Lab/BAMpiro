@@ -169,6 +169,38 @@ def test_a_coarse_grid_still_keeps_every_short_interval():
     assert (0, 35) in pairs and (0, 34) not in pairs, "long intervals land on the grid"
 
 
+def test_a_credible_interval_stops_as_soon_as_it_holds_the_mass_asked_for():
+    """`mass` is the posterior weight the interval must hold, and holding exactly it is holding it.
+
+    One step out and every interval takes one more index than it needs, which widens the reported
+    breakpoint window on the sharpest posteriors: the ones where the answer was certain.
+    """
+    weights = np.array([0.95, 0.05])
+
+    assert gm._credible_interval(weights, point=0, mass=0.95) == (0, 0)
+    assert gm._credible_interval(weights, point=0, mass=0.96) == (0, 1)
+
+
+def test_a_site_at_exactly_the_calling_threshold_is_not_counted_as_measured():
+    """The locus's own substitution rate is measured off the sites the reads actually resolve.
+
+    A site whose evidence only just reaches the threshold has not resolved anything, and counting
+    it feeds a rate estimated from noise back into the comparison the rate is used for. Here that
+    is the difference between assuming the genome average and assuming one site in five.
+    """
+    positions = _positions(8)
+
+    def rate(lone_sum):
+        delta = np.zeros((6, 8))
+        delta[:, 5:8] = 12.0        # the tract, at the far end of the locus
+        delta[:, 1:5] = -12.0       # plainly not converted, so the tract cannot reach back
+        delta[:, 0] = lone_sum / 6.0
+        return gm.fit_locus(delta, positions)["mut_rate"]
+
+    assert rate(10.0) == pytest.approx(gm.MUT_RATE), "exactly at the threshold resolves nothing"
+    assert rate(10.01) > gm.MUT_RATE, "past it, the locus is asked instead of assumed"
+
+
 def test_the_last_site_of_a_locus_can_still_end_a_tract_on_a_coarse_grid():
     """The grid steps from the first site and stops before the last unless the last is added.
 
@@ -265,6 +297,33 @@ def test_a_tract_carried_by_exactly_the_required_fraction_is_called(af, called):
     got = gm.verdict(_res(tract_af=af), covers_locus=False, min_tract_af=0.25)[0]
 
     assert (got == "gene_conversion") is called
+
+
+@pytest.mark.parametrize("af,mentioned", [(0.8999, True), (0.9, False)])
+def test_the_reason_names_the_read_fraction_only_when_it_is_worth_naming(af, mentioned):
+    """A tract nearly every read carries needs no comment; one that most but not all carry does.
+
+    The reason is the whole of what a reader gets about a call they cannot rerun, and the cutoff
+    for saying so is a number like any other.
+    """
+    said = "carried by" in gm.verdict(_res(tract_af=af), covers_locus=False)[1]
+
+    assert said is mentioned
+
+
+def test_at_a_tie_the_reason_blames_substitution_rather_than_mismapping():
+    """`verdict` promises to name the alternative that came CLOSEST, and at a tie both did.
+
+    Independent substitution is the one named, because it is the explanation that needs no
+    machinery: the two copies differ there and always did. Naming mismapping instead sends a
+    reader to look at the aligner over a locus where the aligner is not the question.
+    """
+    tie = _res(log10_bf=1.0, log10_bf_mut=5.0, log10_bf_null=5.0, mismap_frac=0.5)
+
+    verdict, reason = gm.verdict(tie, covers_locus=False, min_bf=3.0, min_mismap=0.2)
+
+    assert verdict == "ambiguous"
+    assert "better explained by independent substitution" in reason
 
 
 def test_a_locus_with_no_conversion_is_not_called():
