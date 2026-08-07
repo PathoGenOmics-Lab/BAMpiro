@@ -221,6 +221,54 @@ def test_a_stated_cohort_size_cannot_be_smaller_than_the_samples_seen():
     assert out[0]["event_frac"] == 1.0
 
 
+@pytest.mark.parametrize("n,demoted", [(5, True), (4, False), (6, True)])
+def test_a_cohort_of_exactly_the_minimum_is_big_enough_to_argue_from(n, demoted):
+    """`--gconv_cohort_min_samples` is the size at which recurrence starts being evidence."""
+    rows = [tract(f"S{i}") for i in range(n)]
+
+    out, _ = gcc.annotate(rows, cohort(n), min_samples=5)
+
+    assert all(r["cohort_verdict"] == "reference_artifact" for r in out) is demoted
+
+
+@pytest.mark.parametrize("carrying,demoted", [(9, True), (8, False), (10, True)])
+def test_an_event_at_exactly_the_ubiquity_fraction_is_demoted(carrying, demoted):
+    """`--gconv_ubiquitous` is the fraction AT WHICH an event becomes a reference artifact."""
+    rows = [tract(f"S{i}") for i in range(carrying)]
+
+    out, _ = gcc.annotate(rows, cohort(10), ubiquitous=0.9)
+
+    assert all(r["cohort_verdict"] == "reference_artifact" for r in out) is demoted
+
+
+@pytest.mark.parametrize("bf,rescued", [("2.0", True), ("1.99", False), ("2.5", True)])
+def test_a_tract_at_exactly_the_corroboration_threshold_is_corroborated(bf, rescued):
+    """`--corroborated-bf` is the evidence a sub-threshold tract needs before another sample's
+    outright call is allowed to speak for it."""
+    rows = [tract("S0", verdict="gene_conversion"),
+            tract("S1", verdict="ambiguous", bf=bf)]
+
+    out, _ = gcc.annotate(rows, cohort(10), corroborated_bf=2.0)
+
+    assert (out[1]["cohort_verdict"] == "gene_conversion") is rescued
+
+
+def test_a_row_without_a_reason_column_still_gets_a_verdict():
+    """Files written before a column existed are the normal case for a tool used across runs, and
+    a missing reason is a blank one, not something to fall over on the way to the verdict.
+
+    The row's own verdict stands here, which is the path that reads the reason back, so it is
+    also the one that meets the absent column.
+    """
+    row = tract("S0")
+    del row["reason"]
+
+    out, _ = gcc.annotate([row], cohort(10))
+
+    assert out[0]["cohort_verdict"] == "gene_conversion"
+    assert out[0].get("reason", "") == "", "a reason was invented for a row that had none"
+
+
 def test_the_recurrence_at_which_an_event_is_demoted_is_a_parameter():
     rows = [tract(f"S{i}") for i in range(7)]
 
