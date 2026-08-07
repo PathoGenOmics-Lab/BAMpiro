@@ -284,6 +284,26 @@ def test_relationships_naming_the_same_stretch_of_donor_are_one_candidate():
     assert sum(r["is_representative"] for r in out) == 1, "one row stands for the event"
 
 
+def test_a_merged_candidate_is_judged_on_its_best_view_not_its_first():
+    """Merging two relationships that name the same donor stretch has to keep the better of them.
+
+    The rows arrive in whatever order the pair ids happen to fall, so a candidate whose first row
+    is a poor view of the source would carry that weak number into the ranking against a genuinely
+    different candidate and lose to it. Here the same stretch is seen twice, badly then well, and
+    a third place in the genome sits between the two readings.
+    """
+    rows = [tract("S0", pair="1", don_start=5000, don_end=5200, bf_null="10.0", n_sites="10"),
+            tract("S0", pair="2", don_start=5100, don_end=5300, bf_null="100.0", n_sites="10"),
+            tract("S0", pair="3", don_start=9000, don_end=9200, bf_null="50.0", n_sites="10")]
+
+    out, _ = gcc.annotate(rows, cohort(10))
+
+    assert out[0]["n_donors"] == 2, "the two overlapping views are one candidate"
+    winner = next(r for r in out if r["is_representative"])
+    assert winner["pair_id"] == "2", "the better view of the merged pair has to win the ranking"
+    assert out[2]["donor_rank"] == 2, "the unrelated place comes second on its own evidence"
+
+
 def test_the_relative_whose_sequence_fits_best_is_the_source():
     """Where the candidates are genuinely different places in the genome, the evidence per marker
     picks between them: how well that donor's sequence accounts for the reads, divided by how
