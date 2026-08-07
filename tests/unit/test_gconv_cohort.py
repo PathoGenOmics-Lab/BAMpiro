@@ -115,6 +115,22 @@ def test_a_cohort_too_small_to_argue_from_recurrence_is_not_argued_from():
     assert all(r["cohort_verdict"] == "gene_conversion" for r in out)
 
 
+@pytest.mark.parametrize("gap,together", [(5, True), (6, False), (0, True)])
+def test_slack_is_the_tolerance_it_says_it_is(gap, together):
+    """A gap of exactly `--slack` bases still makes two tracts the same event.
+
+    Both directions matter. Too tight and one event in two samples becomes two events, so it can
+    never look recurrent and never be demoted; too loose and neighbouring events merge and a real
+    tract inherits another one's verdict.
+    """
+    rows = [tract("S0", start=1000, end=1200),
+            tract("S1", start=1200 + gap, end=1400 + gap)]
+
+    out, _ = gcc.annotate(rows, cohort(10), slack=5)
+
+    assert (out[0]["event_id"] == out[1]["event_id"]) is together
+
+
 def test_the_samples_with_nothing_to_report_still_count_towards_the_cohort():
     """The denominator of the ubiquity rule is how many samples were RUN, not how many had
     something to say. A clean sample writes no tract row, so counting the samples named in the

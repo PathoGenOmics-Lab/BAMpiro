@@ -231,6 +231,28 @@ def _res(**kw):
     return out
 
 
+@pytest.mark.parametrize("bf,called", [(3.0, True), (2.9999, False), (3.1, True)])
+def test_a_tract_at_exactly_the_calling_threshold_is_called(bf, called):
+    """`--min-bf` is the evidence a tract needs, and needing it means reaching it is enough.
+
+    This is the headline setting of the whole stage, and the comparison could be moved by one
+    without a single test failing.
+    """
+    got = gm.verdict(_res(log10_bf=bf, log10_bf_mut=0.0, log10_bf_null=0.0),
+                     covers_locus=False, min_bf=3.0)[0]
+
+    assert (got == "gene_conversion") is called
+
+
+@pytest.mark.parametrize("frac,blamed", [(0.2, True), (0.1999, False), (0.3, True)])
+def test_a_locus_at_exactly_the_mismapping_rate_is_reported_as_mismapping(frac, blamed):
+    """`--min-mismap` is the rate AT WHICH the locus is blamed on mismapped reads, not past it."""
+    got = gm.verdict(_res(log10_bf=0.5, log10_bf_mut=9.0, log10_bf_null=0.0, mismap_frac=frac),
+                     covers_locus=False, min_bf=3.0, min_mismap=0.2)[0]
+
+    assert (got == "mismapping") is blamed
+
+
 @pytest.mark.parametrize("af,called", [(0.25, True), (0.2499, False), (0.26, True)])
 def test_a_tract_carried_by_exactly_the_required_fraction_is_called(af, called):
     """`--min-tract-af` is the fraction a tract must reach, so reaching it is enough.
