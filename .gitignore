@@ -27,3 +27,8 @@ __pycache__/
 # MkDocs build output
 site/
 .cache/
+
+# coverage.py data, written by `coverage run`
+.coverage
+.coverage.*
+htmlcov/
