@@ -12,7 +12,8 @@ include { getSampleDir; getSavePath } from './utils'
 // tests/unit/test_gene_conversion.py checks this list against the tool.
 def gconvHeader() {
     return ['sample', 'pair_id', 'contig', 'donor', 'verdict', 'reason', 'start', 'end', 'span_bp',
-            'post_conv', 'log10_bf', 'log10_bf_vs_null', 'mismap_frac', 'start_ci', 'end_ci',
+            'post_conv', 'log10_bf', 'log10_bf_vs_null', 'tract_af', 'mismap_frac', 'mut_rate',
+            'start_ci', 'end_ci',
             'n_sites', 'n_sites_outside', 'n_undetermined', 'donor_af_in', 'donor_af_outside',
             'min_depth', 'cis_reads', 'breakpoint_reads', 'donor_only_reads'].join('\\t')
 }
@@ -77,6 +78,7 @@ process FIND_GENE_CONVERSION {
         --max-tract-bp ${params.gconv_max_tract_bp} \\
         --max-tracts ${params.gconv_max_tracts} \\
         --mut-rate ${params.gconv_mut_rate} \\
+        --min-tract-af ${params.gconv_min_tract_af} \\
         --min-mismap ${params.gconv_min_mismap} \\
         --min-sites ${params.gconv_min_sites} \\
         --min-depth ${params.gconv_min_depth} \\

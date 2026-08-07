@@ -30,6 +30,21 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
     site as the unit of evidence, and fits the fraction of reads that arrived from
     the donor instead of testing an average against a threshold. It reports a log10
     Bayes factor and a posterior over the breakpoints.
+ - Two components exist because a run over the REAL H37Rv genome, with its 411 real
+    paralog pairs and an isolate simulated with position-dependent quality decay,
+    indels, duplicates, uneven coverage and 3% contamination, showed the model
+    getting the wrong answer for a reason no toy dataset would have shown. The
+    fraction of reads that carry a tract is fitted rather than counted against it,
+    because 21% of H37Rv's paralog pairs have a relative closer than their own donor
+    and that relative's unconverted reads land on the acceptor. And the substitution
+    rate a run of donor bases has to beat is measured at the locus rather than taken
+    from the genome, because a hypervariable gene is one where a short run is
+    unremarkable: 39% of such loci were called conversions with a fixed rate against
+    8% with the locus's own, and the same real tracts were found either way.
+ - Measured on that benchmark: 21 of 23 implanted tracts found at 30x and at 12x
+    alike, breakpoints exact on the clonal ones, and no false positive over the 388
+    pairs with nothing implanted. A negative-control isolate produced no conversion
+    call at all.
  - Two things that used to need special cases now fall out of the arithmetic. A
     tract covering the whole locus predicts the same bases as every read having
     come from the donor, so its Bayes factor collapses to the ratio of the priors

@@ -306,7 +306,8 @@ def load_sites(path):
 
 
 COLUMNS = ["sample", "pair_id", "contig", "donor", "verdict", "reason", "start", "end", "span_bp",
-           "post_conv", "log10_bf", "log10_bf_vs_null", "mismap_frac", "start_ci", "end_ci",
+           "post_conv", "log10_bf", "log10_bf_vs_null", "tract_af", "mismap_frac", "mut_rate",
+           "start_ci", "end_ci",
            "n_sites", "n_sites_outside", "n_undetermined", "donor_af_in", "donor_af_outside",
            "min_depth", "cis_reads", "breakpoint_reads", "donor_only_reads"]
 
@@ -337,6 +338,9 @@ def parse_args(argv=None):
     p.add_argument("--mut-rate", type=float, default=gm.MUT_RATE,
                    help="probability that a diagnostic site carries the donor base by independent "
                         "substitution. This is what sets how many sites a tract needs")
+    p.add_argument("--min-tract-af", type=float, default=0.25,
+                   help="fraction of the reads that must carry a tract before it is called. "
+                        "Under this a minority conversion cannot be told from contamination")
     p.add_argument("--min-mismap", type=float, default=0.2,
                    help="fitted donor-read fraction at which a locus is reported as mismapping")
     p.add_argument("--min-sites", type=int, default=3,
@@ -386,7 +390,8 @@ def main(argv=None) -> int:
         for fit, tract in zip(keep, tracts):
             ev = tract_evidence(tract, positions, counts, per_read, in_any, a.min_depth)
             covers_locus = fit["map_i"] == 0 and fit["map_j"] == len(positions) - 1
-            verdict, reason = gm.verdict(fit, covers_locus, a.min_bf, a.min_mismap)
+            verdict, reason = gm.verdict(fit, covers_locus, a.min_bf, a.min_mismap,
+                                         a.min_tract_af)
             if fit["stride"] > 1:
                 reason += (f"; breakpoints resolved to every {fit['stride']} diagnostic sites "
                            "because the locus has too many to search exhaustively")
@@ -395,7 +400,9 @@ def main(argv=None) -> int:
                          "post_conv": round(fit["post_conv"], 4),
                          "log10_bf": round(fit["log10_bf"], 2),
                          "log10_bf_vs_null": round(fit["log10_bf_null"], 2),
+                         "tract_af": round(fit["tract_af"], 3),
                          "mismap_frac": round(fit["mismap_frac"], 4),
+                         "mut_rate": round(fit["mut_rate"], 5),
                          "start_ci": "{}-{}".format(*fit["start_ci"]),
                          "end_ci": "{}-{}".format(*fit["end_ci"]),
                          **ev})

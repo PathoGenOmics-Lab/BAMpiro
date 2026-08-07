@@ -221,24 +221,89 @@ def test_the_reported_bayes_factor_is_the_weakest_link():
     assert deep["log10_bf_null"] > thin["log10_bf_null"] + 100
 
 
+def _mixed(scale, frac, positions):
+    """`frac` molecules in ten carry the donor allele at sites 4 to 6, at any depth."""
+    reads = {}
+    for start in range(6):
+        for k in range(10 * scale):
+            donor = k % 10 < frac
+            reads[f"r{start}_{k}"] = {s: ("C" if (4 <= s <= 6 and donor) else "A")
+                                      for s in range(start, start + 3)}
+    return reads
+
+
 def test_depth_is_evidence_and_an_allele_fraction_is_not():
     """The headline defect of the threshold version: 7 donor reads out of 10 and 700 out of
-    1000 both give a fraction of 0.7 and were treated identically."""
+    1000 both give a fraction of 0.7 and were treated identically.
+
+    It shows up in the comparison against no conversion. The headline number does not move,
+    because once the sites are settled the open question is whether a run of donor bases is a
+    conversion or a coincidence, and depth has nothing to say about that.
+    """
     positions = _positions(8)
 
-    def mixed(scale):
-        reads = {}
-        for start in range(6):
-            for k in range(10 * scale):
-                donor = k % 10 < 7                      # 70% of molecules, at any depth
-                reads[f"r{start}_{k}"] = {s: ("C" if (4 <= s <= 6 and donor) else "A")
-                                          for s in range(start, start + 3)}
-        return reads
+    shallow = _fit(_mixed(1, 7, positions), positions)
+    deep = _fit(_mixed(10, 7, positions), positions)
 
-    shallow = _fit(mixed(1), positions)
-    deep = _fit(mixed(10), positions)
+    assert deep["log10_bf_null"] > shallow["log10_bf_null"] + 100
+    assert deep["log10_bf"] == pytest.approx(shallow["log10_bf"], abs=1e-6)
 
-    assert deep["log10_bf"] > shallow["log10_bf"] + 1.0
+
+def test_the_tract_fraction_is_recovered_rather_than_held_against_the_tract():
+    """How much of the read pool carries the tract is a quantity, not a disqualification.
+
+    Two ordinary things pull it below 1 and from allele data they are the same thing: a mixed
+    infection, and a gene family with more than two members whose unconverted copies contribute
+    reads to the acceptor. In H37Rv the second is not rare, so a model that scored those reads
+    as evidence against the tract would throw away perfectly clonal conversions.
+    """
+    positions = _positions(8)
+
+    for frac in (10, 7, 4):
+        res = _fit(_mixed(5, frac, positions), positions)
+        assert res["tract_af"] == pytest.approx(frac / 10, abs=0.05)
+        assert (res["start"], res["end"]) == (positions[4], positions[6])
+
+
+def test_a_diluted_tract_costs_evidence_but_is_still_reachable():
+    """The fraction is not free: it has a prior, and dilution costs against no conversion.
+
+    It costs nothing against independent substitution, and that is correct rather than an
+    oversight. A substitution can sit at 30% of the population just as a conversion can, so the
+    dilution says nothing about which of the two produced these bases and cancels out of that
+    comparison. What it does say is how sure we are the bases are there at all.
+    """
+    positions = _positions(8)
+
+    clonal = _fit(_mixed(5, 10, positions), positions)
+    diluted = _fit(_mixed(5, 3, positions), positions)
+    noise = _fit(_mixed(5, 0, positions), positions)
+
+    assert clonal["log10_bf_null"] > diluted["log10_bf_null"] + 50
+    assert diluted["log10_bf"] > 3.0
+    assert noise["log10_bf"] < 0
+
+
+def test_a_signal_too_thin_to_be_a_frequency_is_not_given_one():
+    """The floor under the tract fraction, which a genome-wide run put there.
+
+    Before it, a handful of donor bases at 4% of the reads on a real paralog pair came out as a
+    called conversion at the grid's minimum frequency. Below roughly a fifth of the reads there
+    is nothing to separate a minority conversion from index hopping or a contaminating sample,
+    so the model is not allowed to reach down there and pick one.
+    """
+    positions = _positions(8)
+    reads = {}
+    for start in range(6):
+        for k in range(250):
+            donor = k % 25 == 0                              # 4% of the molecules
+            reads[f"r{start}_{k}"] = {s: ("C" if (4 <= s <= 6 and donor) else "A")
+                                      for s in range(start, start + 3)}
+
+    res = _fit(reads, positions)
+
+    assert res["tract_af"] >= min(gm.TRACT_AF_GRID)
+    assert gm.verdict(res, covers_locus=False)[0] != "gene_conversion"
 
 
 def test_one_molecule_spanning_a_breakpoint_beats_two_molecules_that_do_not():
@@ -394,6 +459,62 @@ def test_the_grid_is_coarsened_only_when_the_locus_is_too_big_to_search_exactly(
     assert coarse["n_candidates"] < exact["n_candidates"]
     # The tract is short, so it survives the stride intact.
     assert (coarse["start"], coarse["end"]) == (exact["start"], exact["end"])
+
+
+# ------------------------------------------------- the locus substitution rate
+
+
+def _scatter(positions, tract, lone_sites, n=8, span=3):
+    """Reads over a locus with a tract plus isolated substituted sites elsewhere."""
+    reads = {}
+    carry = set(tract) | set(lone_sites)
+    for start in range(len(positions) - span + 1):
+        for k in range(n):
+            reads[f"r{start}_{k}"] = {s: ("C" if s in carry else "A")
+                                      for s in range(start, start + span)}
+    return reads
+
+
+def test_a_locus_that_substitutes_freely_makes_a_short_run_ordinary():
+    """The substitution rate is measured at the locus, not taken from the genome average.
+
+    A gene that carries a scattering of donor-matching bases on its own is a gene where a run of
+    two or three of them is unremarkable. Assuming the genome average there says such a run is a
+    one-in-ten-million coincidence, and a run over the real H37Rv measured that assumption
+    calling 39% of hypervariable loci a conversion, against 8% once the locus is asked.
+    """
+    positions = _positions(24)
+    tract = {10, 11}
+
+    clean = _fit(_scatter(positions, tract, []), positions)
+    peppered = _fit(_scatter(positions, tract, [2, 5, 8, 15, 18, 21]), positions)
+
+    assert clean["mut_rate"] == pytest.approx(gm.MUT_RATE)
+    assert peppered["mut_rate"] > 0.2
+    assert clean["log10_bf"] > 3.0 > peppered["log10_bf"]
+    assert (peppered["start"], peppered["end"]) == (positions[10], positions[11])
+
+
+def test_a_second_tract_is_not_mistaken_for_a_high_substitution_rate():
+    """Only ISOLATED substituted sites count towards the rate.
+
+    A run of them is what a conversion looks like, so counting runs would let a second genuine
+    tract in the same locus talk the first one down, and two conversions in one paralog pair is
+    an ordinary outcome rather than a pathological input.
+    """
+    positions = _positions(24)
+    res = _fit(_scatter(positions, {4, 5, 6}, [15, 16, 17, 18]), positions)
+
+    assert res["mut_rate"] == pytest.approx(gm.MUT_RATE)
+    assert res["n_substituted_outside"] == 0
+
+
+def test_the_locus_rate_stays_between_the_floor_asked_for_and_the_ceiling():
+    positions = _positions(24)
+    reads = _scatter(positions, {10, 11}, [2, 5, 8, 15, 18, 21])
+
+    assert _fit(reads, positions, mut_rate=0.4)["mut_rate"] == pytest.approx(0.4)
+    assert _fit(reads, positions)["mut_rate"] <= gm.MAX_MUT_RATE
 
 
 # ---------------------------------------------------------------------- segment

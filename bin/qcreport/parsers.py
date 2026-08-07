@@ -365,6 +365,8 @@ def parse_gene_conversion(path):
                                "bf_null": to_float(d.get("log10_bf_vs_null")),
                                "post": to_float(d.get("post_conv")),
                                "mismap": to_float(d.get("mismap_frac")),
+                               "tract_af": to_float(d.get("tract_af")),
+                               "mut_rate": to_float(d.get("mut_rate")),
                                "start_ci": (d.get("start_ci") or "").strip(),
                                "end_ci": (d.get("end_ci") or "").strip(),
                                "af_in": to_float(d.get("donor_af_in")),

@@ -81,6 +81,32 @@ Two things fall out of the model that previously needed special cases:
   carries donor bases. The two hypotheses have the same likelihood, so the Bayes factor collapses
   to the prior ratio on its own. The model reports the ambiguity instead of having to be told
   about it.
+
+WHAT A RUN OVER A REAL GENOME ADDED
+-----------------------------------
+
+Two components exist because a genome-wide run on H37Rv, with its 411 real paralog pairs and an
+isolate simulated with real error profiles, indels, duplicates and contamination, showed the model
+without them getting the wrong answer for a reason no toy dataset would have shown.
+
+**The tract fraction.** Not every read that should carry a tract does. A mixed infection is the
+obvious reason and the boring one; the interesting one is that a gene family usually has more than
+two members. 21% of H37Rv's paralog pairs have a relative CLOSER than their own donor, and that
+relative's reads land on the acceptor carrying unconverted bases. Scoring them as evidence against
+the tract is how a perfectly clonal conversion comes out at an allele fraction of 0.5 and gets
+thrown away, which is exactly what happened. The fraction is now fitted and reported, with a prior
+that keeps a stray blip from becoming "a tract at some convenient minority frequency", and a floor
+under it because below about a fifth of the reads a minority conversion and a contaminating sample
+are the same picture.
+
+**The substitution rate, measured at the locus.** The rate a run of donor-matching sites has to
+beat is not a property of the genome, it is a property of the gene. PE/PPE genes are hypervariable
+and they are hypervariable in exactly the positions where the copies already differ, so a locus
+that carries a scattering of donor-matching bases on its own is a locus where a run of two or three
+is unremarkable. Every diagnostic site outside the candidate tract is a direct observation of that
+rate, so it is estimated rather than assumed. Measured on a simulated hypervariable isolate: 39% of
+those loci were called conversions with the genome-average rate, 8% with the locus's own, and the
+same 10 of 10 real tracts were found either way.
 """
 
 from __future__ import annotations
@@ -98,12 +124,42 @@ LN10 = math.log(10.0)
 MISMAP_GRID = (0.0, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05,
                0.1, 0.15, 0.2, 0.3, 0.5, 0.7, 0.9, 0.95, 0.98, 0.995)
 
+# Fraction of the reads that are native to the acceptor AND carry the tract. A clonal conversion
+# in a two-copy family sits at 1. Two ordinary situations pull it down, and from allele data they
+# are the same situation:
+#
+#   * a mixed infection, where only part of the population carries the conversion;
+#   * a gene family with more than two members, where the copies that were not converted are
+#     similar enough that their reads land on the acceptor as well. In H37Rv this is not an edge
+#     case: 21% of paralog pairs have a relative CLOSER than their own donor.
+#
+# Without this the model scores every one of those reads as evidence against the tract, which is
+# how a perfectly clonal conversion in a three-copy family comes out at an allele fraction of 0.5
+# and gets thrown away.
+# The grid stops at 0.2 on purpose. Below about a fifth of the reads there is nothing left to
+# tell a subclonal conversion from index hopping, cross-sample contamination or an aligner having
+# a bad day, and a floor of 0.1 was measured to turn a 4% blip into a called conversion on the
+# real genome. What sits under the floor belongs in donor_af_in for a human to look at, not in a
+# verdict.
+TRACT_AF_GRID = (1.0, 0.95, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2)
+
+# How much a diluted tract has to pay for it. An exponential prior on the shortfall from 1, so a
+# clonal tract is free, a half-strength one costs about an order of magnitude, and one at the
+# floor costs nearly two.
+TRACT_AF_SCALE = 0.18
+
 # Probability that a given diagnostic site independently carries the donor base in this sample
 # because it mutated to it, rather than because it was converted. Roughly the per-site SNP rate
 # of a clonal genome against its reference (about 1e-3 for a tuberculosis isolate) divided by the
 # three bases it could have mutated to. This is what stops the model calling every SNP that
 # happens to match the paralog a one-site conversion tract.
 MUT_RATE = 3e-4
+
+# Ceiling on the rate estimated from a locus, and the log-likelihood ratio at which a site counts
+# as carrying the donor base at all. Without the ceiling a locus dense in substitutions could
+# explain away a long, clean tract as a run of coincidences.
+MAX_MUT_RATE = 0.25
+SITE_CALL_LR = 10.0
 
 # Phred scores from a real sequencer are optimistic in exactly the situation this tool works in:
 # a paralogous region, where a "sequencing error" is often a real base from the other copy. Left
@@ -258,7 +314,8 @@ def _credible_interval(weights, mass=0.95):
 
 
 def fit_locus(delta, positions, free=None, prior=0.01, mean_span_bp=1000.0,
-              m_grid=MISMAP_GRID, max_span_bp=None, mut_rate=MUT_RATE, max_grid=MAX_GRID):
+              m_grid=MISMAP_GRID, max_span_bp=None, mut_rate=MUT_RATE, max_grid=MAX_GRID,
+              af_grid=TRACT_AF_GRID):
     """Evaluate every conversion tract against everything else that could produce donor bases.
 
     There are three ways an acceptor site can show the donor's base, and all three are in the
@@ -301,24 +358,41 @@ def fit_locus(delta, positions, free=None, prior=0.01, mean_span_bp=1000.0,
     # A mismapped read carries the donor base at EVERY site, which is the sum of the whole row.
     total = prefix[:, -1]
 
-    log_w = -math.log(len(m_grid))
+    # Prior over how much of the acceptor's own read pool carries the tract. Weighted, unlike the
+    # mismapping grid: a clonal tract is the expected thing and a diluted one has to earn it.
+    af = np.asarray(af_grid, dtype=float)
+    log_w_af = -(1.0 - af) / TRACT_AF_SCALE
+    log_w_af -= _logsumexp(log_w_af)
+    log_w_m = -math.log(len(m_grid))
     chunk = max(1, CHUNK_ELEMENTS // max(1, n_reads))
     null_by_m = np.empty(len(m_grid))
     cand_by_m = np.empty((len(m_grid), starts.size))
+    # Posterior weight of each tract fraction, accumulated across candidates, so the reported
+    # fraction is the one the winning tract needed rather than a global average.
+    cand_by_af = np.full((len(af_grid), starts.size), -np.inf)
     for k, m in enumerate(m_grid):
         log_m = math.log(m) if m > 0 else -np.inf
         log_1m = math.log1p(-m)
         # The null: no tract, so a native read follows the all-acceptor background and its
-        # native term is the baseline, which is zero on this scale.
+        # native term is the baseline, which is zero on this scale. The tract fraction does not
+        # enter: with no tract to carry, carrying it at any frequency is the same thing.
         null_by_m[k] = float(np.logaddexp(log_m + total, log_1m).sum())
         for a in range(0, starts.size, chunk):
             b = min(a + chunk, starts.size)
             gain = prefix[:, ends[a:b] + 1] - prefix[:, starts[a:b]]
-            cand_by_m[k, a:b] = np.logaddexp(log_m + total[:, None], log_1m + gain).sum(axis=0)
+            acc = np.full(b - a, -np.inf)
+            for q, p in enumerate(af):
+                # A native read either carries the tract or does not; a read that does not looks
+                # exactly like the unconverted acceptor, which is the baseline.
+                inner = (np.logaddexp(math.log(p) + gain, math.log1p(-p)) if p < 1.0 else gain)
+                ll = np.logaddexp(log_m + total[:, None], log_1m + inner).sum(axis=0)
+                acc = np.logaddexp(acc, ll + log_w_af[q])
+                cand_by_af[q, a:b] = np.logaddexp(cand_by_af[q, a:b], ll + log_w_m)
+            cand_by_m[k, a:b] = acc
 
     # Marginal over the mismapping rate.
-    null_ll = _logsumexp(null_by_m + log_w)
-    cand_ll = _logsumexp_axis(cand_by_m + log_w)
+    null_ll = _logsumexp(null_by_m + log_w_m)
+    cand_ll = _logsumexp_axis(cand_by_m + log_w_m)
 
     # Prior over tracts: exponential in span, so the model prefers a short tract to a long one at
     # equal likelihood. Bacterial conversion tracts run from tens of bases to a few kb.
@@ -326,13 +400,44 @@ def fit_locus(delta, positions, free=None, prior=0.01, mean_span_bp=1000.0,
     log_prior_span = -span / float(mean_span_bp)
     log_prior_span -= _logsumexp(log_prior_span)
 
+    joint = cand_ll + log_prior_span
+    log_ev_conv = _logsumexp(joint)
+    # Posterior over tracts, given that one exists. Only the span prior enters, so this is
+    # settled before the substitution rate is, and the tract it picks is what that rate is then
+    # estimated around.
+    weights = np.exp(joint - log_ev_conv)
+    best = int(np.argmax(weights))
+
+    # How often a site at THIS locus carries the donor base on its own, measured here rather than
+    # assumed. A locus is not a random stretch of genome: PE/PPE genes are hypervariable, and
+    # they are hypervariable in exactly the positions where the copies already differ. A rate
+    # taken from the genome average says two adjacent donor-matching sites are a one-in-ten-
+    # million coincidence, and a genome-wide run showed that calling 22 of 60 isolated
+    # substitutions a conversion. Every diagnostic site outside the candidate tract is a direct
+    # observation of that rate, so the locus is asked instead of told.
+    #
+    # Only ISOLATED substituted sites count. A run of them is what a conversion looks like, so
+    # counting runs would let a second genuine tract in the same locus inflate the rate and talk
+    # the first one down, and two conversions in one paralog pair is an ordinary outcome.
+    site_lr = delta.sum(axis=0)
+    outside = np.ones(n_sites, dtype=bool)
+    outside[starts[best]:ends[best] + 1] = False
+    measured = outside & (np.abs(site_lr) > SITE_CALL_LR)
+    carries = measured & (site_lr > 0)
+    lone = carries.copy()
+    lone[:-1] &= ~carries[1:]
+    lone[1:] &= ~carries[:-1]
+    substituted = int(lone.sum())
+    local_rate = substituted / int(measured.sum()) if measured.any() else 0.0
+    # The ceiling bounds the ESTIMATE, not the caller: a locus that happens to be noisy should
+    # not be able to explain away a long clean tract, but an explicit rate is an instruction.
+    mut_rate = max(mut_rate, min(MAX_MUT_RATE, local_rate))
+
     # Prior over the same site sets arising as independent substitutions: one factor of mut_rate
     # per site that carries the donor base, and one of (1 - mut_rate) per site that does not.
     n_in = (ends - starts + 1).astype(float)
     log_prior_mut = n_in * math.log(mut_rate) + (n_sites - n_in) * math.log1p(-mut_rate)
 
-    joint = cand_ll + log_prior_span
-    log_ev_conv = _logsumexp(joint)
     log_ev_mut = _logsumexp(cand_ll + log_prior_mut)
     log_ev_null = null_ll + n_sites * math.log1p(-mut_rate)
 
@@ -348,10 +453,6 @@ def fit_locus(delta, positions, free=None, prior=0.01, mean_span_bp=1000.0,
     log10_bf_mut = (log_ev_conv - log_ev_mut) / LN10
 
     post_conv = 1.0 / (1.0 + math.exp(-log_bf)) if log_bf > -700 else 0.0
-
-    # Posterior over tracts, given that one exists.
-    weights = np.exp(joint - log_ev_conv)
-    best = int(np.argmax(weights))
 
     start_w = np.zeros(n_sites)
     np.add.at(start_w, starts, weights)
@@ -376,6 +477,14 @@ def fit_locus(delta, positions, free=None, prior=0.01, mean_span_bp=1000.0,
     m_post = np.exp(m_ev - _logsumexp(m_ev))
     mismap = float(np.dot(m_post, np.array(m_grid, dtype=float)))
 
+    # How much of the acceptor's read pool the MAP tract needed to carry it. Read it as an allele
+    # fraction: 1 is a clonal conversion in a two-copy family, and well under 1 means either a
+    # mixed infection or a third copy of the family contributing unconverted reads. Nothing in
+    # the reads tells those two apart.
+    af_ev = cand_by_af[:, best] + log_w_af
+    af_post = np.exp(af_ev - _logsumexp(af_ev))
+    tract_af = float(np.dot(af_post, af))
+
     return {
         "map_i": int(starts[best]),
         "map_j": int(ends[best]),
@@ -387,6 +496,7 @@ def fit_locus(delta, positions, free=None, prior=0.01, mean_span_bp=1000.0,
         "log10_bf_null": float(log10_bf_null),
         "log10_bf_mut": float(log10_bf_mut),
         "mismap_frac": mismap,
+        "tract_af": tract_af,
         "start_ci": (int(pos[s_lo]), int(pos[s_hi])),
         "end_ci": (int(pos[e_lo]), int(pos[e_hi])),
         "site_post": site_post,
@@ -394,6 +504,9 @@ def fit_locus(delta, positions, free=None, prior=0.01, mean_span_bp=1000.0,
         "n_sites_total": n_sites,
         "n_reads": n_reads,
         "n_candidates": int(starts.size),
+        # The substitution rate actually used, after the locus was allowed to raise it.
+        "mut_rate": float(mut_rate),
+        "n_substituted_outside": substituted,
         # 1 when every interval was evaluated. Above that, breakpoints were placed every `stride`
         # diagnostic sites and the reported boundaries are that much coarser.
         "stride": stride,
@@ -430,17 +543,27 @@ def segment(delta, positions, max_tracts=2, min_report_bf=1.0, **kw):
     return out
 
 
-def verdict(res, covers_locus, min_bf=3.0, min_mismap=0.15):
+def verdict(res, covers_locus, min_bf=3.0, min_mismap=0.15, min_tract_af=0.25):
     """Turn the model's output into the same vocabulary the threshold version used.
 
     The reason always names the alternative that came closest, because "not called" is only
     useful when it says what else the data look like.
     """
     bf, bf_null, bf_mut = res["log10_bf"], res["log10_bf_null"], res["log10_bf_mut"]
+    # A tract the model can only fit at the bottom of its frequency range is one it cannot speak
+    # about. Below roughly a fifth of the reads, a minority conversion, index hopping and a
+    # contaminating sample are the same picture, and the fitted fraction is pinned at the floor
+    # rather than measured. Reported with its numbers, not called.
+    if res.get("tract_af") is not None and res["tract_af"] < min_tract_af:
+        return "ambiguous", (
+            f"only {res['tract_af']:.0%} of the reads here carry the tract, which is under what "
+            "separates a minority conversion from contamination or index hopping")
     if bf >= min_bf:
         return "gene_conversion", (
             f"log10 Bayes factor {bf:.1f} over the best alternative, with the mismapping rate "
-            f"marginalised out (posterior mean {res['mismap_frac']:.3f})")
+            f"marginalised out (posterior mean {res['mismap_frac']:.3f})"
+            + (f"; carried by {res['tract_af']:.0%} of the reads"
+               if res.get("tract_af", 1.0) < 0.9 else ""))
 
     if covers_locus:
         return "ambiguous", (

@@ -395,18 +395,21 @@ def test_parse_dr_without_any_call_is_none(tmp_path):
 
 GCONV_HEADER = (
     "sample\tpair_id\tcontig\tdonor\tverdict\treason\tstart\tend\tspan_bp\t"
-    "post_conv\tlog10_bf\tlog10_bf_vs_null\tmismap_frac\tstart_ci\tend_ci\t"
+    "post_conv\tlog10_bf\tlog10_bf_vs_null\ttract_af\tmismap_frac\tmut_rate\tstart_ci\tend_ci\t"
     "n_sites\tn_sites_outside\tn_undetermined\tdonor_af_in\tdonor_af_outside\t"
     "min_depth\tcis_reads\tbreakpoint_reads\tdonor_only_reads\n"
 )
 GCONV = GCONV_HEADER + (
     "S1\t7\tPPE34\tPPE12\tgene_conversion\tlog10 Bayes factor 18.4 over the best alternative"
-    "\t1000\t1400\t401\t1.0\t18.4\t612.5\t0.0031\t1000-1000\t1400-1400\t6\t9\t0\t0.97\t0.01\t18\t11\t3\t0\n"
+    "\t1000\t1400\t401\t1.0\t18.4\t612.5\t1.0\t0.0031\t0.0003\t1000-1000\t1400-1400"
+    "\t6\t9\t0\t0.97\t0.01\t18\t11\t3\t0\n"
     "S1\t9\tPE_PGRS4\tPE_PGRS5\tmismapping\tthe locus is explained by reads from the donor at 0.48"
-    "\t2000\t2300\t301\t0.02\t0.4\t2.1\t0.4812\t2000-2140\t2210-2300\t4\t12\t1\t0.55\t0.48\t9\t5\t0\t7\n"
+    "\t2000\t2300\t301\t0.02\t0.4\t2.1\t0.62\t0.4812\t0.0003\t2000-2140\t2210-2300"
+    "\t4\t12\t1\t0.55\t0.48\t9\t5\t0\t7\n"
     # the whole-locus case: no site outside the tract, so donor_af_outside cannot be measured at all
     "S2\t7\tPPE34\tPPE12\tambiguous\tthe tract covers every diagnostic site\t1000\t1600\t601"
-    "\t0.31\t1.1\t1.1\t0.9701\t1000-1000\t1600-1600\t15\t0\t0\t0.91\t\t12\t8\t0\t8\n"
+    "\t0.31\t1.1\t1.1\t0.99\t0.9701\t0.05\t1000-1000\t1600-1600"
+    "\t15\t0\t0\t0.91\t\t12\t8\t0\t8\n"
 )
 
 
@@ -420,7 +423,8 @@ def test_parse_gene_conversion_reads_the_tracts_samples_and_verdict_counts(tmp_p
         "reason": "log10 Bayes factor 18.4 over the best alternative",
         "start": 1000, "end": 1400, "span": 401,
         "post": pytest.approx(1.0), "bf": pytest.approx(18.4), "bf_null": pytest.approx(612.5),
-        "mismap": pytest.approx(0.0031), "start_ci": "1000-1000", "end_ci": "1400-1400",
+        "mismap": pytest.approx(0.0031), "tract_af": pytest.approx(1.0),
+        "mut_rate": pytest.approx(0.0003), "start_ci": "1000-1000", "end_ci": "1400-1400",
         "n_sites": 6, "n_out": 9, "n_undet": 0,
         "af_in": pytest.approx(0.97), "af_out": pytest.approx(0.01),
         "depth": 18, "cis_reads": 11, "bp_reads": 3, "donor_only": 0}
@@ -463,6 +467,7 @@ def _gconv_row(**cells):
     defaults = dict(sample="S1", pair_id="1", contig="c", donor="d", verdict="ambiguous",
                     reason="r", start="1", end="2", span_bp="2", post_conv="0.5", log10_bf="1.0",
                     log10_bf_vs_null="2.0", mismap_frac="0.01", start_ci="1-1", end_ci="2-2",
+                    tract_af="1.0", mut_rate="0.0003",
                     n_sites="3", n_sites_outside="3", n_undetermined="0", donor_af_in="1.0",
                     donor_af_outside="0.0", min_depth="9", cis_reads="3", breakpoint_reads="1",
                     donor_only_reads="0")

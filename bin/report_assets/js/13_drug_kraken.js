@@ -341,6 +341,7 @@ function renderGconv(){
         '<td><span class="gcv-badge" style="background:'+d.c+'" title="'+esc(t.reason||d.tip)+'">'+d.lab+'</span></td>'+
         '<td class="gcv-num"><b'+(t.bf!=null&&t.bf>=3?' class="gcv-bp"':'')+'>'+gconvNum(t.bf,1)+'</b>'+
           (t.bf_null==null?'':' <span class="gcv-mut" title="log10 Bayes factor against no conversion at all. This is where depth, base quality and read linkage show up; the headline number is also limited by how implausible independent substitution is">/ '+t.bf_null.toFixed(0)+' vs none</span>')+'</td>'+
+        '<td class="gcv-num">'+gconvNum(t.tract_af,2)+'</td>'+
         '<td class="gcv-num">'+gconvNum(t.mismap,3)+'</td>'+
         '<td class="gcv-num">'+(t.start==null?'':fmtpos(t.start))+(t.span==null?'':' <span class="gcv-mut">'+t.span.toLocaleString('en-US')+' bp</span>')+'</td>'+
         '<td class="gcv-num">'+(t.n_sites==null?'':t.n_sites)+(t.n_out==null?'':' <span class="gcv-mut">/ '+t.n_out+' out</span>')+'</td>'+
@@ -350,7 +351,7 @@ function renderGconv(){
         '<td class="gcv-num">'+(t.cis_reads==null?'':t.cis_reads)+'</td>'+
         '<td class="gcv-num">'+gconvNum(t.depth,0)+'</td>'+
         '<td><span class="gcv-reason">'+esc(t.reason||'')+'</span></td></tr>';}).join('');
-    if(!ord.length)body='<tr><td colspan="13" class="c" style="padding:18px;text-align:center">'+
+    if(!ord.length)body='<tr><td colspan="14" class="c" style="padding:18px;text-align:center">'+
       (rows.length?'no tract matches the filter.':'no tract in the samples currently in view.')+'</td></tr>';
     host.innerHTML='<div class="gcv-verdicts">'+chips+'</div>'+
       '<div class="gcv-plotscroll">'+svg+'</div>'+legend+
@@ -359,6 +360,7 @@ function renderGconv(){
       '<div class="epitbl-wrap gcv-tablewrap"><table class="epitbl gcv-table"><thead><tr>'+
         th('s','Sample')+th('locus','Locus','','the acceptor locus and the donor its alleles came from')+th('verdict','Verdict')+
         th('bf','BF','gcv-num','log10 Bayes factor for a conversion tract over the best alternative: an independent substitution at the same sites, or reads that arrived from the donor. 3 is decisive')+
+        th('tract_af','Carried by','gcv-num','fraction of the reads that carry the tract. Below 1 means either a mixed infection or a third copy of the family contributing unconverted reads; nothing in short reads tells those apart')+
         th('mismap','Donor reads','gcv-num','fraction of reads at this locus the model had to assume came from the donor')+
         th('start','Tract','gcv-num','start position and length of the tract')+
         th('n_sites','Sites','gcv-num','diagnostic sites inside the tract / outside it. No site outside means boundedness cannot be tested')+
@@ -377,12 +379,12 @@ function renderGconv(){
     Array.prototype.forEach.call(host.querySelectorAll('[data-s]'),function(e){e.onclick=function(){setHi(e.getAttribute('data-s'));};});
     var db=el('gcvdl'); if(db)db.onclick=function(){
       var hdr=['sample','pair_id','contig','donor','verdict','reason','start','end','span_bp',
-               'post_conv','log10_bf','log10_bf_vs_null','mismap_frac','start_ci','end_ci',
+               'post_conv','log10_bf','log10_bf_vs_null','tract_af','mismap_frac','mut_rate','start_ci','end_ci',
                'n_sites','n_sites_outside','n_undetermined','donor_af_in','donor_af_outside',
                'min_depth','cis_reads','breakpoint_reads','donor_only_reads'];
       var lines=[hdr.join('\t')];
       ord.forEach(function(t){lines.push([t.s,t.pair,t.contig,t.donor,t.verdict,t.reason,t.start,t.end,t.span,
-        t.post,t.bf,t.bf_null,t.mismap,t.start_ci,t.end_ci,t.n_sites,t.n_out,t.n_undet,
+        t.post,t.bf,t.bf_null,t.tract_af,t.mismap,t.mut_rate,t.start_ci,t.end_ci,t.n_sites,t.n_out,t.n_undet,
         t.af_in,t.af_out,t.depth,t.cis_reads,t.bp_reads,t.donor_only].map(function(x){return x==null?'':x;}).join('\t'));});
       dl(lines.join('\n')+'\n','gene_conversion.tsv','text/tab-separated-values');};
     if(cap){var nsamp={},ncall=counts.gene_conversion||0; rows.forEach(function(t){nsamp[t.s]=1;});

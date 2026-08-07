@@ -78,6 +78,28 @@ one site the substitution wins, at two it is close, and by three the conversion 
 magnitude. The old hand-picked `min_sites = 3` is where that lands, except now it is derived, it
 moves with the spacing of the diagnostic sites, and it can be argued with by changing a rate.
 
+That rate is **measured at the locus, not taken from the genome**. PE/PPE genes are
+hypervariable, and they are hypervariable in exactly the positions where the copies already
+differ, so a gene carrying a scattering of donor-matching bases on its own is a gene where a run
+of two or three of them is unremarkable. Every diagnostic site outside the candidate tract is a
+direct observation of that rate, and `--gconv_mut_rate` becomes a floor rather than the answer.
+Only isolated substituted sites count: a run of them is what a conversion looks like, so counting
+runs would let a second genuine tract talk the first one down. The rate used is reported per row
+as `mut_rate`.
+
+**5. How much of the read pool carries it.** A clonal conversion in a two-copy family shows up in
+every read. Two ordinary things pull that down, and from allele data they are the same thing: a
+mixed infection, and a gene family with more than two members whose unconverted copies contribute
+reads to the acceptor. The second is not an edge case, and this is worth stating plainly:
+
+!!! warning "21% of H37Rv's paralog pairs have a relative closer than their own donor"
+
+    Reads from that third copy land on the acceptor carrying unconverted bases, so a perfectly
+    clonal conversion can show an allele fraction near 0.5 and nothing is wrong. The fraction is
+    fitted and reported as `tract_af` rather than counted against the tract, with a floor at 0.25:
+    below about a fifth of the reads there is nothing left to separate a minority conversion from
+    index hopping or a contaminating sample.
+
 ## Verdicts
 
 | Verdict | Meaning |
@@ -99,6 +121,8 @@ of their priors on its own. The model reports the ambiguity rather than having t
 | `log10_bf` | Is this a conversion, rather than a coincidence of substitutions or a pile of donor reads? Above 3 is decisive |
 | `log10_bf_vs_null` | Are these sites really carrying the donor's bases? This is where depth, base quality and read linkage show up |
 | `post_conv` | The same as `log10_bf`, read through `--gconv_prior` |
+| `tract_af` | What fraction of the reads carry the tract. Below 1 means a mixed infection or a third copy of the family; nothing in short reads tells those apart |
+| `mut_rate` | The per-site substitution rate this locus turned out to have, which is what the tract had to beat |
 | `mismap_frac` | What fraction of the reads here the model had to assume came from the donor |
 | `start_ci`, `end_ci` | Where the breakpoints are, to diagnostic-site resolution, as a 95% credible interval |
 
@@ -140,7 +164,8 @@ the donor/acceptor graph of your reference.
 | `--gconv_min_bf` | `3.0` | log10 Bayes factor before a tract is called a conversion |
 | `--gconv_report_bf` | `1.0` | log10 Bayes factor below which a tract is not written out |
 | `--gconv_prior` | `0.01` | Prior that a given paralog pair carries a tract |
-| `--gconv_mut_rate` | `0.0003` | Chance a site carries the donor base by plain substitution |
+| `--gconv_mut_rate` | `0.0003` | FLOOR on the chance a site carries the donor base by plain substitution. The locus raises it when it turns out to be hypervariable |
+| `--gconv_min_tract_af` | `0.25` | Read fraction a tract needs before it is called |
 | `--gconv_mean_tract_bp` | `1000` | Mean of the exponential prior on tract length |
 | `--gconv_max_tract_bp` | `10000` | Longest tract considered |
 | `--gconv_max_tracts` | `2` | Conversion tracts looked for per paralog pair |
@@ -152,10 +177,10 @@ the donor/acceptor graph of your reference.
 `--gconv_min_bf` is the one to reach for. 3 is "decisive" on the usual scale; drop it to 2 to see
 more candidates, and read `log10_bf_vs_null` alongside to see which kind of doubt is behind each.
 
-`--gconv_mut_rate` is the per-site chance of an independent substitution to exactly the donor's
-base, roughly the genome's SNP rate against its reference divided by three. Raising it makes short
-tracts harder to call and leaves long ones untouched, which is usually what you want on a
-divergent isolate. `--gconv_mean_tract_bp` only breaks ties between overlapping intervals of
+`--gconv_mut_rate` is a floor on the per-site chance of an independent substitution to exactly the
+donor's base, roughly the genome's SNP rate against its reference divided by three. Each locus
+raises it if its own sites say so, so on a divergent isolate the adjustment happens on its own;
+raise the floor if you want every locus treated as hypervariable. `--gconv_mean_tract_bp` only breaks ties between overlapping intervals of
 similar likelihood; it is not a filter, and a tract far longer than it will still be called if the
 reads say so.
 
@@ -165,6 +190,26 @@ reads say so.
     sites the breakpoints are placed on a coarser grid, which costs breakpoint resolution and
     nothing else; the `reason` column says so when it happens. Short intervals are always kept at
     full resolution, since those are the ones a coarse grid would mangle.
+
+## What it was measured on
+
+Not a toy. The model was tuned and checked against the real H37Rv genome and its **411 real
+paralog pairs**, with isolates simulated at 12x and 30x carrying position-dependent quality decay,
+errors the Phred score does not admit to, indels, PCR duplicates removed by `samtools markdup`,
+uneven coverage with dropouts, 1200 background substitutions and 3% reads from a near neighbour,
+then mapped and deduplicated exactly as the pipeline does.
+
+| | Result |
+| :--- | :--- |
+| Conversion tracts implanted across 23 real paralog pairs, at 2 to 20 diagnostic sites and 25% to 100% frequency | **21 of 23 found** at the default threshold, at 30x and at 12x alike |
+| Breakpoints on the clonal tracts | exact, with the credible interval covering the truth |
+| False positives over the 388 pairs with nothing implanted | **0**, at every threshold down to `log10_bf` 1 |
+| A negative control isolate: 411 real pairs, no conversion anywhere | **no conversion call at all** |
+| 22 isolated substitutions that happen to match the donor's base | **0 called** |
+| Hypervariable loci, 10% of diagnostic sites substituted | 8% called, against 39% with a fixed genome-average substitution rate, with the same 10 of 10 real tracts found either way |
+
+The two tracts that were missed sat at 25% and 40% frequency, which is what the floor under
+`tract_af` is for.
 
 ## The blind spot: a tract longer than the insert
 
