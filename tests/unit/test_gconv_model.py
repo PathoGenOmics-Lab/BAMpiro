@@ -561,6 +561,90 @@ def _delta(reads, positions):
     return delta, positions
 
 
+# ------------------------------------------------------------- invariants
+#
+# Things that must hold for any input at all. A numerical model can be wrong in ways no single
+# example reveals, and these are the statements that would catch it.
+
+
+def test_the_order_the_reads_arrive_in_does_not_change_the_answer():
+    """The likelihood is a product over molecules, so it is symmetric in them. If this ever
+    fails, something is accumulating in a way that depends on iteration order."""
+    positions = _positions(12)
+    reads = _tract_reads(6, 3, 12, tract={4, 5, 6})
+    shuffled = dict(sorted(reads.items(), key=lambda kv: kv[0][::-1]))
+
+    a, b = _fit(reads, positions), _fit(shuffled, positions)
+
+    assert a["log10_bf"] == pytest.approx(b["log10_bf"])
+    assert (a["map_i"], a["map_j"]) == (b["map_i"], b["map_j"])
+
+
+@pytest.mark.parametrize("depths", [(1, 2, 4, 8, 16)])
+def test_more_agreeing_molecules_never_weaken_the_case_against_no_conversion(depths):
+    positions = _positions(12)
+    seen = [_fit(_tract_reads(n, 3, 12, tract={4, 5, 6}), positions)["log10_bf_null"]
+            for n in depths]
+
+    assert seen == sorted(seen), f"evidence fell as depth rose: {seen}"
+
+
+@pytest.mark.parametrize("quals", [(13, 20, 25, 30)])
+def test_better_base_quality_never_weakens_it_either(quals):
+    positions = _positions(12)
+    reads = _tract_reads(6, 3, 12, tract={4, 5, 6})
+    seen = [_fit(reads, positions, phred=q)["log10_bf_null"] for q in quals]
+
+    assert seen == sorted(seen), f"evidence fell as quality rose: {seen}"
+
+
+def test_molecules_that_contradict_the_tract_never_strengthen_it():
+    positions = _positions(12)
+    reads = _tract_reads(6, 3, 12, tract={4, 5, 6})
+    contradicted = dict(reads)
+    for k in range(40):
+        contradicted[f"against{k}"] = {4: "A", 5: "A", 6: "A"}
+
+    assert _fit(contradicted, positions)["log10_bf_null"] < _fit(reads, positions)["log10_bf_null"]
+
+
+def test_a_locus_read_end_to_end_gives_the_mirrored_tract():
+    """No hidden preference for one side of the locus."""
+    positions = _positions(12)
+    reads = _tract_reads(6, 3, 12, tract={4, 5, 6})
+    mirrored = {n: {11 - i: b for i, b in c.items()} for n, c in reads.items()}
+
+    res = _fit(mirrored, positions)
+
+    assert (res["map_i"], res["map_j"]) == (11 - 6, 11 - 4)
+
+
+def test_moving_the_whole_locus_along_the_genome_changes_nothing_but_coordinates():
+    positions = _positions(12)
+    reads = _tract_reads(6, 3, 12, tract={4, 5, 6})
+    sites = _sites(positions)
+    _, delta = gm.delta_matrix(_obs(reads, positions), positions, sites)
+
+    here = gm.fit_locus(delta, positions)
+    far = gm.fit_locus(delta, [p + 1_000_000 for p in positions])
+
+    assert here["log10_bf"] == pytest.approx(far["log10_bf"])
+    assert (here["map_i"], here["map_j"]) == (far["map_i"], far["map_j"])
+
+
+def test_the_prior_does_not_move_the_bayes_factor():
+    """The Bayes factor is a statement about the data. Only the posterior may follow the prior,
+    and a run over the real genome checks this on every reported row."""
+    positions = _positions(12)
+    reads = _tract_reads(6, 3, 12, tract={4, 5, 6})
+
+    seen = [_fit(reads, positions, prior=p)["log10_bf"] for p in (0.001, 0.01, 0.5, 0.99)]
+    posts = [_fit(reads, positions, prior=p)["post_conv"] for p in (0.001, 0.01, 0.5, 0.99)]
+
+    assert all(v == pytest.approx(seen[0]) for v in seen)
+    assert posts == sorted(posts)
+
+
 # ------------------------------------------------------- degenerate inputs
 #
 # Each of these was a real failure found by running the model over random inputs. They are

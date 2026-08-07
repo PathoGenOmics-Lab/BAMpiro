@@ -180,6 +180,14 @@ the donor/acceptor graph of your reference.
 | `--gconv_min_depth` | `5` | Depth below which a site is undetermined in the summaries |
 | `--gconv_min_bq` | `13` | Base-quality floor when reading an allele off a read |
 
+!!! note "`--gconv_min_bq` is a floor, not a stringency dial"
+
+    Raising it can produce MORE calls, not fewer. The model already weights each base by its
+    quality, so the floor only decides what is thrown away entirely, and a poor base at a
+    converted site reads as the acceptor's by error and drags `tract_af` down. Measured on the
+    real genome: raising the floor from 13 to 35 moved loci from 0.215 to 0.232 and from 0.262
+    to 0.279, which is enough to cross the fraction a tract has to reach before it is called.
+
 `--gconv_min_bf` is the one to reach for. 3 is "decisive" on the usual scale; drop it to 2 to see
 more candidates, and read `log10_bf_vs_null` alongside to see which kind of doubt is behind each.
 
