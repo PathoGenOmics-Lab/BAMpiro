@@ -115,6 +115,56 @@ def test_a_cohort_too_small_to_argue_from_recurrence_is_not_argued_from():
     assert all(r["cohort_verdict"] == "gene_conversion" for r in out)
 
 
+def test_a_tract_inside_another_does_not_shorten_the_event():
+    """The running end of an event is the furthest end seen, not the latest one.
+
+    Tracts are walked in order of where they start, so a short one nested inside a long one comes
+    second and would pull the event's end back to its own. The next tract then falls outside an
+    event it belongs to and starts a new one, which splits a single recurrent event into two
+    that each look rare.
+    """
+    rows = [tract("S0", start=1000, end=2000),
+            tract("S1", start=1100, end=1200),        # nested inside the first
+            tract("S2", start=1900, end=2100)]        # still inside the first, not the second
+
+    out, _ = gcc.annotate(rows, cohort(10))
+
+    assert len({r["event_id"] for r in out}) == 1, "one stretch, one event"
+
+
+def test_merging_two_views_of_a_donor_widens_the_candidate_to_cover_both():
+    """The merged span is the union of the two, because it is what later rows are tested against.
+
+    Anything narrower and a third relationship pointing at the same stretch falls outside it and
+    is counted as a separate source, which turns one donor into two and makes a resolved call
+    ambiguous.
+    """
+    rows = [tract("S0", pair="1", don_start=5000, don_end=5100),
+            tract("S0", pair="2", don_start=5090, don_end=5300),
+            tract("S0", pair="3", don_start=5200, don_end=5250)]
+
+    out, _ = gcc.annotate(rows, cohort(10))
+
+    assert all(r["n_donors"] == 1 for r in out), "one stretch of donor, one candidate"
+
+
+def test_a_row_with_no_markers_does_not_erase_the_evidence_of_the_one_it_joins():
+    """A tract row can carry no usable count, and then it has no evidence per marker to offer.
+
+    Joining a candidate has to leave that candidate's own evidence alone. Letting the empty row
+    through instead replaces a measured number with nothing, and the source that was resolved
+    stops being resolvable.
+    """
+    rows = [tract("S0", pair="1", don_start=5000, don_end=5200, bf_null="200.0", n_sites="20"),
+            tract("S0", pair="2", don_start=5100, don_end=5300, bf_null="", n_sites="0"),
+            tract("S0", pair="3", don_start=9000, don_end=9200, bf_null="12.0", n_sites="9")]
+
+    out, _ = gcc.annotate(rows, cohort(10))
+
+    assert out[0]["donor_rank"] == 1, "the well-supported stretch is still the best candidate"
+    assert out[0]["donor_call"] == "resolved"
+
+
 @pytest.mark.parametrize("gap,together", [(5, True), (6, False), (0, True)])
 def test_slack_is_the_tolerance_it_says_it_is(gap, together):
     """A gap of exactly `--slack` bases still makes two tracts the same event.
