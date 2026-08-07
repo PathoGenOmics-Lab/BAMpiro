@@ -59,6 +59,9 @@ RUN micromamba create -n bampiro-env -c conda-forge -c bioconda -y \
     'multiqc' \
     'pathotypr' \
     'pandas' \
+    # pandas already pulls numpy in, but bin/gconv_model.py and bin/build_min_unique_len.py import
+    # it directly, and a direct import has no business resting on somebody else's dependency.
+    'numpy' \
     'biopython' \
     && micromamba clean --all --yes
 

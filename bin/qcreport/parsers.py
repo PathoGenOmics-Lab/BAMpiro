@@ -309,17 +309,23 @@ def parse_dr(path):
     return {"samples": samples, "drugs": drugs, "calls": calls}
 
 
-_GCONV_VERDICTS = ("gene_conversion", "mismapping", "ambiguous")
+_GCONV_VERDICTS = ("gene_conversion", "mismapping", "ambiguous", "coverage_shift")
 
 
 def parse_gene_conversion(path):
     """Cohort gene-conversion tracts (COLLECT_GENE_CONVERSION) -> {'samples','counts','tracts':[...]} or None.
 
-    One row per candidate tract. The three columns the verdict actually rests on are carried
-    through untouched -- `donor_af_in` (how fixed the donor allele is inside the tract),
-    `donor_af_outside` (whether the tract is bounded at all) and `breakpoint_reads` (single
-    molecules carrying donor and acceptor alleles in cis, the one thing a mismapping cannot
-    fake) -- because the panel shows the judgement, not just its conclusion.
+    One row per candidate tract. Two kinds of number are carried through, and they answer
+    different questions.
+
+    `log10_bf` and `post_conv` are what the model concluded: a conversion weighed against an
+    independent substitution and against reads that arrived from the donor. `mismap_frac` is the
+    donor-read rate it had to assume to say so.
+
+    `donor_af_in`, `donor_af_outside` and `breakpoint_reads` are what a person checks that
+    against in the BAM: how fixed the donor allele is inside the tract, whether it also turns up
+    outside it, and how many single molecules carry both in cis. The panel shows the judgement
+    and the evidence side by side, because a conclusion nobody can check is not much use.
 
     Optional input: missing, empty or header-only returns None and the panel self-hides.
     """
@@ -354,6 +360,13 @@ def parse_gene_conversion(path):
                                "start": ival(d.get("start")), "end": ival(d.get("end")),
                                "span": ival(d.get("span_bp")), "n_sites": ival(d.get("n_sites")),
                                "n_out": ival(d.get("n_sites_outside")),
+                               "n_undet": ival(d.get("n_undetermined")),
+                               "bf": to_float(d.get("log10_bf")),
+                               "bf_null": to_float(d.get("log10_bf_vs_null")),
+                               "post": to_float(d.get("post_conv")),
+                               "mismap": to_float(d.get("mismap_frac")),
+                               "start_ci": (d.get("start_ci") or "").strip(),
+                               "end_ci": (d.get("end_ci") or "").strip(),
                                "af_in": to_float(d.get("donor_af_in")),
                                "af_out": to_float(d.get("donor_af_outside")),
                                "depth": ival(d.get("min_depth")),

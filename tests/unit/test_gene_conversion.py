@@ -7,14 +7,16 @@ offsets. When it is wrong it is silently wrong, reading the right position off t
 base, so it is tested operation by operation against reads whose bases are laid out to make
 an off-by-anything visible.
 
-The detector is judgement. Reads that mismap from the donor produce the same per-site
-picture as a real conversion: donor bases where the reference expects acceptor bases. The
-tests for `classify` are the specification of how the two are told apart, and each of the
-four verdict routes gets its own test.
+The rest is plumbing around a model that lives in `gconv_model` and is specified in
+tests/unit/test_gconv_model.py. What is tested here is that the reads reach it intact and that
+what it decides reaches the output file intact: the CIGAR arithmetic above it, the descriptive
+statistics reported beside its verdict, and the coverage check that catches the tracts whose
+reads have moved to the donor, which is the one thing no allele model can see.
 """
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 
@@ -42,15 +44,6 @@ def _sam_line(name, pos, cigar, seq, qual="*", flag=0, rname=CONTIG, mapq=0):
 def _per_read(spec):
     """{read_name: {pos: 'acceptor'|'donor'|'other'}} written out literally."""
     return {name: dict(calls) for name, calls in spec.items()}
-
-
-def _ev(**overrides):
-    """Evidence for a textbook conversion, so each classify test changes one thing."""
-    ev = {"n_sites": 5, "start": 110, "end": 150, "span_bp": 41, "n_sites_outside": 6,
-          "donor_af_in": 0.98, "donor_af_outside": 0.0, "min_depth": 20,
-          "cis_reads": 8, "breakpoint_reads": 3, "donor_only_reads": 0}
-    ev.update(overrides)
-    return ev
 
 
 # -------------------------------------------------------------------------- parse_cigar
@@ -331,7 +324,7 @@ def test_pileup_ignores_calls_outside_the_requested_positions():
     assert counts[100]["donor"] == 1
 
 
-# ------------------------------------------------------------------------- call_tracts
+# ---------------------------------------------------------------------- tract_evidence
 
 
 def _counts(spec, depth=10):
@@ -343,82 +336,6 @@ def _counts(spec, depth=10):
         out[pos] = {"acceptor": d - donor, "donor": donor, "other": 0,
                     "depth": d, "donor_af": af}
     return out
-
-
-def test_call_tracts_finds_a_maximal_run_of_donor_sites():
-    positions = [10, 20, 30, 40, 50, 60]
-    counts = _counts({10: 0.0, 20: 1.0, 30: 0.95, 40: 1.0, 50: 0.0, 60: 0.0})
-
-    assert gc.call_tracts(positions, counts) == [[20, 30, 40]]
-
-
-def test_call_tracts_means_consecutive_in_the_site_list_not_in_coordinates():
-    """The bases between two diagnostic sites are identical in both copies, so they cannot
-    testify either way. A 4 kb gap between adjacent diagnostic sites does not break a run."""
-    positions = [100, 200, 5000, 5001]
-    counts = _counts(dict.fromkeys(positions, 1.0))
-
-    assert gc.call_tracts(positions, counts) == [[100, 200, 5000, 5001]]
-
-
-def test_call_tracts_finds_several_runs_and_flushes_the_last_one():
-    positions = [10, 20, 30, 40, 50, 60, 70]
-    counts = _counts({10: 1.0, 20: 1.0, 30: 1.0, 40: 0.0, 50: 1.0, 60: 1.0, 70: 1.0})
-
-    assert gc.call_tracts(positions, counts) == [[10, 20, 30], [50, 60, 70]]
-
-
-def test_call_tracts_requires_min_sites():
-    positions = [10, 20, 30]
-    counts = _counts({10: 1.0, 20: 1.0, 30: 0.0})
-
-    assert gc.call_tracts(positions, counts, min_sites=3) == []
-    assert gc.call_tracts(positions, counts, min_sites=2) == [[10, 20]]
-
-
-def test_call_tracts_requires_min_af():
-    positions = [10, 20, 30, 40]
-    counts = _counts({10: 1.0, 20: 0.6, 30: 1.0, 40: 1.0})
-
-    assert gc.call_tracts(positions, counts, min_af=0.7, min_sites=2) == [[30, 40]]
-    assert gc.call_tracts(positions, counts, min_af=0.6, min_sites=2) == [[10, 20, 30, 40]]
-    assert gc.call_tracts(positions, counts, min_af=0.61, min_sites=2) == [[30, 40]]
-
-
-def test_a_shallow_site_bridges_a_tract_instead_of_breaking_it():
-    """A donor fraction computed from two reads is not evidence of anything, in EITHER direction.
-
-    It used to break the run, which meant one ordinary coverage dip inside a clean tract split it
-    into fragments that each fell below min_sites, and the whole tract vanished. Found on a
-    simulated cohort: a real four-site conversion went undetected because one site sat at depth 2.
-    The shallow site is skipped, so it neither joins the tract nor ends it.
-    """
-    positions = [10, 20, 30, 40]
-    counts = _counts(dict.fromkeys(positions, 1.0), depth={10: 10, 20: 10, 30: 2, 40: 10})
-
-    # The shallow site is not a member, but the sites either side still form one tract.
-    assert gc.call_tracts(positions, counts, min_sites=2, min_depth=5) == [[10, 20, 40]]
-    # With the floor low enough to genotype it, it joins like any other site.
-    assert gc.call_tracts(positions, counts, min_sites=2, min_depth=2) == [[10, 20, 30, 40]]
-
-
-def test_a_site_carrying_the_acceptor_allele_does_end_a_tract():
-    """The counterpart: a MEASURED acceptor site is evidence, and it bounds the tract."""
-    positions = [10, 20, 30, 40]
-    counts = _counts({10: 1.0, 20: 1.0, 30: 0.0, 40: 1.0}, depth=20)
-
-    assert gc.call_tracts(positions, counts, min_sites=2, min_depth=5) == [[10, 20]]
-
-
-def test_a_site_with_no_informative_reads_also_bridges():
-    """No informative read at all is the same situation as too few: undetermined, not acceptor."""
-    positions = [10, 20, 30, 40, 50]
-    counts = _counts({10: 1.0, 20: 1.0, 30: None, 40: 1.0, 50: 1.0})
-
-    assert gc.call_tracts(positions, counts, min_sites=2, min_depth=1) == [[10, 20, 40, 50]]
-
-
-# ---------------------------------------------------------------------- tract_evidence
 
 
 def test_tract_evidence_summarises_a_bounded_tract():
@@ -510,28 +427,24 @@ def test_a_shallow_site_does_not_drag_the_outside_average():
     ev = gc.tract_evidence([20, 30], positions, counts, {}, min_depth=5)
 
     assert ev["donor_af_outside"] == pytest.approx(0.0)
-    assert gc.classify(ev)[0] != "mismapping"
 
 
-def test_two_tracts_in_one_locus_shadow_each_other():
-    """Known limitation, pinned rather than asserted as desirable.
+def test_n_undetermined_counts_the_unmeasured_sites_inside_the_tract():
+    """A tract resting on measured sites and empty ones looks solid in the coordinates.
 
-    `outside` is every diagnostic site of the locus that is not in THIS tract, including
-    the sites of a second tract. Two genuine conversion tracts in the same paralog pair
-    therefore inflate each other's `donor_af_outside` and both come out as mismapping,
-    even with breakpoint reads, because the outside test runs first. Reported alongside
-    these tests; the conservative direction, but a false negative.
+    The model weights each site by the reads actually there, so an empty site simply adds
+    nothing. The count is reported next to the tract so a reader can see how much of its span
+    was never measured at all.
     """
-    positions = [10, 20, 30, 40, 50, 60, 70, 80]
-    counts = _counts({10: 0.0, 20: 1.0, 30: 1.0, 40: 1.0,
-                      50: 0.0, 60: 1.0, 70: 1.0, 80: 1.0})
-    per_read = _per_read({"spans": {10: "acceptor", 20: "donor", 30: "donor"}})
+    positions = [10, 20, 30, 40]
+    counts = _counts({10: 1.0, 20: None, 30: 1.0, 40: 0.0},
+                     depth={10: 30, 20: 0, 30: 30, 40: 30})
 
-    first = gc.tract_evidence([20, 30, 40], positions, counts, per_read)
+    ev = gc.tract_evidence([10, 20, 30], positions, counts, {}, min_depth=5)
 
-    assert first["breakpoint_reads"] == 1
-    assert first["donor_af_outside"] == pytest.approx(0.6)     # the second tract, mostly
-    assert gc.classify(first)[0] == "mismapping"
+    assert ev["n_sites"] == 3
+    assert ev["n_undetermined"] == 1
+    assert ev["min_depth"] == 0
 
 
 def test_tract_evidence_reports_no_outside_fraction_for_a_whole_locus_tract():
@@ -549,108 +462,6 @@ def test_tract_evidence_min_depth_is_the_worst_site_inside_the_tract():
     counts = _counts(dict.fromkeys(positions, 1.0), depth={10: 40, 20: 7, 30: 30})
 
     assert gc.tract_evidence(positions, positions, counts, {})["min_depth"] == 7
-
-
-# --------------------------------------------------------------------------- classify
-#
-# The four routes through classify are the specification of the tool. One test each.
-
-
-def test_classify_calls_a_bounded_near_fixed_tract_with_a_spanning_read_a_conversion():
-    """Case 1, a real conversion: donor alleles near-fixed inside a bounded tract, acceptor
-    alleles outside, and at least one molecule carrying donor INSIDE and acceptor OUTSIDE.
-
-    That last one is the piece a mismapping cannot fake, so it decides the verdict and the
-    reason says so.
-    """
-    verdict, reason = gc.classify(_ev(donor_af_outside=0.02, donor_af_in=0.97,
-                                      n_sites_outside=6, cis_reads=9, breakpoint_reads=4))
-
-    assert verdict == "gene_conversion"
-    assert reason == "4 read(s) cross a breakpoint in cis"
-
-
-def test_classify_calls_donor_alleles_outside_the_tract_mismapping():
-    """Case 2: mismapped donor reads carry donor alleles at EVERY diagnostic site of the
-    locus, including outside the candidate tract. A conversion is bounded, so it does not."""
-    verdict, reason = gc.classify(_ev(donor_af_outside=0.45, donor_only_reads=30,
-                                      breakpoint_reads=0, cis_reads=30))
-
-    assert verdict == "mismapping"
-    assert "outside the tract" in reason
-
-
-def test_classify_puts_the_outside_test_before_the_breakpoint_test():
-    """Observed precedence: donor alleles all over the locus outrank breakpoint reads, so a
-    handful of chimeric or misassembled reads cannot rescue a wholesale mismapping."""
-    assert gc.classify(_ev(donor_af_outside=0.45, breakpoint_reads=5))[0] == "mismapping"
-
-
-def test_classify_mismapping_threshold_is_strict():
-    assert gc.classify(_ev(donor_af_outside=0.25, breakpoint_reads=0, cis_reads=5))[0] != "mismapping"
-    assert gc.classify(_ev(donor_af_outside=0.2501, breakpoint_reads=0))[0] == "mismapping"
-    assert gc.classify(_ev(donor_af_outside=0.6, breakpoint_reads=0),
-                       max_outside_af=0.7)[0] != "mismapping"
-
-
-def test_classify_calls_an_unbounded_whole_locus_tract_ambiguous():
-    """Case 3, and a regression test: the tract covers EVERY diagnostic site of the locus,
-    so `n_sites_outside == 0`, and no read spans a breakpoint.
-
-    This used to be called `gene_conversion`, which is a false positive. With no site
-    outside the tract there is nothing the donor alleles are bounded BY: a locus wholly
-    replaced by its paralog and a locus whose reads all arrived from its paralog are
-    identical from site data alone. `donor_af_outside` is None here, not low, and absence
-    of contrary evidence is not evidence.
-    """
-    ev = _ev(n_sites_outside=0, donor_af_outside=None, donor_af_in=1.0,
-             cis_reads=25, breakpoint_reads=0, donor_only_reads=25)
-
-    verdict, reason = gc.classify(ev)
-
-    assert verdict == "ambiguous"
-    assert "not bounded" in reason
-    assert "mismapping" in reason
-
-
-def test_classify_still_believes_a_whole_locus_tract_with_a_breakpoint_read():
-    """The one thing that can rescue case 3: a molecule that reads back to acceptor alleles
-    at a site the tract does not cover. It cannot come from a donor read."""
-    ev = _ev(n_sites_outside=0, donor_af_outside=None, breakpoint_reads=1)
-
-    assert gc.classify(ev)[0] == "gene_conversion"
-
-
-def test_classify_accepts_a_bounded_tract_without_a_breakpoint_read_only_in_cis():
-    """Case 4: bounded and near-fixed, but no molecule spans a breakpoint.
-
-    Then the fallback is read-level support in cis. With none, the tract is still reported,
-    never hidden, but it is called ambiguous and the reason names the test it failed.
-    """
-    bounded = dict(breakpoint_reads=0, n_sites_outside=4, donor_af_in=0.95, donor_af_outside=0.01)
-
-    assert gc.classify(_ev(**bounded, cis_reads=3)) == (
-        "gene_conversion", "donor allele near-fixed within a bounded tract")
-
-    verdict, reason = gc.classify(_ev(**bounded, cis_reads=0))
-    assert verdict == "ambiguous"
-    assert "no read spans a breakpoint" in reason
-
-
-def test_classify_requires_the_donor_allele_to_be_near_fixed_without_a_breakpoint_read():
-    """A fraction sitting in between is what an aligner splitting reads between two copies
-    produces, not what a clonal sample's converted locus looks like."""
-    middling = _ev(breakpoint_reads=0, n_sites_outside=4, donor_af_in=0.6,
-                   donor_af_outside=0.1, cis_reads=12)
-
-    assert gc.classify(middling)[0] == "ambiguous"
-    assert gc.classify(middling, min_af_in=0.5)[0] == "gene_conversion"
-
-
-def test_classify_handles_missing_fractions():
-    """Neither None can crash the classifier or be silently read as a number."""
-    assert gc.classify(_ev(donor_af_outside=None, breakpoint_reads=2))[0] == "gene_conversion"
-    assert gc.classify(_ev(donor_af_in=None, breakpoint_reads=0, cis_reads=5))[0] == "ambiguous"
 
 
 # ------------------------------------------------------------------------- load_sites
@@ -772,9 +583,12 @@ def test_main_end_to_end(tmp_path, samtools, capsys):
     assert converted_row["sample"] == "S1"
     assert converted_row["contig"] == CONTIG and converted_row["donor"] == CONTIG
     assert converted_row["verdict"] == "gene_conversion"
-    assert "cross a breakpoint in cis" in converted_row["reason"]
     assert (converted_row["start"], converted_row["end"], converted_row["span_bp"]) == \
         ("110", "140", "31")
+    # Both breakpoints are pinned to a single site, because every molecule crosses them.
+    assert (converted_row["start_ci"], converted_row["end_ci"]) == ("110-110", "140-140")
+    assert float(converted_row["log10_bf"]) > 3.0
+    assert float(converted_row["post_conv"]) > 0.99
     assert (converted_row["n_sites"], converted_row["n_sites_outside"]) == ("4", "2")
     assert float(converted_row["donor_af_in"]) == 1.0
     assert float(converted_row["donor_af_outside"]) == 0.0
@@ -782,14 +596,16 @@ def test_main_end_to_end(tmp_path, samtools, capsys):
     assert (converted_row["cis_reads"], converted_row["breakpoint_reads"]) == ("6", "6")
     assert converted_row["donor_only_reads"] == "0"
 
+    # The third locus is entirely donor bases, with no site outside the tract to bound them.
+    # A wholly converted locus and a locus whose reads all arrived from the donor have the same
+    # likelihood, so the Bayes factor collapses to the ratio of their priors on its own.
     unbounded_row = rows[1]
     assert unbounded_row["verdict"] == "ambiguous"
-    assert "not bounded" in unbounded_row["reason"]
+    assert "every diagnostic site" in unbounded_row["reason"]
+    assert float(unbounded_row["log10_bf"]) < 3.0
+    assert float(unbounded_row["mismap_frac"]) > 0.5, "the model should reach for mismapping here"
     assert unbounded_row["n_sites_outside"] == "0"
     assert unbounded_row["donor_af_outside"] == ""      # None is written as an empty cell
-    # With no site outside the tract, neither counter that discriminates can fire: no read
-    # can cross a breakpoint, and no read can look donor-only either. That symmetry is the
-    # whole reason the verdict has to be ambiguous.
     assert unbounded_row["cis_reads"] == "8"
     assert (unbounded_row["breakpoint_reads"], unbounded_row["donor_only_reads"]) == ("0", "0")
 
@@ -811,11 +627,17 @@ def test_main_skips_a_locus_with_too_few_diagnostic_sites(tmp_path, samtools):
     assert out.read_text() == "\t".join(gc.COLUMNS) + "\n"
 
 
-def test_main_thresholds_reach_the_tract_caller(tmp_path, samtools):
-    """Four reads is under the default informative depth of 5, so nothing is called until
-    --min-depth is lowered."""
-    positions = [100, 110, 120]
-    records = [_read_at(f"r{i}", 100, dict.fromkeys(positions, "G"), length=30) for i in range(4)]
+def test_main_model_thresholds_reach_the_model(tmp_path, samtools):
+    """The Bayes factor thresholds are what decide, and both of them are reachable.
+
+    Four sites of six carry the donor base on every read. That is far past the default
+    --min-bf, and raising the bar past the evidence turns the same tract into `ambiguous`
+    rather than making it disappear: a tract that fails a test is reported with the test it
+    failed, never hidden.
+    """
+    positions = [100, 110, 120, 130, 140, 150]
+    records = [_read_at(f"r{i}", 100, {p: ("G" if 110 <= p <= 140 else "A") for p in positions})
+               for i in range(6)]
     bam = _bam(tmp_path, records)
     sites = _sites_tsv(tmp_path / "sites.tsv", {0: positions})
     out = tmp_path / "tracts.tsv"
@@ -823,10 +645,28 @@ def test_main_thresholds_reach_the_tract_caller(tmp_path, samtools):
             "--samtools", samtools]
 
     assert gc.main(argv) == 0
+    rows = out.read_text().splitlines()
+    assert len(rows) == 2 and "\tgene_conversion\t" in rows[1]
+
+    assert gc.main(argv + ["--min-bf", "99"]) == 0
+    rows = out.read_text().splitlines()
+    assert len(rows) == 2 and "\tambiguous\t" in rows[1]
+
+    # Past the reporting threshold the row goes away entirely.
+    assert gc.main(argv + ["--report-bf", "99"]) == 0
     assert len(out.read_text().splitlines()) == 1
 
-    assert gc.main(argv + ["--min-depth", "4"]) == 0
-    assert len(out.read_text().splitlines()) == 2
+
+def test_the_nextflow_module_writes_the_same_header_the_tool_does(repo_root):
+    """A stub run is how the DAG is tested, and an empty cohort is written by the module rather
+    than by the tool. A header that has drifted from this file's is worse than none: the run
+    still produces a file, the report still parses it, and every new column reads as missing.
+    """
+    module = (repo_root / "modules" / "gene_conversion.nf").read_text()
+
+    body = module.split("def gconvHeader()", 1)[1].split("}", 1)[0]
+    assert re.findall(r"'([a-z0-9_]+)'", body) == gc.COLUMNS
+    assert "printf 'sample" not in module, "the header belongs in gconvHeader(), not restated"
 
 
 def test_main_fails_loudly_when_samtools_fails(tmp_path, samtools):
@@ -871,22 +711,19 @@ def test_two_tracts_in_one_locus_do_not_shadow_each_other():
     """A second genuine tract is not "outside" the first one.
 
     Regression: `outside` used to be every site not in THIS tract, so a locus with two real
-    conversions had each one counting the other's donor alleles as evidence against itself.
-    Because the outside test runs before the breakpoint test, both came out as mismapping. Two
-    conversions in one locus is an ordinary outcome, not a pathological input.
+    conversions had each one counting the other's donor alleles as evidence against itself, and
+    both came out as mismapping. Two conversions in one locus is an ordinary outcome, not a
+    pathological input.
     """
     positions = list(range(1, 13))
     counts = _flat_counts(positions, donor_positions=set(range(1, 5)) | set(range(9, 13)))
     per_read = {"r1": {1: "donor", 2: "donor", 5: "acceptor"}}
-
-    tracts = gc.call_tracts(positions, counts, 0.7, 3, 5)
-    assert [(min(t), max(t)) for t in tracts] == [(1, 4), (9, 12)]
+    tracts = [[1, 2, 3, 4], [9, 10, 11, 12]]
 
     in_any = {p for t in tracts for p in t}
     for tract in tracts:
         ev = gc.tract_evidence(tract, positions, counts, per_read, in_any)
         assert ev["donor_af_outside"] == 0.0, "the other tract was counted as outside"
-        assert gc.classify(ev)[0] != "mismapping"
 
 
 def test_the_base_quality_floor_reaches_the_base_reader():

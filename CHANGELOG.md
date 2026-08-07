@@ -21,14 +21,29 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
     reads, which is right for variant calling and removes exactly this signal, so
     the analysis reads the deduplicated **pre-filter** alignment and does not
     filter on mapping quality.
- - The hard part is not finding tracts but deciding whether to believe them, since
-    reads mismapping from the donor look identical site by site. Three pieces of
-    evidence are reported rather than collapsed into a score: whether the donor
-    alleles stop at the tract edges, how fixed they are, and whether a single read
-    crosses a breakpoint carrying donor alleles on one side and acceptor alleles on
-    the other. Only the last cannot be faked by a mismapping.
- - A **Gene conversion** panel in the QC report plots that evidence and says which
-    test decided each verdict. See [gene conversion](docs/gene-conversion.md).
+ - The hard part is not finding tracts but deciding whether to believe them. There
+    are three ways an acceptor site can show the donor's base and only one of them
+    is a conversion: it was converted with its neighbours, it mutated to that base
+    on its own, or the read carrying it came from the donor. All three are weighed
+    against each other by an explicit model, which evaluates every possible tract
+    exactly, weights each base by its quality, treats the molecule rather than the
+    site as the unit of evidence, and fits the fraction of reads that arrived from
+    the donor instead of testing an average against a threshold. It reports a log10
+    Bayes factor and a posterior over the breakpoints.
+ - Two things that used to need special cases now fall out of the arithmetic. A
+    tract covering the whole locus predicts the same bases as every read having
+    come from the donor, so its Bayes factor collapses to the ratio of the priors
+    on its own. And the number of sites a tract needs is set by how implausible
+    that many independent substitutions would be, so it is derived from a rate
+    rather than chosen, and it moves with the spacing of the diagnostic sites.
+ - The tracts whose reads have moved to the donor are reported as `coverage_shift`.
+    Once a tract is longer than the library insert a read pair falling inside it has
+    no unique anchor left, so the acceptor loses its coverage to the donor and every
+    allele-based signal evaporates exactly when the conversion is most complete. It
+    is not a conversion call: a deletion of the acceptor looks the same.
+ - A **Gene conversion** panel in the QC report leads with the Bayes factor and puts
+    the observable evidence beside it. See
+    [gene conversion](docs/gene-conversion.md).
 
 Headline: a **test suite and CI**, and a pipeline that runs correctly on a machine
 that is not the authors' cluster.

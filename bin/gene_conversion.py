@@ -13,20 +13,24 @@ the copies are identical and a read is uninformative by construction, so only th
 
 THE HARD PART IS NOT FINDING TRACTS, IT IS NOT BELIEVING THEM.
 
-Reads from the donor that mismap onto the acceptor produce the same per-site picture: donor bases
-where the reference expects acceptor bases. Three things separate the two, and this tool reports
-all three rather than collapsing them into one number:
+There are three ways an acceptor site can show the donor's base, and only one of them is a
+conversion:
 
-* **Where the donor alleles are.** A conversion is bounded. Mismapping is not: mismapped reads
-  carry donor alleles at every diagnostic site of the locus, including outside the candidate
-  tract. `donor_af_outside` is the direct test.
-* **How fixed they are.** In a clonal sample a converted locus is homozygous for the donor allele
-  (allele fraction near 1). Mismapping mixes donor and acceptor reads at whatever ratio the
-  aligner produced, so the fraction sits in between and, tellingly, is much the same at every site.
-* **What single reads carry.** This is the one a mismapping cannot fake. A read that spans a
-  breakpoint carries donor alleles on one side and acceptor alleles on the other, in cis, on the
-  same physical molecule. A mismapped read is a donor read: it carries donor alleles at every site
-  it covers, and never crosses back. `breakpoint_reads` counts the former.
+* it was converted, along with its neighbours, as one tract;
+* it mutated to that base on its own, which for a single site is entirely ordinary;
+* the read carrying it came from the donor and mismapped, which in a paralogous region is what
+  aligners do.
+
+Deciding between them is `gconv_model`, which evaluates every possible tract against the other
+two explanations, weighting each base by its quality and treating each MOLECULE as the unit of
+evidence rather than each site. What comes out is a Bayes factor and a posterior over the
+breakpoints, not a threshold crossing.
+
+What this file adds around it is the descriptive statistics a person needs to check the call
+against the BAM: how fixed the donor allele is inside the tract (`donor_af_in`), whether donor
+alleles also turn up outside it (`donor_af_outside`), and how many single molecules carry donor
+alleles on one side of a breakpoint and acceptor alleles on the other, in cis (`breakpoint_reads`,
+the one thing a mismapped read cannot fake).
 
 MAPQ is deliberately NOT filtered on. Paralogous regions are exactly where an aligner assigns
 MAPQ 0, so the usual quality gate would discard the entire signal this tool exists to find.
@@ -39,9 +43,16 @@ import subprocess
 import sys
 from collections import defaultdict
 
+import gconv_model as gm
+
 # CIGAR operations that consume the reference, the read, or both.
 CONSUMES_REF = set("MDN=X")
 CONSUMES_READ = set("MIS=X")
+
+# SAM lets the quality string be absent ("*"). There is then no evidence about how reliable a
+# base is, so it passes any quality floor, and the model caps it at its own ceiling rather than
+# taking silence for certainty.
+NO_QUAL_PHRED = 60
 
 
 def parse_cigar(cigar):
@@ -56,14 +67,16 @@ def parse_cigar(cigar):
     return ops
 
 
-def read_bases_at(pos, cigar, seq, qual, wanted, min_bq=13):
-    """Bases this read carries at the reference positions in `wanted`.
+def read_calls_at(pos, cigar, seq, qual, wanted):
+    """Base and Phred score this read carries at the reference positions in `wanted`.
 
     Walks the CIGAR so an insertion or a soft clip does not shift every base after it, which is
     the classic way to read the right position off the wrong read.
 
-    Returns {ref_pos (1-based): base}. A position inside a deletion or below the base-quality
-    floor is omitted rather than guessed at.
+    Returns {ref_pos (1-based): (base, phred)}. A position inside a deletion, or past the end of
+    a truncated quality string, is omitted rather than guessed at. Nothing is filtered here: the
+    model weights each base by its quality instead of discarding it, so the score travels with
+    the base.
     """
     out = {}
     ref, qry = pos, 0
@@ -73,9 +86,15 @@ def read_bases_at(pos, cigar, seq, qual, wanted, min_bq=13):
                 p = ref + i
                 if p in wanted:
                     q = qry + i
-                    if q < len(seq) and (not qual or qual == "*"
-                                         or (q < len(qual) and (ord(qual[q]) - 33) >= min_bq)):
-                        out[p] = seq[q].upper()
+                    if q >= len(seq):
+                        continue
+                    if not qual or qual == "*":
+                        phred = NO_QUAL_PHRED
+                    elif q < len(qual):
+                        phred = ord(qual[q]) - 33
+                    else:
+                        continue                                 # quality string ran out
+                    out[p] = (seq[q].upper(), phred)
             ref += length
             qry += length
         elif op in CONSUMES_REF:                                 # D, N: no base to read
@@ -85,15 +104,20 @@ def read_bases_at(pos, cigar, seq, qual, wanted, min_bq=13):
     return out
 
 
-def collect_read_alleles(sam_lines, sites, min_bq=13):
-    """Per-read allele calls at the diagnostic sites.
+def read_bases_at(pos, cigar, seq, qual, wanted, min_bq=13):
+    """Bases this read carries at `wanted`, with everything below the quality floor dropped."""
+    return {p: base for p, (base, phred) in read_calls_at(pos, cigar, seq, qual, wanted).items()
+            if phred >= min_bq}
 
-    `sites` maps a reference position to (acceptor_base, donor_base). Returns
-    {read_name: {pos: 'acceptor' | 'donor' | 'other'}}, keyed by read NAME so the two mates of a
-    pair contribute to one observation of one molecule.
+
+def collect_read_observations(sam_lines, sites):
+    """Per-read base and Phred score at the diagnostic sites.
+
+    Keyed by read NAME so the two mates of a pair contribute to one observation of one molecule,
+    which is what the model treats as the unit of evidence.
     """
     wanted = set(sites)
-    per_read = defaultdict(dict)
+    obs = defaultdict(dict)
     for line in sam_lines:
         if not line or line.startswith("@"):
             continue
@@ -106,10 +130,30 @@ def collect_read_alleles(sam_lines, sites, min_bq=13):
         name, pos, cigar, seq, qual = f[0], int(f[3]), f[5], f[9], f[10]
         if cigar == "*" or pos <= 0:
             continue
-        for p, base in read_bases_at(pos, cigar, seq, qual, wanted, min_bq).items():
+        obs[name].update(read_calls_at(pos, cigar, seq, qual, wanted))
+    return obs
+
+
+def allele_view(observations, sites, min_bq=13):
+    """Which copy each observed base belongs to: {read: {pos: 'acceptor'|'donor'|'other'}}.
+
+    The categorical view is what the descriptive columns are built from. The model does not use
+    it: it works off the log-likelihood ratios, where a third base contributes nothing instead of
+    being counted as depth and dropped from the numerator.
+    """
+    per_read = defaultdict(dict)
+    for name, calls in observations.items():
+        for p, (base, phred) in calls.items():
+            if phred < min_bq:
+                continue
             acc, don = sites[p]
             per_read[name][p] = "acceptor" if base == acc else "donor" if base == don else "other"
     return per_read
+
+
+def collect_read_alleles(sam_lines, sites, min_bq=13):
+    """Per-read allele calls at the diagnostic sites, straight from SAM records."""
+    return allele_view(collect_read_observations(sam_lines, sites), sites, min_bq)
 
 
 def pileup(per_read, positions):
@@ -126,42 +170,18 @@ def pileup(per_read, positions):
     return counts
 
 
-def call_tracts(positions, counts, min_af=0.7, min_sites=3, min_depth=5):
-    """Maximal runs of consecutive diagnostic sites that carry the donor allele.
-
-    Consecutive means adjacent in the diagnostic-site list, not in base coordinates: the sites
-    between them are identical in both copies and cannot testify either way.
-
-    A site with too little depth to genotype is UNDETERMINED, and undetermined is not the same as
-    "the acceptor allele is here". It bridges rather than breaks: a single coverage dip inside an
-    otherwise clean tract would otherwise shatter it into fragments that each fall below
-    min_sites, and the whole tract disappears. Coverage dips are ordinary, so that failure mode is
-    ordinary too. The bridged sites do not count towards min_sites and do not become tract
-    members; tract_evidence reports how many were skipped.
-    """
-    tracts, run = [], []
-    for p in positions:
-        c = counts[p]
-        if c["depth"] < min_depth or c["donor_af"] is None:
-            continue                                    # undetermined: no evidence either way
-        if c["donor_af"] >= min_af:
-            run.append(p)
-        else:
-            if len(run) >= min_sites:
-                tracts.append(run)
-            run = []
-    if len(run) >= min_sites:
-        tracts.append(run)
-    return tracts
-
-
 def tract_evidence(tract, positions, counts, per_read, in_any_tract=None, min_depth=5):
-    """The evidence that separates a real conversion from reads arriving from the donor.
+    """Descriptive statistics for a tract the model has already located.
 
-    `in_any_tract` is every site belonging to ANY tract called in this locus. Sites of a second,
-    genuine tract are not "outside" this one: counting them there inflates donor_af_outside, and
-    since the outside test runs first, two real tracts in one locus would each report the other as
-    mismapping. Two conversions in one locus is an ordinary outcome, not a pathological input.
+    None of this decides anything any more: the verdict comes from `gconv_model`, which weighs
+    the same reads by base quality and marginalises the mismapping rate out instead of testing
+    an average against a threshold. What survives here is what a person reads to see WHY, in
+    terms they can check against the BAM: how fixed the donor allele is inside the tract, whether
+    donor alleles also turn up outside it, and how many single molecules carry both.
+
+    `in_any_tract` is every site belonging to ANY tract found in this locus. Sites of a second,
+    genuine tract are not "outside" this one, and counting them there would make each of two real
+    conversions look like the other's contamination.
     """
     inside = set(tract)
     excluded = set(in_any_tract) if in_any_tract else inside
@@ -192,11 +212,12 @@ def tract_evidence(tract, positions, counts, per_read, in_any_tract=None, min_de
         if in_donor and out_donor and not out_acc:
             donor_only_reads += 1
 
-    # Diagnostic sites inside the tract's span that were too shallow to genotype. They were
-    # bridged rather than allowed to break the tract, so say how many, or the tract looks more
-    # solid than the data supports.
-    n_undetermined = sum(1 for p in positions
-                         if min(tract) < p < max(tract) and p not in inside)
+    # Sites inside the tract that were too shallow to genotype. The model does not need them to
+    # be: a site with two reads contributes what two reads are worth and no more. But a tract
+    # resting on a handful of measured sites and a stretch of empty ones looks more solid in the
+    # coordinates than it is, so the count is reported next to it.
+    n_undetermined = sum(1 for p in tract
+                         if counts[p]["depth"] < min_depth or counts[p]["donor_af"] is None)
 
     afs = [counts[p]["donor_af"] for p in tract if counts[p]["donor_af"] is not None]
     return {
@@ -217,33 +238,8 @@ def tract_evidence(tract, positions, counts, per_read, in_any_tract=None, min_de
     }
 
 
-def classify(ev, max_outside_af=0.25, min_af_in=0.85):
-    """Turn the evidence into a verdict, and say which piece of it decided.
-
-    Deliberately conservative: a tract with no read-level support is reported, not hidden, but it
-    is not called a conversion, and the reason says which test it failed.
-    """
-    if ev["donor_af_outside"] is not None and ev["donor_af_outside"] > max_outside_af:
-        return "mismapping", "donor alleles are present outside the tract as well"
-
-    # A read crossing a breakpoint carries donor and acceptor alleles on one molecule. Reads
-    # arriving from the donor cannot produce that, so this outranks everything else.
-    if ev["breakpoint_reads"] > 0:
-        return "gene_conversion", f"{ev['breakpoint_reads']} read(s) cross a breakpoint in cis"
-
-    # No site outside the tract means there is nothing the donor alleles are bounded BY. A whole
-    # locus replaced by its paralog and a locus whose reads all arrived from its paralog look
-    # identical from site data alone, so absence of contrary evidence is not evidence.
-    if ev["n_sites_outside"] == 0:
-        return "ambiguous", ("tract covers every diagnostic site, so it is not bounded: "
-                             "indistinguishable from wholesale mismapping without a breakpoint read")
-
-    if ev["donor_af_in"] is not None and ev["donor_af_in"] >= min_af_in and ev["cis_reads"] > 0:
-        return "gene_conversion", "donor allele near-fixed within a bounded tract"
-    return "ambiguous", "no read spans a breakpoint; tract is bounded but unconfirmed"
-
-
-def depleted_runs(positions, counts, donor_counts, min_depth=5, max_ratio=0.4, min_sites=3):
+def depleted_runs(positions, counts, donor_counts, min_depth=5, max_ratio=0.4, min_sites=3,
+                  exclude=None):
     """Runs of diagnostic sites where the acceptor has lost its reads to the donor.
 
     A conversion makes the acceptor identical to the donor over the tract. Once the tract is
@@ -256,9 +252,21 @@ def depleted_runs(positions, counts, donor_counts, min_depth=5, max_ratio=0.4, m
     the depletion instead, as a candidate needing a different kind of evidence (longer reads, or
     read-depth analysis over the pair). It is NOT a conversion call: a deletion of the acceptor
     produces the same picture.
+
+    `exclude` holds the sites of tracts already called. A long conversion often keeps enough
+    reads at one end to be called there and loses them everywhere else, so the two findings sit
+    side by side in the same locus. An excluded site ends the run it is in rather than
+    disqualifying it, which would throw away the depleted part of exactly the tract that was
+    hardest to see.
     """
+    skip = set(exclude) if exclude else set()
     runs, run = [], []
     for p in positions:
+        if p in skip:
+            if len(run) >= min_sites:
+                runs.append(run)
+            run = []
+            continue
         acc_dp = counts[p]["depth"]
         don_dp = donor_counts.get(p, 0)
         total = acc_dp + don_dp
@@ -298,8 +306,9 @@ def load_sites(path):
 
 
 COLUMNS = ["sample", "pair_id", "contig", "donor", "verdict", "reason", "start", "end", "span_bp",
-           "n_sites", "n_sites_outside", "n_undetermined", "donor_af_in", "donor_af_outside", "min_depth", "cis_reads",
-           "breakpoint_reads", "donor_only_reads"]
+           "post_conv", "log10_bf", "log10_bf_vs_null", "mismap_frac", "start_ci", "end_ci",
+           "n_sites", "n_sites_outside", "n_undetermined", "donor_af_in", "donor_af_outside",
+           "min_depth", "cis_reads", "breakpoint_reads", "donor_only_reads"]
 
 
 def parse_args(argv=None):
@@ -311,9 +320,31 @@ def parse_args(argv=None):
                         "exactly the reads this analysis depends on")
     p.add_argument("--sample", required=True)
     p.add_argument("-o", "--output", required=True)
-    p.add_argument("--min-af", type=float, default=0.7, help="donor fraction for a site to join a tract")
-    p.add_argument("--min-sites", type=int, default=3, help="diagnostic sites needed to call a tract")
-    p.add_argument("--min-depth", type=int, default=5, help="informative depth needed at a site")
+    p.add_argument("--min-bf", type=float, default=3.0,
+                   help="log10 Bayes factor over the best alternative before a tract is called "
+                        "a conversion")
+    p.add_argument("--report-bf", type=float, default=1.0,
+                   help="log10 Bayes factor below which a tract is not written out at all")
+    p.add_argument("--prior", type=float, default=0.01,
+                   help="prior probability that a given paralog pair carries a conversion tract")
+    p.add_argument("--mean-tract-bp", type=float, default=1000.0,
+                   help="mean of the exponential prior on tract length")
+    p.add_argument("--max-tract-bp", type=int, default=10000,
+                   help="longest tract considered; beyond this the reads have moved to the donor "
+                        "and the coverage_shift check is what applies")
+    p.add_argument("--max-tracts", type=int, default=2,
+                   help="conversion tracts looked for per paralog pair")
+    p.add_argument("--mut-rate", type=float, default=gm.MUT_RATE,
+                   help="probability that a diagnostic site carries the donor base by independent "
+                        "substitution. This is what sets how many sites a tract needs")
+    p.add_argument("--min-mismap", type=float, default=0.2,
+                   help="fitted donor-read fraction at which a locus is reported as mismapping")
+    p.add_argument("--min-sites", type=int, default=3,
+                   help="diagnostic sites a paralog pair must have before it is analysed, and the "
+                        "length a depleted run must reach")
+    p.add_argument("--min-depth", type=int, default=5,
+                   help="informative depth below which a site counts as undetermined in the "
+                        "descriptive columns and in the depletion check")
     p.add_argument("--min-bq", type=int, default=13, help="base-quality floor")
     p.add_argument("--samtools", default="samtools")
     return p.parse_args(argv)
@@ -334,15 +365,40 @@ def main(argv=None) -> int:
         if proc.returncode != 0:
             raise RuntimeError(f"samtools view failed on {region}: {proc.stderr.strip()[:300]}")
 
-        per_read = collect_read_alleles(proc.stdout.splitlines(), loc["sites"], a.min_bq)
+        obs = collect_read_observations(proc.stdout.splitlines(), loc["sites"])
+        per_read = allele_view(obs, loc["sites"], a.min_bq)
         counts = pileup(per_read, positions)
-        tracts = call_tracts(positions, counts, a.min_af, a.min_sites, a.min_depth)
+
+        # The model decides where the tracts are and whether they mean anything. It sees the
+        # bases and their qualities, not the pileup summary, and it compares a tract against the
+        # two other ways donor bases turn up here: independent substitution, and reads that came
+        # from the donor in the first place.
+        _, delta = gm.delta_matrix(obs, positions, loc["sites"], a.min_bq)
+        fits = gm.segment(delta, positions, max_tracts=a.max_tracts, min_report_bf=a.report_bf,
+                          prior=a.prior, mean_span_bp=a.mean_tract_bp, mut_rate=a.mut_rate,
+                          max_span_bp=a.max_tract_bp)
+        # A locus whose reads plainly came from its paralog is a result too, so it is written out
+        # even when no tract clears the reporting threshold.
+        keep = [f for f in fits
+                if f["log10_bf"] >= a.report_bf or f["mismap_frac"] >= a.min_mismap]
+        tracts = [positions[f["map_i"]:f["map_j"] + 1] for f in keep]
         in_any = {p for t in tracts for p in t}
-        for tract in tracts:
+        for fit, tract in zip(keep, tracts):
             ev = tract_evidence(tract, positions, counts, per_read, in_any, a.min_depth)
-            verdict, reason = classify(ev)
+            covers_locus = fit["map_i"] == 0 and fit["map_j"] == len(positions) - 1
+            verdict, reason = gm.verdict(fit, covers_locus, a.min_bf, a.min_mismap)
+            if fit["stride"] > 1:
+                reason += (f"; breakpoints resolved to every {fit['stride']} diagnostic sites "
+                           "because the locus has too many to search exhaustively")
             rows.append({"sample": a.sample, "pair_id": pair_id, "contig": loc["contig"],
-                         "donor": loc["donor"], "verdict": verdict, "reason": reason, **ev})
+                         "donor": loc["donor"], "verdict": verdict, "reason": reason,
+                         "post_conv": round(fit["post_conv"], 4),
+                         "log10_bf": round(fit["log10_bf"], 2),
+                         "log10_bf_vs_null": round(fit["log10_bf_null"], 2),
+                         "mismap_frac": round(fit["mismap_frac"], 4),
+                         "start_ci": "{}-{}".format(*fit["start_ci"]),
+                         "end_ci": "{}-{}".format(*fit["end_ci"]),
+                         **ev})
 
         # Depth on the DONOR side of the same pair, to catch the tracts whose reads moved there.
         don_pos = loc.get("donor_pos", {})
@@ -359,9 +415,7 @@ def main(argv=None) -> int:
                 donor_counts = {ap: dcounts[dp]["depth"] for ap, dp in don_pos.items()}
 
         for run in depleted_runs(positions, counts, donor_counts, a.min_depth,
-                                 min_sites=a.min_sites):
-            if set(run) & in_any:
-                continue                                     # already reported as a tract
+                                 min_sites=a.min_sites, exclude=in_any):
             acc = sum(counts[p]["depth"] for p in run)
             don = sum(donor_counts.get(p, 0) for p in run)
             rows.append({

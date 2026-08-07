@@ -1,0 +1,468 @@
+"""Unit tests for bin/gconv_model.py (the gene conversion changepoint model).
+
+These are the specification of what replaced the threshold cascade, and most of them are
+statements the old version could not have made at all. Each one is written as a comparison
+between two datasets rather than as a magic number, because what matters is not that a Bayes
+factor is 8.4, it is that the evidence moves in the right direction when the data change:
+
+* more depth at the same allele fraction is more evidence;
+* a high-quality base is worth more than a low-quality one;
+* one molecule carrying a donor base and an acceptor base is worth more than two molecules each
+  carrying one of them, which is the whole reason the likelihood is a product over READS;
+* one site carrying the donor base is better explained by an ordinary substitution, and three
+  sites are not, which is where the old hand-picked `min_sites = 3` comes from.
+
+The arithmetic that is checked against exact numbers is only the part that has a closed form:
+the per-observation log-likelihood ratio, and the candidate enumeration.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+import pytest
+
+from conftest import load_script
+
+gm = load_script("gconv_model")
+
+
+# --------------------------------------------------------------------------- helpers
+
+
+def _positions(n, step=40, first=1000):
+    return [first + step * i for i in range(n)]
+
+
+def _sites(positions, acc="A", don="C"):
+    return {p: (acc, don) for p in positions}
+
+
+def _obs(reads, positions, phred=30):
+    """{name: {pos: (base, phred)}} from {name: {site index: base}}."""
+    return {name: {positions[i]: (base, phred) for i, base in calls.items()}
+            for name, calls in reads.items()}
+
+
+def _tract_reads(n, span, n_sites, tract, prefix="r", phred=30):
+    """`n` molecules per starting offset, each covering `span` consecutive sites."""
+    reads = {}
+    for start in range(n_sites - span + 1):
+        for k in range(n):
+            calls = {s: ("C" if s in tract else "A") for s in range(start, start + span)}
+            reads[f"{prefix}{start}_{k}"] = calls
+    return reads
+
+
+def _fit(reads, positions, phred=30, **kw):
+    sites = _sites(positions)
+    _, delta = gm.delta_matrix(_obs(reads, positions, phred), positions, sites)
+    return gm.fit_locus(delta, positions, **kw)
+
+
+# ----------------------------------------------------------------- delta_matrix
+
+
+def test_delta_is_the_log_likelihood_ratio_of_donor_over_acceptor():
+    """The one piece with a closed form, checked against it.
+
+    A base equal to the donor's is (1-e) likely under conversion and e/3 under the acceptor, so
+    the ratio is log(3(1-e)/e). A base equal to the acceptor's is the same size with the sign
+    flipped.
+    """
+    positions = _positions(2)
+    e = 10.0 ** -3.0                                    # Phred 30
+    expected = math.log(1 - e) - math.log(e / 3)
+
+    names, delta = gm.delta_matrix(_obs({"donor": {0: "C"}, "acceptor": {1: "A"}}, positions),
+                                   positions, _sites(positions))
+
+    assert names == ["donor", "acceptor"]
+    assert delta[0, 0] == pytest.approx(expected)
+    assert delta[1, 1] == pytest.approx(-expected)
+
+
+def test_a_third_base_contributes_nothing_in_either_direction():
+    """Neither copy expects a G here, so it is exactly as unlikely under both hypotheses.
+
+    The allele-fraction version could not say this: a third base counted towards depth and
+    vanished from the numerator, which silently moved the fraction it was excluded from.
+    """
+    positions = _positions(1)
+
+    _, delta = gm.delta_matrix(_obs({"r": {0: "G"}}, positions), positions, _sites(positions))
+
+    assert delta.shape == (0, 1), "a read with nothing informative is not an observation at all"
+
+
+def test_a_better_base_quality_asserts_more():
+    positions = _positions(1)
+    sites = _sites(positions)
+
+    _, low = gm.delta_matrix(_obs({"r": {0: "C"}}, positions, phred=15), positions, sites)
+    _, high = gm.delta_matrix(_obs({"r": {0: "C"}}, positions, phred=30), positions, sites)
+
+    assert high[0, 0] > low[0, 0] > 0
+
+
+def test_the_quality_cap_bounds_what_one_base_can_claim():
+    """A Q40 base claims one error in ten thousand. In a paralogous region an apparent error is
+    often a real base from the other copy, so the score is capped before it is believed."""
+    positions = _positions(1)
+    sites = _sites(positions)
+
+    _, capped = gm.delta_matrix(_obs({"r": {0: "C"}}, positions, phred=40), positions, sites)
+    _, at_cap = gm.delta_matrix(_obs({"r": {0: "C"}}, positions, phred=gm.MAX_PHRED),
+                                positions, sites)
+
+    assert capped[0, 0] == pytest.approx(at_cap[0, 0])
+
+
+def test_bases_below_the_quality_floor_are_dropped():
+    positions = _positions(2)
+    obs = {"r": {positions[0]: ("C", 5), positions[1]: ("C", 30)}}
+
+    _, delta = gm.delta_matrix(obs, positions, _sites(positions), min_bq=13)
+
+    assert delta[0, 0] == 0.0 and delta[0, 1] > 0
+
+
+# ------------------------------------------------------------------ candidates
+
+
+def test_the_search_is_exhaustive_at_stride_one():
+    positions = _positions(5)
+    starts, ends = gm._candidates(positions, np.ones(5, bool))
+
+    assert len(starts) == 5 * 6 // 2
+    assert set(zip(starts.tolist(), ends.tolist())) == {(i, j) for i in range(5)
+                                                        for j in range(i, 5)}
+
+
+def test_sites_already_claimed_by_a_tract_are_not_searched_through():
+    """A second tract is looked for around the first, not through it. Over an already converted
+    site the two hypotheses agree, so an interval crossing one would be tied with the interval
+    that stops short of it and the model would have no reason to prefer either."""
+    free = np.array([True, True, False, True, True])
+    starts, ends = gm._candidates(_positions(5), free)
+
+    pairs = set(zip(starts.tolist(), ends.tolist()))
+    assert pairs == {(0, 0), (0, 1), (1, 1), (3, 3), (3, 4), (4, 4)}
+
+
+def test_a_coarse_grid_still_keeps_every_short_interval():
+    """Above the size limit the endpoints are spread out, which costs breakpoint resolution.
+
+    Short tracts are exempt: a two-site tract is exactly what a coarse grid would mangle, by
+    offering only intervals several sites longer than the tract really is.
+    """
+    positions = _positions(40)
+    starts, ends = gm._candidates(positions, np.ones(40, bool), stride=5, fine_len=3)
+
+    pairs = set(zip(starts.tolist(), ends.tolist()))
+    assert len(pairs) < 40 * 41 // 2
+    for i in range(40):
+        assert (i, i) in pairs
+        if i + 2 < 40:
+            assert (i, i + 2) in pairs, "short intervals survive the stride"
+    assert (0, 35) in pairs and (0, 34) not in pairs, "long intervals land on the grid"
+
+
+def test_the_span_cap_removes_the_tracts_that_are_out_of_scope():
+    positions = _positions(6, step=1000)
+    starts, ends = gm._candidates(positions, np.ones(6, bool), max_span_bp=2500)
+
+    spans = [positions[j] - positions[i] + 1 for i, j in zip(starts, ends)]
+    assert spans and max(spans) <= 2500
+
+
+# -------------------------------------------------------------------- fit_locus
+
+
+def test_a_clean_tract_is_located_exactly_and_called():
+    positions = _positions(10)
+    res = _fit(_tract_reads(6, 3, 10, tract={4, 5, 6}), positions)
+
+    assert (res["start"], res["end"]) == (positions[4], positions[6])
+    assert res["log10_bf"] > 3.0
+    assert res["post_conv"] > 0.99
+    assert res["start_ci"] == (positions[4], positions[4])
+    assert res["end_ci"] == (positions[6], positions[6])
+    assert gm.verdict(res, covers_locus=False)[0] == "gene_conversion"
+
+
+def test_a_locus_with_no_conversion_is_not_called():
+    positions = _positions(10)
+    res = _fit(_tract_reads(6, 3, 10, tract=set()), positions)
+
+    assert res["log10_bf"] < 0
+    assert res["post_conv"] < 0.01
+    assert gm.verdict(res, covers_locus=False)[0] != "gene_conversion"
+
+
+def test_the_reported_bayes_factor_is_the_weakest_link():
+    """`log10_bf` is a conversion against the best of the other two explanations, so it is
+    limited by whichever question is still open.
+
+    Thin data leave the sites themselves in doubt and the comparison against no conversion
+    binds. Deep data settle the sites, and what remains is whether a run of donor bases is a
+    conversion or a coincidence of substitutions, which no amount of extra depth can answer.
+    """
+    positions = _positions(10)
+
+    reads = _tract_reads(1, 3, 10, tract={4, 5, 6})
+    thin = _fit(reads, positions, phred=13)             # one molecule per offset, at the floor
+    deep = _fit(_tract_reads(30, 3, 10, tract={4, 5, 6}), positions)
+
+    assert thin["log10_bf"] == pytest.approx(thin["log10_bf_null"], abs=0.5)
+    assert thin["log10_bf"] < thin["log10_bf_mut"]
+    assert deep["log10_bf"] == pytest.approx(deep["log10_bf_mut"], abs=1e-6)
+    assert deep["log10_bf_null"] > thin["log10_bf_null"] + 100
+
+
+def test_depth_is_evidence_and_an_allele_fraction_is_not():
+    """The headline defect of the threshold version: 7 donor reads out of 10 and 700 out of
+    1000 both give a fraction of 0.7 and were treated identically."""
+    positions = _positions(8)
+
+    def mixed(scale):
+        reads = {}
+        for start in range(6):
+            for k in range(10 * scale):
+                donor = k % 10 < 7                      # 70% of molecules, at any depth
+                reads[f"r{start}_{k}"] = {s: ("C" if (4 <= s <= 6 and donor) else "A")
+                                          for s in range(start, start + 3)}
+        return reads
+
+    shallow = _fit(mixed(1), positions)
+    deep = _fit(mixed(10), positions)
+
+    assert deep["log10_bf"] > shallow["log10_bf"] + 1.0
+
+
+def test_one_molecule_spanning_a_breakpoint_beats_two_molecules_that_do_not():
+    """Why the likelihood is a product over READS rather than over sites.
+
+    Both datasets give exactly the same pileup at every site. In the first, each molecule carries
+    an acceptor base outside the tract AND a donor base inside it, which is something a read that
+    arrived from the donor cannot do. In the second the same observations are spread over twice
+    as many molecules, and each one on its own is consistent with a donor read. A model working
+    off per-site counts cannot tell them apart at all.
+
+    The difference lands in `log10_bf_null`, the comparison against no conversion, where reads
+    arriving from the donor are the competing explanation. The headline `log10_bf` cannot show
+    it: for a site set the model is already certain about, that number is bounded by how
+    implausible independent substitution is, and both datasets name the same two sites. Which is
+    itself the right behaviour, and the reason both are reported.
+    """
+    positions = _positions(6)
+    tract = {2, 3}
+
+    linked, split = {}, {}
+    for k in range(12):
+        linked[f"L{k}"] = {1: "A", 2: "C", 3: "C", 4: "A"}
+        split[f"Sout{k}"] = {1: "A", 4: "A"}
+        split[f"Sin{k}"] = {2: "C", 3: "C"}
+    for k in range(12):                                  # identical flanks in both datasets
+        linked[f"F{k}"] = split[f"F{k}"] = {0: "A", 5: "A"}
+
+    a = _fit(linked, positions)
+    b = _fit(split, positions)
+
+    assert (a["start"], a["end"]) == (positions[min(tract)], positions[max(tract)])
+    assert (b["start"], b["end"]) == (a["start"], a["end"])
+    assert a["log10_bf_null"] > b["log10_bf_null"] + 50
+    assert a["log10_bf"] == pytest.approx(b["log10_bf"], abs=1e-3)
+
+
+def test_wholesale_mismapping_is_a_fitted_rate_and_not_a_tract():
+    """Reads arriving from the donor carry its bases at EVERY site, including outside any
+    candidate tract. That raises the no-conversion likelihood everywhere at once, so there is
+    nothing left for a tract to explain, and the rate itself is what gets reported."""
+    positions = _positions(10)
+    reads = {}
+    for start in range(8):
+        for k in range(10):
+            donor = k < 8                                # 80% of molecules, everywhere
+            reads[f"r{start}_{k}"] = {s: ("C" if donor else "A") for s in range(start, start + 3)}
+
+    res = _fit(reads, positions)
+
+    assert res["mismap_frac"] > 0.5
+    assert res["log10_bf"] < 3.0
+    assert gm.verdict(res, covers_locus=False)[0] == "mismapping"
+
+
+def test_a_tract_covering_the_whole_locus_is_degenerate_with_a_mismapping_rate_of_one():
+    """Every read carrying the donor base everywhere is exactly what both hypotheses predict.
+
+    The threshold version needed a special case for this. Here the two likelihoods are equal by
+    construction, so the Bayes factor collapses to the ratio of their priors on its own.
+    """
+    positions = _positions(6)
+    reads = {f"r{start}_{k}": {s: "C" for s in range(start, start + 3)}
+             for start in range(4) for k in range(10)}
+
+    res = _fit(reads, positions)
+
+    assert (res["map_i"], res["map_j"]) == (0, len(positions) - 1)
+    assert res["mismap_frac"] > 0.9
+    assert res["log10_bf"] < 3.0
+    verdict, reason = gm.verdict(res, covers_locus=True)
+    assert verdict == "ambiguous" and "every diagnostic site" in reason
+
+
+def test_one_site_is_a_substitution_and_three_sites_are_a_conversion():
+    """Where `min_sites` went.
+
+    For the same set of sites, "converted" and "mutated independently" have identical
+    likelihoods, so what separates them is only their priors: one conversion event against k
+    independent substitutions. At one site the substitution wins and at three it does not, and
+    nothing in the code says the number three.
+    """
+    positions = _positions(10)
+
+    one = _fit(_tract_reads(8, 3, 10, tract={5}), positions)
+    three = _fit(_tract_reads(8, 3, 10, tract={4, 5, 6}), positions)
+
+    # Both are certain about which sites carry the donor base: that is not what is in question.
+    assert one["log10_bf_null"] > 50 and three["log10_bf_null"] > 50
+
+    assert one["log10_bf"] < 3.0
+    assert three["log10_bf"] > 3.0
+    verdict, reason = gm.verdict(one, covers_locus=False)
+    assert verdict == "ambiguous" and "independent substitution" in reason
+
+
+def test_the_mutation_rate_moves_the_number_of_sites_a_tract_needs():
+    """The bar is derived from a rate, so it can be argued with instead of just overruled."""
+    positions = _positions(10)
+    reads = _tract_reads(8, 3, 10, tract={5})
+
+    plausible = _fit(reads, positions, mut_rate=3e-4)
+    implausible = _fit(reads, positions, mut_rate=1e-9)
+
+    assert plausible["log10_bf"] < 3.0 < implausible["log10_bf"]
+
+
+def test_an_uncertain_boundary_widens_the_credible_interval():
+    """A breakpoint is only as sharp as the molecules that cross it.
+
+    With no read reaching from outside the tract to inside it, the model cannot tell where
+    between two diagnostic sites the boundary is, and says so instead of putting it wherever a
+    threshold was crossed.
+    """
+    positions = _positions(8)
+    tract = {3, 4}
+
+    crossed = _fit(_tract_reads(8, 4, 8, tract=tract), positions)
+    # Only single-site molecules: nothing links a site inside the tract to a site outside it,
+    # and the sites either side of the tract are never measured at all.
+    isolated = {}
+    for s in [3, 4]:
+        for k in range(8):
+            isolated[f"in{s}_{k}"] = {s: "C"}
+    for s in [0, 7]:
+        for k in range(8):
+            isolated[f"out{s}_{k}"] = {s: "A"}
+    loose = _fit(isolated, positions)
+
+    def width(res, key):
+        lo, hi = res[key]
+        return hi - lo
+
+    assert width(crossed, "start_ci") == 0 and width(crossed, "end_ci") == 0
+    assert width(loose, "start_ci") > 0 or width(loose, "end_ci") > 0
+
+
+def test_a_locus_with_no_informative_read_returns_nothing_rather_than_a_guess():
+    positions = _positions(5)
+
+    assert gm.fit_locus(np.zeros((0, 5)), positions) is None
+
+
+def test_the_grid_is_coarsened_only_when_the_locus_is_too_big_to_search_exactly():
+    positions = _positions(40)
+    reads = _tract_reads(2, 4, 40, tract={10, 11, 12})
+
+    exact = _fit(reads, positions, max_grid=150)
+    coarse = _fit(reads, positions, max_grid=10)
+
+    assert exact["stride"] == 1
+    assert coarse["stride"] == 4
+    assert coarse["n_candidates"] < exact["n_candidates"]
+    # The tract is short, so it survives the stride intact.
+    assert (coarse["start"], coarse["end"]) == (exact["start"], exact["end"])
+
+
+# ---------------------------------------------------------------------- segment
+
+
+def test_two_tracts_in_one_locus_are_both_found():
+    """Two conversions in one paralog pair is an ordinary outcome. The threshold version had
+    each one counting the other's donor bases as evidence against itself."""
+    positions = _positions(14)
+    fits = gm.segment(*_delta(_tract_reads(6, 3, 14, tract={2, 3, 4} | {9, 10, 11}), positions),
+                      max_tracts=2)
+
+    found = sorted((f["start"], f["end"]) for f in fits if f["log10_bf"] > 3.0)
+    assert found == [(positions[2], positions[4]), (positions[9], positions[11])]
+
+
+def test_the_second_search_is_a_test_of_another_tract_on_top_of_the_first():
+    """Once a tract is accepted its sites become the background, so the second fit is not free
+    to simply restate the first one in a wider interval."""
+    positions = _positions(12)
+    fits = gm.segment(*_delta(_tract_reads(6, 3, 12, tract={4, 5, 6}), positions), max_tracts=2)
+
+    assert len(fits) == 2
+    assert (fits[0]["start"], fits[0]["end"]) == (positions[4], positions[6])
+    assert fits[1]["log10_bf"] < fits[0]["log10_bf"]
+    first = set(range(fits[0]["map_i"], fits[0]["map_j"] + 1))
+    second = set(range(fits[1]["map_i"], fits[1]["map_j"] + 1))
+    assert not (first & second)
+
+
+def test_segment_stops_once_a_fit_is_not_worth_reporting():
+    positions = _positions(10)
+    fits = gm.segment(*_delta(_tract_reads(6, 3, 10, tract=set()), positions), max_tracts=4)
+
+    assert len(fits) == 1, "a locus with nothing in it is searched once, not four times"
+
+
+def _delta(reads, positions):
+    """(delta, positions) ready for segment()."""
+    _, delta = gm.delta_matrix(_obs(reads, positions), positions, _sites(positions))
+    return delta, positions
+
+
+# ---------------------------------------------------------------------- verdict
+
+
+def test_every_verdict_says_which_alternative_came_closest():
+    """"Not called" is only useful when it names what the data look like instead."""
+    base = {"log10_bf": 0.0, "log10_bf_null": 0.0, "log10_bf_mut": 0.0,
+            "mismap_frac": 0.0, "map_i": 2, "map_j": 4}
+
+    called = gm.verdict({**base, "log10_bf": 8.0}, covers_locus=False)
+    assert called[0] == "gene_conversion" and "Bayes factor 8.0" in called[1]
+
+    mismapped = gm.verdict({**base, "log10_bf": 1.0, "log10_bf_mut": 5.0, "mismap_frac": 0.4},
+                           covers_locus=False)
+    assert mismapped[0] == "mismapping" and "0.40" in mismapped[1]
+
+    mutated = gm.verdict({**base, "log10_bf": 1.0, "log10_bf_null": 40.0, "log10_bf_mut": 1.0},
+                         covers_locus=False)
+    assert mutated[0] == "ambiguous" and "independent substitution" in mutated[1]
+
+    unbounded = gm.verdict({**base, "log10_bf": 1.0}, covers_locus=True)
+    assert unbounded[0] == "ambiguous" and "every diagnostic site" in unbounded[1]
+
+
+def test_the_calling_threshold_is_a_parameter_and_not_a_constant():
+    res = {"log10_bf": 4.0, "log10_bf_null": 40.0, "log10_bf_mut": 4.0,
+           "mismap_frac": 0.0, "map_i": 0, "map_j": 3}
+
+    assert gm.verdict(res, covers_locus=False, min_bf=3.0)[0] == "gene_conversion"
+    assert gm.verdict(res, covers_locus=False, min_bf=5.0)[0] == "ambiguous"

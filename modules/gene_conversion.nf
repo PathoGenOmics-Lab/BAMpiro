@@ -6,6 +6,17 @@
 
 include { getSampleDir; getSavePath } from './utils'
 
+// The output columns of bin/gene_conversion.py, in one place. Three shell blocks need to write
+// this header when there is nothing to write, and a copy that has drifted from the tool's own is
+// worse than no header at all: a stub run then tests the wrong shape and says it passed.
+// tests/unit/test_gene_conversion.py checks this list against the tool.
+def gconvHeader() {
+    return ['sample', 'pair_id', 'contig', 'donor', 'verdict', 'reason', 'start', 'end', 'span_bp',
+            'post_conv', 'log10_bf', 'log10_bf_vs_null', 'mismap_frac', 'start_ci', 'end_ci',
+            'n_sites', 'n_sites_outside', 'n_undetermined', 'donor_af_in', 'donor_af_outside',
+            'min_depth', 'cis_reads', 'breakpoint_reads', 'donor_only_reads'].join('\\t')
+}
+
 process PARALOG_MAP {
     tag "Paralogs: ${refId}"
     publishDir path: { "${params.outdir}/references/${refId}" }, mode: params.publish_mode
@@ -59,7 +70,14 @@ process FIND_GENE_CONVERSION {
         --bam ${bam} \\
         --sample ${sampleId} \\
         --output ${sampleId}.${refId}.gene_conversion.tsv \\
-        --min-af ${params.gconv_min_af} \\
+        --min-bf ${params.gconv_min_bf} \\
+        --report-bf ${params.gconv_report_bf} \\
+        --prior ${params.gconv_prior} \\
+        --mean-tract-bp ${params.gconv_mean_tract_bp} \\
+        --max-tract-bp ${params.gconv_max_tract_bp} \\
+        --max-tracts ${params.gconv_max_tracts} \\
+        --mut-rate ${params.gconv_mut_rate} \\
+        --min-mismap ${params.gconv_min_mismap} \\
         --min-sites ${params.gconv_min_sites} \\
         --min-depth ${params.gconv_min_depth} \\
         --min-bq ${params.gconv_min_bq}
@@ -67,7 +85,7 @@ process FIND_GENE_CONVERSION {
 
     stub:
     """
-    printf 'sample\\tpair_id\\tcontig\\tdonor\\tverdict\\treason\\tstart\\tend\\tspan_bp\\tn_sites\\tn_sites_outside\\tdonor_af_in\\tdonor_af_outside\\tmin_depth\\tcis_reads\\tbreakpoint_reads\\tdonor_only_reads\\n' > ${sampleId}.${refId}.gene_conversion.tsv
+    printf '${gconvHeader()}\\n' > ${sampleId}.${refId}.gene_conversion.tsv
     """
 }
 
@@ -93,11 +111,11 @@ process COLLECT_GENE_CONVERSION {
         if [ "\$first" = "1" ]; then head -1 "\$f" > "\$out"; first=0; fi
         tail -n +2 "\$f" >> "\$out"
     done
-    [ -s "\$out" ] || printf 'sample\\tpair_id\\tcontig\\tdonor\\tverdict\\treason\\tstart\\tend\\tspan_bp\\tn_sites\\tn_sites_outside\\tdonor_af_in\\tdonor_af_outside\\tmin_depth\\tcis_reads\\tbreakpoint_reads\\tdonor_only_reads\\n' > "\$out"
+    [ -s "\$out" ] || printf '${gconvHeader()}\\n' > "\$out"
     """
 
     stub:
     """
-    printf 'sample\\tpair_id\\tcontig\\tdonor\\tverdict\\treason\\tstart\\tend\\tspan_bp\\tn_sites\\tn_sites_outside\\tdonor_af_in\\tdonor_af_outside\\tmin_depth\\tcis_reads\\tbreakpoint_reads\\tdonor_only_reads\\n' > ${basename}_gene_conversion.tsv
+    printf '${gconvHeader()}\\n' > ${basename}_gene_conversion.tsv
     """
 }

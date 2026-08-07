@@ -45,44 +45,73 @@ the positions where the two copies differ.
 copies are identical and a read is uninformative by construction, so the analysis works over that
 list rather than over the whole locus.
 
-**3. Tracts.** A candidate is a run of *consecutive diagnostic sites* where the reads carry the
-donor allele. Consecutive means adjacent in the site list, not in base coordinates: the bases
-between two diagnostic sites are the same in both copies and cannot testify either way.
+**3. The model.** There are three ways an acceptor site can show the donor's base, and only one
+of them is a conversion:
 
-**4. Not believing it.** This is the part that decides whether the output is useful. Reads that
-mismap from the donor produce the same per-site picture as a real conversion. Three things
-separate them, and all three are reported rather than collapsed into one score:
+- it was converted, along with its neighbours, as one tract;
+- it mutated to that base on its own, which for a single site is entirely ordinary;
+- the read carrying it came from the donor, which in a paralogous region is what aligners do.
 
-| Column | Real conversion | Mismapping |
-| :--- | :--- | :--- |
-| `donor_af_outside` | Near 0: the tract is bounded | Elevated: donor alleles everywhere in the locus |
-| `donor_af_in` | Near 1 in a clonal sample | Intermediate, and much the same at every site |
-| `breakpoint_reads` | Above 0 | Always 0 |
+All three are in the comparison. A tract is an interval of diagnostic sites carrying donor bases;
+the fraction of reads that arrived from the donor is a property of the locus, so it is fitted and
+marginalised out rather than thresholded on. Every possible interval is evaluated exactly, on
+every value of that fraction, and what comes out is a **log10 Bayes factor** for a conversion over
+the best of the other two explanations, plus a posterior distribution over the breakpoints.
 
-A site with too little depth to genotype is **undetermined**, and undetermined testifies in
-neither direction. It neither joins a tract nor ends one, and it stays out of the
-`donor_af_outside` average. Treating it as "the acceptor allele is here" would mean one ordinary
-coverage dip inside a clean tract splits it into fragments that each fall below
-`--gconv_min_sites`, and the tract disappears. `n_undetermined` reports how many sites inside a
-tract were skipped that way, so a tract does not look more solid than the data supports.
+Three things follow from writing it this way, none of which the earlier allele-fraction version
+could do:
 
-`breakpoint_reads` is the one a mismapping cannot fake. It counts single molecules carrying donor
-alleles on one side of a breakpoint and acceptor alleles on the other, in cis. A mismapped read is
-a donor read: it carries donor alleles everywhere it reaches and never crosses back.
+- **Depth is evidence.** 7 donor reads out of 10 and 700 out of 1000 both give a fraction of 0.7,
+  and they are not remotely the same evidence.
+- **Base quality is evidence.** A Q30 base counts for more than a Q14 one instead of both merely
+  clearing a floor, and a base under the floor is worth a little rather than nothing.
+- **The molecule is the unit, not the site.** At 100 bp reads and diagnostic sites 30 bp apart it
+  is the same fragments voting at both, so counting sites counts the same evidence twice. The
+  likelihood is a product over reads, which is also what makes a read spanning a breakpoint decide
+  the call on its own: it carries donor bases on one side and acceptor bases on the other, and a
+  read that came from the donor carries donor bases everywhere it reaches.
+
+**4. What sets the size a tract has to reach.** For the same set of sites, "converted" and
+"mutated independently" have identical likelihoods. What separates them is their priors: one
+conversion event against *k* independent substitutions of probability `--gconv_mut_rate` each. At
+one site the substitution wins, at two it is close, and by three the conversion wins by orders of
+magnitude. The old hand-picked `min_sites = 3` is where that lands, except now it is derived, it
+moves with the spacing of the diagnostic sites, and it can be argued with by changing a rate.
 
 ## Verdicts
 
 | Verdict | Meaning |
 | :--- | :--- |
-| `gene_conversion` | A read crosses a breakpoint in cis, or the tract is bounded with the donor allele near-fixed and supported by reads spanning several sites |
-| `mismapping` | Donor alleles are present outside the tract as well, so it is not bounded |
-| `ambiguous` | Reported, but not called. The `reason` column says which test it failed |
+| `gene_conversion` | The Bayes factor clears `--gconv_min_bf` against both alternatives |
+| `mismapping` | The locus is explained by a fitted fraction of reads arriving from the donor, with nothing left for a tract to account for |
+| `ambiguous` | Reported, but not called. The `reason` column says what came closest |
 | `coverage_shift` | The acceptor lost its reads to the donor over a run of sites. Consistent with a conversion longer than the library insert, and equally with a deletion. See below |
 
-The most common `ambiguous` case is a tract covering **every** diagnostic site of the locus. With
-no site outside it, there is nothing the donor alleles are bounded by, and a whole locus replaced
-by its paralog is indistinguishable from a locus whose reads all arrived from its paralog. Absence
-of contrary evidence is not evidence, so it is not called.
+A tract covering **every** diagnostic site of the locus is a special case that needs no special
+handling: "the whole locus was converted" and "every read here came from the donor" predict
+exactly the same bases, so their likelihoods are equal and the Bayes factor collapses to the ratio
+of their priors on its own. The model reports the ambiguity rather than having to be told about it.
+
+## Reading the numbers
+
+| Column | What it answers |
+| :--- | :--- |
+| `log10_bf` | Is this a conversion, rather than a coincidence of substitutions or a pile of donor reads? Above 3 is decisive |
+| `log10_bf_vs_null` | Are these sites really carrying the donor's bases? This is where depth, base quality and read linkage show up |
+| `post_conv` | The same as `log10_bf`, read through `--gconv_prior` |
+| `mismap_frac` | What fraction of the reads here the model had to assume came from the donor |
+| `start_ci`, `end_ci` | Where the breakpoints are, to diagnostic-site resolution, as a 95% credible interval |
+
+`log10_bf` is the weaker of two things, so it is the one to threshold on: thin data leave the
+sites themselves in doubt, and deep data settle the sites but cannot settle whether a run of donor
+bases is a conversion or a coincidence. A tract with a huge `log10_bf_vs_null` and a small
+`log10_bf` is one the reads are certain about and the biology is not.
+
+The descriptive columns are still there and still worth reading, because they are what you can go
+and check in the BAM: `donor_af_in` (how fixed the donor allele is inside the tract),
+`donor_af_outside` (whether it also turns up outside), `breakpoint_reads` (molecules carrying both
+in cis) and `n_undetermined` (sites inside the tract with too little depth to genotype). None of
+them decides anything any more.
 
 ## Output
 
@@ -93,8 +122,9 @@ Per sample, next to the other per-sample files:
 ```
 
 and one cohort-level `<samplesheet>_gene_conversion.tsv`. Columns: `sample`, `pair_id`, `contig`,
-`donor`, `verdict`, `reason`, `start`, `end`, `span_bp`, `n_sites`, `n_sites_outside`,
-`donor_af_in`, `donor_af_outside`, `n_undetermined`, `min_depth`, `cis_reads`,
+`donor`, `verdict`, `reason`, `start`, `end`, `span_bp`, `post_conv`, `log10_bf`,
+`log10_bf_vs_null`, `mismap_frac`, `start_ci`, `end_ci`, `n_sites`, `n_sites_outside`,
+`n_undetermined`, `donor_af_in`, `donor_af_outside`, `min_depth`, `cis_reads`,
 `breakpoint_reads`, `donor_only_reads`.
 
 The paralog map itself is published under `references/<refId>/` as
@@ -107,13 +137,34 @@ the donor/acceptor graph of your reference.
 | :--- | :--- | :--- |
 | `--gconv_min_identity` | `90.0` | Ignore paralog pairs below this % identity |
 | `--gconv_min_paralog_length` | `200` | Ignore paralog pairs shorter than this |
-| `--gconv_min_af` | `0.7` | Donor-allele fraction for a site to join a tract |
-| `--gconv_min_sites` | `3` | Diagnostic sites needed before a run is called a tract |
-| `--gconv_min_depth` | `5` | Informative depth needed at a site |
+| `--gconv_min_bf` | `3.0` | log10 Bayes factor before a tract is called a conversion |
+| `--gconv_report_bf` | `1.0` | log10 Bayes factor below which a tract is not written out |
+| `--gconv_prior` | `0.01` | Prior that a given paralog pair carries a tract |
+| `--gconv_mut_rate` | `0.0003` | Chance a site carries the donor base by plain substitution |
+| `--gconv_mean_tract_bp` | `1000` | Mean of the exponential prior on tract length |
+| `--gconv_max_tract_bp` | `10000` | Longest tract considered |
+| `--gconv_max_tracts` | `2` | Conversion tracts looked for per paralog pair |
+| `--gconv_min_mismap` | `0.2` | Fitted donor-read fraction reported as mismapping |
+| `--gconv_min_sites` | `3` | Diagnostic sites a pair needs before it is analysed at all |
+| `--gconv_min_depth` | `5` | Depth below which a site is undetermined in the summaries |
 | `--gconv_min_bq` | `13` | Base-quality floor when reading an allele off a read |
 
-Lower `--gconv_min_af` to catch a conversion present in only part of the population, at the cost of
-more `ambiguous` calls. Raise `--gconv_min_sites` on a reference with many close paralogs.
+`--gconv_min_bf` is the one to reach for. 3 is "decisive" on the usual scale; drop it to 2 to see
+more candidates, and read `log10_bf_vs_null` alongside to see which kind of doubt is behind each.
+
+`--gconv_mut_rate` is the per-site chance of an independent substitution to exactly the donor's
+base, roughly the genome's SNP rate against its reference divided by three. Raising it makes short
+tracts harder to call and leaves long ones untouched, which is usually what you want on a
+divergent isolate. `--gconv_mean_tract_bp` only breaks ties between overlapping intervals of
+similar likelihood; it is not a filter, and a tract far longer than it will still be called if the
+reads say so.
+
+!!! note "Performance"
+
+    The search is exhaustive and costs O(sites² x reads) per paralog pair. Above 150 diagnostic
+    sites the breakpoints are placed on a coarser grid, which costs breakpoint resolution and
+    nothing else; the `reason` column says so when it happens. Short intervals are always kept at
+    full resolution, since those are the ones a coarse grid would mangle.
 
 ## The blind spot: a tract longer than the insert
 

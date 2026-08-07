@@ -137,7 +137,7 @@ function renderDoseTx(){
     groups[c].forEach(function(o){var x=X(o.d),key=Math.round(x/6),off=((seen[key]=(seen[key]||0)+1)-1),dy=((off%2)?1:-1)*Math.ceil(off/2)*5;
       dy=Math.max(-20,Math.min(20,dy));   // keep a crowded x-bin (many samples at one dose) inside its own row band
       var hi=(st.hi==o.s);                 // clickable: highlight the sample everywhere (setHi)
-      svg+='<circle class="dtx-dot" data-s="'+esc(o.s)+'" cx="'+x.toFixed(1)+'" cy="'+(cy+dy).toFixed(1)+'" r="'+(hi?5.4:3.4)+'" fill="'+(o.v=='FAIL'?'#e0544f':col)+'" fill-opacity="0.92" stroke="'+(hi?TH.ink:'#fff')+'" stroke-width="'+(hi?1.6:0.6)+'" style="cursor:pointer"><title>'+esc(o.s)+' · '+esc(c)+' · dose '+o.d+' — click to highlight</title></circle>';});
+      svg+='<circle class="dtx-dot" data-s="'+esc(o.s)+'" cx="'+x.toFixed(1)+'" cy="'+(cy+dy).toFixed(1)+'" r="'+(hi?5.4:3.4)+'" fill="'+(o.v=='FAIL'?'#e0544f':col)+'" fill-opacity="0.92" stroke="'+(hi?TH.ink:'#fff')+'" stroke-width="'+(hi?1.6:0.6)+'" style="cursor:pointer"><title>'+esc(o.s)+' · '+esc(c)+' · dose '+o.d+' \u00b7 click to highlight</title></circle>';});
     svg+='<text x="'+(labW-8)+'" y="'+(cy-1)+'" text-anchor="end" font-size="11" font-weight="'+(gactive?'700':'400')+'" fill="'+(gactive?'#0e8ba8':TH.ink)+'" style="pointer-events:none">'+esc(c.length>20?c.slice(0,19)+'…':c)+'</text>'+
       '<text x="'+(labW-8)+'" y="'+(cy+12)+'" text-anchor="end" font-size="9.5" fill="'+TH.mut+'" style="pointer-events:none">n='+arr.length+' · med '+shortv(m,'float')+'</text>';
   });
@@ -149,7 +149,7 @@ function renderDoseTx(){
   if(cap){
     if(kw){var sig=kw.p<0.05;
       cap.innerHTML='<b>Kruskal–Wallis</b> H = '+kw.H.toFixed(2)+' · p = '+pfmt(kw.p)+' · '+kw.k+' groups, N = '+kw.N+
-        ' — '+(sig?'<span class="sc-sig">dose differs across treatment groups</span>':'no significant difference in dose across groups')+
+        ' \u00b7 '+(sig?'<span class="sc-sig">dose differs across treatment groups</span>':'no significant difference in dose across groups')+
         '. <span class="krk-mut">Non-parametric rank test over the full cohort; groups with &lt; 2 dosed samples are drawn but not tested. Click a group name to filter the whole report by it; click a point to highlight that sample.</span>';
     } else cap.innerHTML='<span class="krk-mut">Not enough dosed samples per group to test.</span>';
   }
@@ -207,7 +207,7 @@ function renderVarDose(){
   [0,0.25,0.5,0.75,1].forEach(function(t){var y=Y(t);svg+='<line x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y.toFixed(1)+'" stroke="'+TH.grid+'"/><text x="'+(padL-6)+'" y="'+(y+3).toFixed(1)+'" text-anchor="end" font-size="9" fill="'+TH.mut+'">'+t.toFixed(2).replace(/^0/,'')+'</text>';});
   [0,0.5,1].forEach(function(t){var d=dlo+t*(dhi-dlo),x=X(d);svg+='<text x="'+x.toFixed(1)+'" y="'+(Hs-padB+13)+'" text-anchor="middle" font-size="9" fill="'+TH.mut+'">'+shortv(d,'float')+'</text>';});
   for(var k=0;k<didx.length;k++){var sid=M.samples[didx[k]],hi=(st.hi==sid),x=X(dose[k]),y=Y(sel.af[k]);
-    svg+='<circle class="vd-dot" data-s="'+esc(sid)+'" cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+(hi?5.4:3.6)+'" fill="#0e8ba8" fill-opacity="0.82" stroke="'+(hi?TH.ink:'#fff')+'" stroke-width="'+(hi?1.6:0.6)+'" style="cursor:pointer"><title>'+esc(sid)+' · dose '+shortv(dose[k],'float')+' · AF '+sel.af[k].toFixed(2)+' — click to highlight</title></circle>';}
+    svg+='<circle class="vd-dot" data-s="'+esc(sid)+'" cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+(hi?5.4:3.6)+'" fill="#0e8ba8" fill-opacity="0.82" stroke="'+(hi?TH.ink:'#fff')+'" stroke-width="'+(hi?1.6:0.6)+'" style="cursor:pointer"><title>'+esc(sid)+' · dose '+shortv(dose[k],'float')+' · AF '+sel.af[k].toFixed(2)+' \u00b7 click to highlight</title></circle>';}
   svg+='<text x="'+((padL+W-padR)/2).toFixed(1)+'" y="'+(Hs-3)+'" text-anchor="middle" font-size="10" fill="'+TH.mut+'">'+esc(MET.dose.label)+'</text>'+
     '<text x="11" y="'+((padT+Hs-padB)/2).toFixed(1)+'" text-anchor="middle" font-size="10" fill="'+TH.mut+'" transform="rotate(-90 11 '+((padT+Hs-padB)/2).toFixed(1)+')">allele frequency</text></svg>';
   function vlabel(r){return '<b>'+esc(r.gene||r.contig)+'</b>'+geneRvTag(r.gene)+' '+refPos(r.pos,r.pos_h37rv)+' '+esc(r.ref)+'&#8594;'+esc(r.alt);}
@@ -235,21 +235,23 @@ function renderVarDose(){
 }
 
 // ---- Gene conversion: candidate tracts, and the evidence that decides whether to believe them ----
-// A tract is a run of diagnostic sites carrying the DONOR paralog's alleles. Reads that mismap from the
-// donor reproduce exactly that, site by site, so the panel is built around the three things that
-// separate the two rather than around a count: where the donor alleles STOP (donor_af_outside), how
-// fixed they are inside the tract (donor_af_in), and whether one molecule carries donor alleles on one
-// side of a breakpoint and acceptor alleles on the other, in cis (breakpoint_reads) - the only piece a
-// mismapping cannot fake. The map plots the first two against each other and rings the third.
-var gconvState={q:'',v:'',sk:'verdict',asc:true};
-var GCONV_MAXOUT=0.25, GCONV_MININ=0.85;   // the cut-offs bin/gene_conversion.py classify() applies
+// A tract is a run of diagnostic sites carrying the DONOR paralog's alleles. Two other things produce
+// exactly that picture: an ordinary substitution that happens to match the paralog, and a read that
+// arrived from the donor in the first place. bin/gconv_model.py weighs a tract against both and reports
+// a log10 Bayes factor, so the panel leads with that and puts the observable evidence next to it: how
+// fixed the donor allele is inside the tract (donor_af_in), whether it also turns up outside (
+// donor_af_outside), and whether one molecule carries donor alleles on one side of a breakpoint and
+// acceptor alleles on the other, in cis (breakpoint_reads) - the piece a mismapping cannot fake.
+var gconvState={q:'',v:'',sk:'bf',asc:false};
 var GCONV_MAXROWS=400;
 var GCONV_V=[{k:'gene_conversion',lab:'gene conversion',c:'#2ea36b',r:0,
-              tip:'a read crosses a breakpoint in cis, or the tract is bounded with the donor allele near-fixed'},
+              tip:'a tract explains the reads far better than an independent substitution or reads arriving from the donor'},
              {k:'ambiguous',lab:'ambiguous',c:'#e0a11f',r:1,
-              tip:'reported but not called; the reason says which test it failed. Usually a tract covering every diagnostic site of its locus, so nothing bounds it'},
+              tip:'reported but not called; the reason says what came closest. Often a tract covering every diagnostic site of its locus, which has the same likelihood as every read having come from the donor'},
              {k:'mismapping',lab:'mismapping',c:'#e0544f',r:2,
-              tip:'donor alleles are present outside the tract as well, so the tract is not bounded'}];
+              tip:'the locus is explained by a fitted fraction of reads arriving from the donor, with nothing left for a tract to account for'},
+             {k:'coverage_shift',lab:'coverage shift',c:'#8b6fd6',r:3,
+              tip:'the acceptor lost its reads to the donor over a run of sites. Consistent with a conversion longer than the library insert, and equally with a deletion. Not a conversion call'}];
 function gconvDef(v){for(var i=0;i<GCONV_V.length;i++){if(GCONV_V[i].k===v)return GCONV_V[i];}
   return {k:v||'',lab:(v||'unknown').replace(/_/g,' '),c:'#94a3b8',r:3,tip:'verdict not recognised'};}
 function gconvId(t){return t.s+'|'+t.pair+'|'+t.start;}
@@ -291,21 +293,21 @@ function renderGconv(){
     var chips=GCONV_V.map(function(d){ return '<span class="gcv-vchip'+(gconvState.v===d.k?' on':'')+'" data-v="'+d.k+
       '" title="'+esc(d.tip)+'"><i style="background:'+d.c+'"></i>'+d.lab+' <b>'+(counts[d.k]||0)+'</b></span>'; }).join('');
     // ---- evidence map: bounded-ness (x) vs fixedness (y), ringed when a read crosses a breakpoint ----
+    // Descriptive, not decisive: these are the two fractions a person can go and check in the BAM. The
+    // model works off the reads and their qualities, so no line here is a decision boundary and none
+    // is drawn. What the model concluded is the colour of the point and the BF column below.
     var W=Math.max(340,Math.min(820,(host.clientWidth||760))), H=250, padL=48, padR=92, padT=14, padB=36;
     var plotW=W-padL-padR, plotH=H-padT-padB, laneX=padL+plotW+44;
     function X(v){return padL+Math.max(0,Math.min(1,v))*plotW;}
     function Y(v){return padT+(1-Math.max(0,Math.min(1,v)))*plotH;}
     function ax(f){return f.toFixed(2).replace(/^0/,'');}
-    var svg='<svg width="'+W+'" height="'+H+'" style="display:block;max-width:100%">'+
-      '<rect x="'+padL+'" y="'+padT+'" width="'+(X(GCONV_MAXOUT)-padL).toFixed(1)+'" height="'+plotH+'" fill="#2ea36b" fill-opacity="0.07"><title>bounded: almost no donor allele outside the tract</title></rect>';
+    var svg='<svg width="'+W+'" height="'+H+'" style="display:block;max-width:100%">';
     [0,0.25,0.5,0.75,1].forEach(function(f){
       svg+='<line x1="'+X(f).toFixed(1)+'" y1="'+padT+'" x2="'+X(f).toFixed(1)+'" y2="'+(padT+plotH)+'" stroke="'+TH.grid+'"/>'+
         '<text x="'+X(f).toFixed(1)+'" y="'+(padT+plotH+13)+'" text-anchor="middle" font-size="9" fill="'+TH.mut+'">'+ax(f)+'</text>'+
         '<line x1="'+padL+'" y1="'+Y(f).toFixed(1)+'" x2="'+(padL+plotW)+'" y2="'+Y(f).toFixed(1)+'" stroke="'+TH.grid+'"/>'+
         '<text x="'+(padL-6)+'" y="'+(Y(f)+3).toFixed(1)+'" text-anchor="end" font-size="9" fill="'+TH.mut+'">'+ax(f)+'</text>';});
-    svg+='<line x1="'+X(GCONV_MAXOUT).toFixed(1)+'" y1="'+padT+'" x2="'+X(GCONV_MAXOUT).toFixed(1)+'" y2="'+(padT+plotH)+'" stroke="#e0544f" stroke-dasharray="3 3" stroke-opacity="0.75"><title>right of this line the tract is not bounded: called mismapping</title></line>'+
-      '<line x1="'+padL+'" y1="'+Y(GCONV_MININ).toFixed(1)+'" x2="'+(padL+plotW)+'" y2="'+Y(GCONV_MININ).toFixed(1)+'" stroke="#2ea36b" stroke-dasharray="3 3" stroke-opacity="0.75"><title>above this line the donor allele is near-fixed inside the tract</title></line>'+
-      '<line x1="'+(laneX-20)+'" y1="'+padT+'" x2="'+(laneX-20)+'" y2="'+(padT+plotH)+'" stroke="'+TH.grid+'" stroke-dasharray="2 3"/>'+
+    svg+='<line x1="'+(laneX-20)+'" y1="'+padT+'" x2="'+(laneX-20)+'" y2="'+(padT+plotH)+'" stroke="'+TH.grid+'" stroke-dasharray="2 3"/>'+
       '<text x="'+laneX+'" y="'+(padT+plotH+13)+'" text-anchor="middle" font-size="9" fill="'+TH.mut+'">n/a</text>';
     rows.forEach(function(t,i){
       if(t.af_in==null)return;                                     // nothing to place on the fixedness axis
@@ -316,12 +318,12 @@ function renderGconv(){
         '" fill="'+d.c+'" fill-opacity="'+(on?0.85:0.1)+'" stroke="'+((bp||hot)?TH.ink:'#fff')+'" stroke-width="'+(bp?1.8:0.6)+
         '" stroke-opacity="'+(on?1:0.12)+'" style="cursor:pointer"><title>'+esc(t.s)+' · '+esc(t.contig||'?')+' from '+esc(t.donor||'?')+
         ' · '+esc(d.lab)+'\nAF in '+(t.af_in==null?'n/a':t.af_in.toFixed(2))+' · AF outside '+(t.af_out==null?'n/a (no site outside the tract)':t.af_out.toFixed(2))+
-        ' · '+(t.bp_reads||0)+' breakpoint read(s)\nclick to highlight this sample</title></circle>';});
+        ' · '+(t.bp_reads||0)+' breakpoint read(s)'+(t.bf==null?'':'\nlog10 Bayes factor '+t.bf.toFixed(1))+
+        '\nclick to highlight this sample</title></circle>';});
     svg+='<text x="'+(padL+plotW/2).toFixed(1)+'" y="'+(H-3)+'" text-anchor="middle" font-size="10" fill="'+TH.mut+'">donor allele fraction OUTSIDE the tract</text>'+
       '<text x="12" y="'+(padT+plotH/2).toFixed(1)+'" text-anchor="middle" font-size="10" fill="'+TH.mut+'" transform="rotate(-90 12 '+(padT+plotH/2).toFixed(1)+')">donor AF inside the tract</text></svg>';
     var legend='<div class="gcv-legend"><span><i class="gcv-ring"></i>a read crosses a breakpoint in cis</span>'+
-      '<span><i class="gcv-band"></i>bounded (donor AF outside &#8804; '+GCONV_MAXOUT+')</span>'+
-      '<span class="krk-mut">bottom-left of the map is what a real conversion looks like once it is fixed: donor alleles inside the tract, none outside. Points drift right as donor alleles appear outside it, which is mismapping. The <b>n/a</b> lane holds tracts with no diagnostic site outside them at all, so boundedness cannot be tested. Click a point to highlight that sample everywhere.</span></div>';
+      '<span class="krk-mut">top-left of the map is what a fixed conversion looks like: donor alleles inside the tract, none outside. Points drift right as donor alleles appear outside it as well, which is what reads arriving from the donor produce. The <b>n/a</b> lane holds tracts with no diagnostic site outside them at all. These two fractions are descriptive: they are what you can go and check in the BAM, while the verdict comes from the model, which reads the bases and their qualities molecule by molecule. Click a point to highlight that sample everywhere.</span></div>';
     // ---- per-tract table: the same evidence as numbers, sortable and searchable ----
     var ord=sel.slice().sort(function(a,b){
       var ka=keyof(a,gconvState.sk),kb=keyof(b,gconvState.sk),d;
@@ -337,6 +339,9 @@ function renderGconv(){
         '<td>'+esc(t.s)+'</td>'+
         '<td>'+gconvLocus(t)+'</td>'+
         '<td><span class="gcv-badge" style="background:'+d.c+'" title="'+esc(t.reason||d.tip)+'">'+d.lab+'</span></td>'+
+        '<td class="gcv-num"><b'+(t.bf!=null&&t.bf>=3?' class="gcv-bp"':'')+'>'+gconvNum(t.bf,1)+'</b>'+
+          (t.bf_null==null?'':' <span class="gcv-mut" title="log10 Bayes factor against no conversion at all. This is where depth, base quality and read linkage show up; the headline number is also limited by how implausible independent substitution is">/ '+t.bf_null.toFixed(0)+' vs none</span>')+'</td>'+
+        '<td class="gcv-num">'+gconvNum(t.mismap,3)+'</td>'+
         '<td class="gcv-num">'+(t.start==null?'':fmtpos(t.start))+(t.span==null?'':' <span class="gcv-mut">'+t.span.toLocaleString('en-US')+' bp</span>')+'</td>'+
         '<td class="gcv-num">'+(t.n_sites==null?'':t.n_sites)+(t.n_out==null?'':' <span class="gcv-mut">/ '+t.n_out+' out</span>')+'</td>'+
         '<td class="gcv-num">'+gconvAF(t.af_in,d.c,'no informative depth inside the tract')+'</td>'+
@@ -345,7 +350,7 @@ function renderGconv(){
         '<td class="gcv-num">'+(t.cis_reads==null?'':t.cis_reads)+'</td>'+
         '<td class="gcv-num">'+gconvNum(t.depth,0)+'</td>'+
         '<td><span class="gcv-reason">'+esc(t.reason||'')+'</span></td></tr>';}).join('');
-    if(!ord.length)body='<tr><td colspan="11" class="c" style="padding:18px;text-align:center">'+
+    if(!ord.length)body='<tr><td colspan="13" class="c" style="padding:18px;text-align:center">'+
       (rows.length?'no tract matches the filter.':'no tract in the samples currently in view.')+'</td></tr>';
     host.innerHTML='<div class="gcv-verdicts">'+chips+'</div>'+
       '<div class="gcv-plotscroll">'+svg+'</div>'+legend+
@@ -353,6 +358,8 @@ function renderGconv(){
       '<span class="dyn-count">'+ord.length+' tract(s)'+(ord.length>GCONV_MAXROWS?' · showing first '+GCONV_MAXROWS+' (download for all)':'')+'</span></div>'+
       '<div class="epitbl-wrap gcv-tablewrap"><table class="epitbl gcv-table"><thead><tr>'+
         th('s','Sample')+th('locus','Locus','','the acceptor locus and the donor its alleles came from')+th('verdict','Verdict')+
+        th('bf','BF','gcv-num','log10 Bayes factor for a conversion tract over the best alternative: an independent substitution at the same sites, or reads that arrived from the donor. 3 is decisive')+
+        th('mismap','Donor reads','gcv-num','fraction of reads at this locus the model had to assume came from the donor')+
         th('start','Tract','gcv-num','start position and length of the tract')+
         th('n_sites','Sites','gcv-num','diagnostic sites inside the tract / outside it. No site outside means boundedness cannot be tested')+
         th('af_in','AF in','gcv-num','donor allele fraction inside the tract: near 1 in a clonal sample, intermediate when reads are mismapping')+
@@ -369,16 +376,19 @@ function renderGconv(){
       draw();};});
     Array.prototype.forEach.call(host.querySelectorAll('[data-s]'),function(e){e.onclick=function(){setHi(e.getAttribute('data-s'));};});
     var db=el('gcvdl'); if(db)db.onclick=function(){
-      var hdr=['sample','pair_id','contig','donor','verdict','reason','start','end','span_bp','n_sites','n_sites_outside',
-               'donor_af_in','donor_af_outside','min_depth','cis_reads','breakpoint_reads','donor_only_reads'];
+      var hdr=['sample','pair_id','contig','donor','verdict','reason','start','end','span_bp',
+               'post_conv','log10_bf','log10_bf_vs_null','mismap_frac','start_ci','end_ci',
+               'n_sites','n_sites_outside','n_undetermined','donor_af_in','donor_af_outside',
+               'min_depth','cis_reads','breakpoint_reads','donor_only_reads'];
       var lines=[hdr.join('\t')];
-      ord.forEach(function(t){lines.push([t.s,t.pair,t.contig,t.donor,t.verdict,t.reason,t.start,t.end,t.span,t.n_sites,
-        t.n_out,t.af_in,t.af_out,t.depth,t.cis_reads,t.bp_reads,t.donor_only].map(function(x){return x==null?'':x;}).join('\t'));});
+      ord.forEach(function(t){lines.push([t.s,t.pair,t.contig,t.donor,t.verdict,t.reason,t.start,t.end,t.span,
+        t.post,t.bf,t.bf_null,t.mismap,t.start_ci,t.end_ci,t.n_sites,t.n_out,t.n_undet,
+        t.af_in,t.af_out,t.depth,t.cis_reads,t.bp_reads,t.donor_only].map(function(x){return x==null?'':x;}).join('\t'));});
       dl(lines.join('\n')+'\n','gene_conversion.tsv','text/tab-separated-values');};
     if(cap){var nsamp={},ncall=counts.gene_conversion||0; rows.forEach(function(t){nsamp[t.s]=1;});
       cap.innerHTML=rows.length+' candidate tract(s) in '+Object.keys(nsamp).length+' sample(s) of the cohort in view &#183; <b'+
         (ncall?' class="sc-sig"':'')+'>'+ncall+' called gene conversion</b>, '+(counts.ambiguous||0)+' ambiguous, '+(counts.mismapping||0)+
-        ' mismapping &#183; <b>'+nbp+'</b> supported by a read crossing a breakpoint in cis. <span class="krk-mut">These loci are repeats, so they are excluded from variant calling and the consensus by design: a tract will not appear in the SNP matrix, and that is expected. Breakpoints are located to diagnostic-site resolution, not to the base, and each paralog pair is judged independently, so one tract can be reported against more than one donor. Candidates to inspect, not confirmed events.</span>';}
+        ' mismapping, '+(counts.coverage_shift||0)+' coverage shift &#183; <b>'+nbp+'</b> supported by a read crossing a breakpoint in cis. <span class="krk-mut">These loci are repeats, so they are excluded from variant calling and the consensus by design: a tract will not appear in the SNP matrix, and that is expected. Breakpoints are located to diagnostic-site resolution, not to the base, and each paralog pair is judged independently, so one tract can be reported against more than one donor. Candidates to inspect, not confirmed events.</span>';}
   }
   draw();
 }
