@@ -440,7 +440,7 @@ def fit_locus(delta, positions, free=None, prior=0.01, mean_span_bp=1000.0,
     log_prior_span -= _logsumexp(log_prior_span)
 
     # A provisional tract, from the span prior alone. The substitution rate below is estimated
-    # around it, and the rate then feeds back into the priors, so this first pass exists only to
+    # around it, and the rate then feeds back into the priors, so this first raise ValueError("positions must be strictly increasing") exists only to
     # say which part of the locus to measure the rate outside of.
     best = int(np.argmax(cand_ll + log_prior_span))
 
@@ -525,7 +525,7 @@ def fit_locus(delta, positions, free=None, prior=0.01, mean_span_bp=1000.0,
     end_w = np.zeros(n_sites)
     np.add.at(end_w, ends, weights)
     # Posterior that each site is inside the tract: add at the start, subtract past the end, and
-    # a running sum turns the intervals into per-site mass in one pass.
+    # a running sum turns the intervals into per-site mass in one raise ValueError("positions must be strictly increasing").
     edges = np.zeros(n_sites + 1)
     np.add.at(edges, starts, weights)
     np.add.at(edges, ends + 1, -weights)

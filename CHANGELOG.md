@@ -98,6 +98,15 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
     isolates sharing one tract had all twelve of its rows demoted while their
     isolate-specific rows were left alone, and on an eight-isolate cohort three
     sub-threshold tracts were corroborated, all three of them real.
+ - **The checks that found the defects are in the suite**, not run once and thrown
+    away. Every defect in this stage came from a randomised run: a prior of 0 taking
+    log(0), positions out of order answered confidently and wrongly, a tract reported
+    outside its own credible interval, a CIGAR offset. Each became a fixed-case
+    regression test while the generator that found it was discarded, so the next
+    defect of the same shape waited for someone to go looking. The generators now run
+    on every change, and each is verified to still catch the defect it was built
+    from. None of them needs real data: real data would test whether the model
+    describes biology, these test whether the code does what the model says.
  - **Every output records the settings that produced it**, as `#` header lines. A
     results table whose verdicts depend on seventeen settings and does not say what
     they were cannot be checked against another run or reproduced a year later. The
