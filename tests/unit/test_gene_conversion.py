@@ -463,6 +463,24 @@ def test_a_shallow_site_does_not_drag_the_outside_average():
     assert ev["donor_af_outside"] == pytest.approx(0.0)
 
 
+def test_a_site_at_exactly_the_depth_floor_is_determined():
+    """`--min-depth` is the depth a site must reach to be genotyped, and the same floor decides
+    the two sides of one split: what counts as outside, and what counts as unmeasured inside.
+
+    Moving either comparison alone tears the split apart, and a site then counts on both sides or
+    on neither, which no total in the row would reveal.
+    """
+    positions = [10, 20, 30, 40]
+    # 10 sits at the floor and is outside; 20 sits at the floor and is inside; 30 is below it.
+    counts = _counts({10: 0.0, 20: 1.0, 30: 1.0, 40: 0.0},
+                     depth={10: 5, 20: 5, 30: 4, 40: 30})
+
+    ev = gc.tract_evidence([20, 30], positions, counts, {}, min_depth=5)
+
+    assert ev["n_sites_outside"] == 2, "a site at exactly the floor is measured"
+    assert ev["n_undetermined"] == 1, "and inside the tract, only the one below it is not"
+
+
 def test_n_undetermined_counts_the_unmeasured_sites_inside_the_tract():
     """A tract resting on measured sites and empty ones looks solid in the coordinates.
 
@@ -1031,3 +1049,41 @@ def test_a_deletion_marker_is_priced_as_an_indel_not_as_a_substitution(tmp_path,
     # ahead by exactly that ratio in log10. Asserting the amount rather than the direction is
     # what makes this a test of the pricing instead of a test that the two runs differ.
     assert as_indel - as_snp == pytest.approx(-math.log10(gc.gm.INDEL_MUT_FACTOR), abs=0.02)
+
+
+def test_a_coverage_shift_row_reports_the_stretch_it_actually_covers(tmp_path, samtools):
+    """The one verdict built by hand rather than by the model, so its columns are its own.
+
+    Nothing else checks them: the run's own coordinates, the span they imply and the shallowest
+    depth in it are all assembled here, and each is a min or a max that reads perfectly well when
+    it is the wrong one. A row saying the acceptor is depleted over a single base, or over a
+    stretch running backwards, is what a reader would be handed.
+    """
+    positions = [1000, 1010, 1020, 1030]
+    sites = _sites_tsv(tmp_path / "sites.tsv", {0: positions})
+    # The acceptor runs deep at 1000 and is empty over the other three. The donor, at 1200 along,
+    # has to be ENRICHED over those three against its own baseline, not merely present: an
+    # acceptor that is simply shallow everywhere is not a shift of reads, and the check says so.
+    records = [_sam_line(f"acc{i}", 995, "10M", "A" * 10, qual="I" * 10) for i in range(30)]
+    # Two stragglers at 1010, so the run's depths are not all the same and the shallowest site
+    # in it is a different number from the deepest.
+    records += [_sam_line(f"thin{i}", 1010, "1M", "A", qual="I") for i in range(2)]
+    records += [_sam_line(f"base{i}", 2195, "50M", "A" * 50, qual="I" * 50) for i in range(5)]
+    records += [_sam_line(f"don{i}", 2205, "40M", "A" * 40, qual="I" * 40) for i in range(40)]
+    bam = _bam(tmp_path, records)
+    out = tmp_path / "tracts.tsv"
+
+    assert gc.main(["--sites", sites, "--bam", bam, "--sample", "S1", "-o", str(out),
+                    "--samtools", samtools, "--min-sites", "3", "--min-depth", "5"]) == 0
+
+    body = [ln for ln in out.read_text().splitlines() if not ln.startswith("#")]
+    header = body[0].split("\t")
+    shifts = [dict(zip(header, ln.split("\t"))) for ln in body[1:]]
+    shifts = [r for r in shifts if r["verdict"] == "coverage_shift"]
+
+    assert shifts, "the depletion was not reported at all"
+    row = shifts[0]
+    assert (int(row["start"]), int(row["end"])) == (1010, 1030)
+    assert int(row["span_bp"]) == 1030 - 1010 + 1
+    assert int(row["n_sites"]) == 3 and int(row["n_sites_outside"]) == 1
+    assert int(row["min_depth"]) == 0, "the shallowest site in the run, not the deepest"
