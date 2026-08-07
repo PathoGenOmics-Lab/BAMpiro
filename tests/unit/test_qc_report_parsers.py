@@ -390,6 +390,96 @@ def test_parse_dr_without_any_call_is_none(tmp_path):
     assert qc_parsers.parse_dr(write(tmp_path / "dr2.tsv", "sample\tdrug\n")) is None
 
 
+# --------------------------------------------------------------------------- parse_gene_conversion
+
+
+GCONV_HEADER = (
+    "sample\tpair_id\tcontig\tdonor\tverdict\treason\tstart\tend\tspan_bp\tn_sites\tn_sites_outside\t"
+    "donor_af_in\tdonor_af_outside\tmin_depth\tcis_reads\tbreakpoint_reads\tdonor_only_reads\n"
+)
+GCONV = GCONV_HEADER + (
+    "S1\t7\tPPE34\tPPE12\tgene_conversion\t3 read(s) cross a breakpoint in cis"
+    "\t1000\t1400\t401\t6\t9\t0.97\t0.01\t18\t11\t3\t0\n"
+    "S1\t9\tPE_PGRS4\tPE_PGRS5\tmismapping\tdonor alleles are present outside the tract as well"
+    "\t2000\t2300\t301\t4\t12\t0.55\t0.48\t9\t5\t0\t7\n"
+    # the whole-locus case: no site outside the tract, so donor_af_outside cannot be measured at all
+    "S2\t7\tPPE34\tPPE12\tambiguous\ttract covers every diagnostic site\t1000\t1600\t601\t15\t0\t0.91\t\t12\t8\t0\t8\n"
+)
+
+
+def test_parse_gene_conversion_reads_the_tracts_samples_and_verdict_counts(tmp_path):
+    g = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV))
+    assert g["samples"] == ["S1", "S2"]
+    assert g["counts"] == {"gene_conversion": 1, "mismapping": 1, "ambiguous": 1}
+    assert g["tracts"][0] == {
+        "s": "S1", "pair": "7", "contig": "PPE34", "donor": "PPE12", "verdict": "gene_conversion",
+        "reason": "3 read(s) cross a breakpoint in cis", "start": 1000, "end": 1400, "span": 401,
+        "n_sites": 6, "n_out": 9, "af_in": pytest.approx(0.97), "af_out": pytest.approx(0.01),
+        "depth": 18, "cis_reads": 11, "bp_reads": 3, "donor_only": 0}
+
+
+def test_parse_gene_conversion_keeps_the_three_pieces_of_deciding_evidence(tmp_path):
+    """donor_af_in, donor_af_outside and breakpoint_reads are what separate a conversion from a
+    mismapping, so the panel reads them per row; none of them may be collapsed or dropped."""
+    tracts = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV))["tracts"]
+    assert [t["af_in"] for t in tracts] == [pytest.approx(0.97), pytest.approx(0.55), pytest.approx(0.91)]
+    assert [t["af_out"] for t in tracts] == [pytest.approx(0.01), pytest.approx(0.48), None]
+    assert [t["bp_reads"] for t in tracts] == [3, 0, 0]
+
+
+def test_parse_gene_conversion_reads_an_unmeasurable_value_as_none_not_zero(tmp_path):
+    """A tract covering every diagnostic site has no donor_af_outside. Reading the empty field as
+    0.0 would make the least-bounded case look like the best-bounded one."""
+    last = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV))["tracts"][-1]
+    assert last["af_out"] is None
+    assert last["n_out"] == 0
+
+
+def test_parse_gene_conversion_normalises_the_verdict_case(tmp_path):
+    row = "S1\t1\tc\td\tGene_Conversion\tr\t1\t2\t2\t3\t3\t1.0\t0.0\t9\t3\t1\t0\n"
+    g = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV_HEADER + row))
+    assert g["tracts"][0]["verdict"] == "gene_conversion"
+    assert g["counts"]["gene_conversion"] == 1
+
+
+def test_parse_gene_conversion_counts_an_unrecognised_verdict_without_losing_the_known_ones(tmp_path):
+    row = "S1\t1\tc\td\tsomething_else\tr\t1\t2\t2\t3\t3\t1.0\t0.0\t9\t3\t1\t0\n"
+    counts = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV_HEADER + row))["counts"]
+    assert counts == {"gene_conversion": 0, "mismapping": 0, "ambiguous": 0, "something_else": 1}
+
+
+def test_parse_gene_conversion_reads_a_float_formatted_count(tmp_path):
+    row = "S1\t1\tc\td\tambiguous\tr\t1.0\t2.0\t2.0\t3.0\t3.0\t1.0\t0.0\t9.0\t3.0\t1.0\t0.0\n"
+    t = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV_HEADER + row))["tracts"][0]
+    assert (t["start"], t["n_sites"], t["bp_reads"], t["depth"]) == (1, 3, 1, 9)
+
+
+def test_parse_gene_conversion_reads_the_missing_sentinels_as_none(tmp_path):
+    row = "S1\t1\tc\td\tambiguous\tr\tNA\t.\t\t3\t3\tNA\t.\t\tNA\t.\t\n"
+    t = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV_HEADER + row))["tracts"][0]
+    assert [t[k] for k in ("start", "end", "span", "af_in", "af_out", "depth", "cis_reads",
+                           "bp_reads", "donor_only")] == [None] * 9
+
+
+def test_parse_gene_conversion_skips_blank_lines_and_rows_without_a_sample(tmp_path):
+    body = "\n\t1\tc\td\tambiguous\tr\t1\t2\t2\t3\t3\t1.0\t0.0\t9\t3\t1\t0\n"
+    g = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV + body))
+    assert g["samples"] == ["S1", "S2"]
+    assert len(g["tracts"]) == 3
+
+
+@pytest.mark.parametrize("path", [None, "", MISSING])
+def test_parse_gene_conversion_of_an_absent_file_is_none(path):
+    assert qc_parsers.parse_gene_conversion(path) is None
+
+
+def test_parse_gene_conversion_without_any_tract_is_none(tmp_path):
+    """The pipeline always writes the file, header-only when the stage found nothing, so an empty
+    result must hide the panel rather than render an empty one."""
+    assert qc_parsers.parse_gene_conversion(write(tmp_path / "a.tsv", "")) is None
+    assert qc_parsers.parse_gene_conversion(write(tmp_path / "b.tsv", GCONV_HEADER)) is None
+
+
 # --------------------------------------------------------------------------- parse_kraken
 
 
@@ -888,6 +978,7 @@ def test_mapdamage_stats_of_an_empty_or_absent_directory_is_none(tmp_path):
     (qc_parsers.parse_gene_burden, []),
     (qc_parsers.parse_pnps, []),
     (qc_parsers.parse_dr, None),
+    (qc_parsers.parse_gene_conversion, None),
     (qc_parsers.parse_gff, []),
     (qc_parsers.parse_gene_locus, {}),
     (qc_parsers.parse_sample_meta, None),

@@ -195,3 +195,31 @@ html.dark .dyn-search,html.dark .gsearch,html.dark .controls input[type=search]{
 .vd-row.on{background:var(--hl)}
 .vd-table th.vd-sortable{cursor:pointer;user-select:none;white-space:nowrap}
 .vd-table th.vd-sortable:hover{color:var(--accent)}
+
+/* Gene conversion: verdict chips, the bounded-vs-fixed evidence map, and the per-tract table */
+.gcv-verdicts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.gcv-vchip{font-size:12px;font-weight:600;border-radius:20px;padding:4px 13px;border:1px solid var(--line);background:var(--panel);color:var(--txt2);cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.gcv-vchip i{display:inline-block;width:10px;height:10px;border-radius:50%}
+.gcv-vchip b{font-variant-numeric:tabular-nums}
+.gcv-vchip:hover{border-color:var(--accent);color:var(--accent)}
+.gcv-vchip.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.gcv-plotscroll{overflow-x:auto;overflow-y:hidden}
+.gcv-legend{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:11.5px;color:var(--mut);margin:8px 0 14px}
+.gcv-legend i{display:inline-block;width:11px;height:11px;margin-right:6px;vertical-align:-1px}
+.gcv-legend i.gcv-ring{border-radius:50%;background:#94a3b8;box-shadow:0 0 0 1.8px var(--ink)}
+.gcv-legend i.gcv-band{border-radius:2px;background:rgba(46,163,107,.22);border:1px solid rgba(46,163,107,.5)}
+.gcv-badge{display:inline-block;color:#fff;font-size:10.5px;font-weight:700;border-radius:6px;padding:2px 9px;white-space:nowrap}
+.gcv-num{font-variant-numeric:tabular-nums}
+.gcv-mut{color:var(--mut);font-size:11px}
+.gcv-na{color:var(--mut);font-style:italic;cursor:help}
+.gcv-from{color:var(--mut);font-weight:700}
+.gcv-ev{display:inline-flex;align-items:center;gap:7px}
+.gcv-bar{position:relative;display:inline-block;width:42px;height:7px;border-radius:4px;background:var(--track);overflow:hidden;vertical-align:middle}
+.gcv-bar span{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
+.gcv-bp{color:var(--accent)}
+.gcv-reason{display:block;white-space:normal;max-width:290px;font-size:11px;line-height:1.4;color:var(--mut)}
+.gcv-row{cursor:pointer}
+.gcv-tablewrap{max-height:58vh;overflow:auto}
+table.epitbl th.gcv-sortable{user-select:none}
+table.epitbl th.gcv-sortable:hover{color:var(--accent)}
+table.epitbl.gcv-table td{vertical-align:middle}

@@ -30,8 +30,8 @@ from qcreport.metrics import (ANC_DEF, DEF, DEFS, DIST, METRICS, build_gene_map,
                               flag_sample, het_frac, is_ancient, lineage_counts_parsed, lineage_fracs, robust)
 from qcreport.panels import build_dynamics, build_epistasis, build_snp_matrix
 from qcreport.parsers import (NBINS, clean_str, consensus_stats, mapdamage_stats, mask_profile, parse_bed,
-                              parse_dose, parse_dr, parse_gene_burden, parse_gff, parse_kraken,
-                              parse_lineage_colors, parse_metadata, parse_pnps, parse_profile,
+                              parse_dose, parse_dr, parse_gene_burden, parse_gene_conversion, parse_gff,
+                              parse_kraken, parse_lineage_colors, parse_metadata, parse_pnps, parse_profile,
                               parse_sample_meta, parse_summary, parse_vcfs, to_float)
 from qcreport.render import REPO_URL, SECTION_INFO, build_html
 
@@ -61,6 +61,9 @@ def build_parser():
                     help="Cohort gene-burden TSV (collect_summary --gene-burden-out) -> the Functional gene burden panel (optional).")
     ap.add_argument("--dr-report", default=None,
                     help="Per-sample drug-resistance calls TSV (from pathotypr DR markers) -> the Drug resistance panel (optional).")
+    ap.add_argument("--gene-conversion", default=None,
+                    help="Cohort gene-conversion tracts TSV (COLLECT_GENE_CONVERSION) -> the Gene conversion panel "
+                         "(optional).")
     ap.add_argument("--kraken", nargs="*", default=[],
                     help="Per-sample Kraken2 .report files -> the Taxonomic composition / contamination panel (optional).")
     ap.add_argument("--pnps", default=None,
@@ -265,6 +268,7 @@ def build_payload(args, thr, anc_thr):
                "section_info": SECTION_INFO,
                "gene_burden": parse_gene_burden(args.gene_burden) or None,
                "dr": parse_dr(args.dr_report),
+               "gconv": parse_gene_conversion(args.gene_conversion),
                "kraken": parse_kraken(args.kraken),
                "pnps": parse_pnps(args.pnps) or None,
                "mask_bins": mask_bins, "mask_pct": mask_pct,

@@ -134,6 +134,19 @@ SECTION_INFO = {
             "as a sample x drug matrix (worst grade per drug) and a per-mutation table with the WHO confidence "
             "grade. Alignment-free (k-mer), so it works regardless of the mapping reference. A genomic screen, "
             "NOT a clinical drug-susceptibility result.",
+    "gconv": "Stretches where one paralog appears to have been copied onto another: the acceptor locus stops "
+             "carrying its own alleles and carries the donor's between two breakpoints. Finding a candidate is "
+             "easy; deciding whether to believe it is the whole problem, because reads that mismap from the donor "
+             "look identical site by site. So the panel shows the three pieces of evidence that separate them "
+             "rather than a count: whether the donor alleles STOP at the tract edges (they are everywhere in the "
+             "locus when reads are merely mismapping), how fixed they are inside it, and whether any single read "
+             "carries donor alleles on one side of a breakpoint and acceptor alleles on the other, in cis - the "
+             "one thing a mismapping cannot fake. A tract covering every diagnostic site of its locus is left "
+             "'ambiguous' on purpose: with nothing outside it, there is nothing the donor alleles are bounded by. "
+             "Read the plot as a map of that judgement and the table as the per-tract detail. These regions are "
+             "excluded from variant calling and the consensus by design, so a tract will not appear in the SNP "
+             "matrix. Candidates to inspect, NOT confirmed recombination events, and breakpoints are located only "
+             "to diagnostic-site resolution.",
     "flagged": "The samples the current thresholds flag as WARN / FAIL and the specific reason for each. This "
                "is the actionable QC summary; adjust the thresholds above to re-flag the whole report.",
     "dosetx": "The per-sample dose (a numeric samplesheet column) split by treatment group, drawn as a box (IQR "

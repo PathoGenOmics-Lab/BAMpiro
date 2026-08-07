@@ -1,7 +1,7 @@
 """File parsers for the QC report: pipeline artefacts in, plain Python values out.
 
 Every parser is defensive by design. The optional inputs (BED, GFF, gene burden,
-pN/pS, drug resistance, Kraken, mapDamage, samplesheet, VCF) return an empty
+pN/pS, drug resistance, gene conversion, Kraken, mapDamage, samplesheet, VCF) return an empty
 value instead of raising, so a missing or malformed optional file hides its panel
 rather than failing the run. The two REQUIRED inputs, parse_summary and
 consensus_stats, deliberately raise: the pipeline always hands them a file it has
@@ -307,6 +307,69 @@ def parse_dr(path):
     drugs = sorted({c["drug"] for c in calls if c["drug"]},
                    key=lambda x: (_DR_DRUG_ORDER.index(x) if x in _DR_DRUG_ORDER else 99, x))
     return {"samples": samples, "drugs": drugs, "calls": calls}
+
+
+_GCONV_VERDICTS = ("gene_conversion", "mismapping", "ambiguous")
+
+
+def parse_gene_conversion(path):
+    """Cohort gene-conversion tracts (COLLECT_GENE_CONVERSION) -> {'samples','counts','tracts':[...]} or None.
+
+    One row per candidate tract. The three columns the verdict actually rests on are carried
+    through untouched -- `donor_af_in` (how fixed the donor allele is inside the tract),
+    `donor_af_outside` (whether the tract is bounded at all) and `breakpoint_reads` (single
+    molecules carrying donor and acceptor alleles in cis, the one thing a mismapping cannot
+    fake) -- because the panel shows the judgement, not just its conclusion.
+
+    Optional input: missing, empty or header-only returns None and the panel self-hides.
+    """
+    if not path or not os.path.exists(path):
+        return None
+
+    def ival(v):
+        try:   # via float(): a count written as '3.0' is still 3, not a parse failure
+            return int(float(v)) if v not in (None, "", "NA", ".") else None
+        except (TypeError, ValueError):
+            return None
+    tracts, samples = [], []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            header = None
+            for line in fh:
+                if not line.strip() or line.startswith("#"):
+                    continue
+                parts = line.rstrip("\n").split("\t")
+                if header is None:
+                    header = [h.strip().lower() for h in parts]
+                    continue
+                d = dict(zip(header, parts))
+                s = (d.get("sample") or "").strip()
+                if not s:
+                    continue
+                tracts.append({"s": s, "pair": (d.get("pair_id") or "").strip(),
+                               "contig": (d.get("contig") or "").strip(),
+                               "donor": (d.get("donor") or "").strip(),
+                               "verdict": (d.get("verdict") or "").strip().lower(),
+                               "reason": (d.get("reason") or "").strip(),
+                               "start": ival(d.get("start")), "end": ival(d.get("end")),
+                               "span": ival(d.get("span_bp")), "n_sites": ival(d.get("n_sites")),
+                               "n_out": ival(d.get("n_sites_outside")),
+                               "af_in": to_float(d.get("donor_af_in")),
+                               "af_out": to_float(d.get("donor_af_outside")),
+                               "depth": ival(d.get("min_depth")),
+                               "cis_reads": ival(d.get("cis_reads")),
+                               "bp_reads": ival(d.get("breakpoint_reads")),
+                               "donor_only": ival(d.get("donor_only_reads"))})
+                if s not in samples:
+                    samples.append(s)
+    except OSError:
+        return None
+    if not tracts:
+        return None
+    counts = dict.fromkeys(_GCONV_VERDICTS, 0)
+    for t in tracts:
+        counts[t["verdict"]] = counts.get(t["verdict"], 0) + 1
+    return {"samples": samples, "counts": counts, "tracts": tracts}
 
 
 def parse_kraken(paths):

@@ -257,7 +257,7 @@ Run Pathotypr    : ${params.run_pathotypr}
 
     // 12. Gene conversion (opt-in). Reads the PRE-FILTER bam and the reference self-alignment,
     // because the masking the rest of the pipeline applies removes exactly this signal.
-    GENE_CONVERSION(refs.delta, bams.dedup_bam, tsv_name)
+    def gconv = GENE_CONVERSION(refs.delta, bams.dedup_bam, tsv_name)
 
     // 7. Consensus Generation (Optional)
     def consensus = MAKE_CONSENSUS(bams.variant_base, bams.dedup_bam,
@@ -278,5 +278,5 @@ Run Pathotypr    : ${params.run_pathotypr}
     // 11. Cohort-level outputs (QC report + master SNP matrix).
     COHORT_REPORT(legacy.legacy_log, consensus.fasta, refs.bundle, reads.kraken_reports,
                   typing.dr_mutations, annotated.stats_vcf, annotated.freebayes_vcf,
-                  refMap, refGffMap, tsv_name)
+                  gconv.cohort_tsv, refMap, refGffMap, tsv_name)
 }

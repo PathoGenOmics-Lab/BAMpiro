@@ -121,6 +121,7 @@ process QC_REPORT {
     path(vcfs_h37rv)        // per-sample VCFs annotated vs H37Rv -> dual amino-acid numbering (may be NO_FILE)
     path(pos_liftover)      // mapping_pos<TAB>h37rv_pos map (pathotypr liftover) -> canonical COORDINATE per variant (may be NO_FILE)
     path(dr_report)         // run drug-resistance calls TSV (collect_dr) -> Drug resistance panel (may be NO_FILE)
+    path(gene_conversion)   // cohort gene-conversion tracts TSV (COLLECT_GENE_CONVERSION) -> Gene conversion panel (may be empty)
     path(kraken_reports)    // per-sample Kraken2 .report files -> Taxonomic composition panel (may be empty)
     val(provenance)         // pre-quoted provenance tokens (container=..., reference=...)
     val(basename)
@@ -144,13 +145,15 @@ process QC_REPORT {
     VH_ARG="";  case "${vcfs_h37rv}" in ""|NO_FILE*) ;; *) VH_ARG="--vcfs-h37rv ${vcfs_h37rv}";; esac
     PL_ARG="";  case "${pos_liftover}" in ""|NO_FILE*) ;; *) [ -s "${pos_liftover}" ] && PL_ARG="--pos-liftover ${pos_liftover}";; esac
     DR_ARG="";  case "${dr_report}" in ""|NO_FILE*) ;; *) [ -s "${dr_report}" ] && DR_ARG="--dr-report ${dr_report}";; esac
+    # A header-only TSV (the stage ran but found nothing) parses to no tracts, so the panel self-hides.
+    GC_ARG="";  case "${gene_conversion}" in ""|NO_FILE*) ;; *) [ -s "${gene_conversion}" ] && GC_ARG="--gene-conversion ${gene_conversion}";; esac
     KRK_ARG=""; [ -n "${kraken_reports}" ] && KRK_ARG="--kraken ${kraken_reports}"
     python3 ${projectDir}/bin/qc_report.py \\
         --summary ${summary} \\
         ${cons_arg} \\
         --gene-burden ${gene_burden} \\
         --gff ${gff} \\
-        \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$PL_ARG \$DR_ARG \$KRK_ARG \\
+        \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$PL_ARG \$DR_ARG \$GC_ARG \$KRK_ARG \\
         --aa2-label "${params.canonical_label}" \\
         --provenance ${provenance} \\
         --version "${workflow.manifest.version}" \\

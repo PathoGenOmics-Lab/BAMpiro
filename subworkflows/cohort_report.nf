@@ -18,6 +18,7 @@ workflow COHORT_REPORT {
     patho_dr_results   // (sId, dr mutations); empty when pathotypr is off
     vcf_for_stats      // (sId, rId, vcf)
     freebayes_ann      // annotated freebayes.raw VCFs; empty when annotate_legacy_vcfs is off
+    gconv_cohort       // cohort gene-conversion TSV; empty when --find_gene_conversion is off
     refMap             // refId -> refFasta
     refGffMap          // refId -> refGff
     tsv_name           // samplesheet basename, used to name the cohort-level outputs
@@ -70,6 +71,10 @@ workflow COHORT_REPORT {
             : file("${projectDir}/assets/NO_FILE_H37RV")
         // Kraken2 per-sample reports (deduped) -> Taxonomic composition panel; empty when Kraken is off.
         def report_kraken = kraken_reports.unique { it.name }.collect().ifEmpty([])
+        // Gene conversion tracts (stage 12, opt-in --find_gene_conversion) -> the Gene conversion panel.
+        // Empty when the stage is off, and QC_REPORT only passes --gene-conversion for a non-empty
+        // file, so the panel hides itself rather than rendering an empty table.
+        def report_gconv = gconv_cohort.ifEmpty([])
         // Alignment-free canonical COORDINATE per variant via pathotypr (alternative to the --vcfs-h37rv path):
         // lift the run's variant positions (mapping-reference coords) onto H37Rv and hand the map to the report.
         def report_ref_fa = ref_bundle.filter { rId, fa, idx, excl -> rId == report_ref }
@@ -78,7 +83,8 @@ workflow COHORT_REPORT {
             ? LIFT_VARIANTS(report_vcfs, report_ref_fa, report_ref, tsv_name).map
             : file("${projectDir}/assets/NO_FILE_LIFTOVER")
         QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
-                  report_meta, report_vcfs, report_vcfs_h37rv, pos_liftover, dr_report, report_kraken, provenance, tsv_name)
+                  report_meta, report_vcfs, report_vcfs_h37rv, pos_liftover, dr_report, report_gconv,
+                  report_kraken, provenance, tsv_name)
     }
 
     // 11b. Master SNP matrix: rows = SNP sites, columns = reference/annotation + per-sample AF & depth.
