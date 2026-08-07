@@ -96,7 +96,8 @@ BAMpiro/
 │   ├── annotate.nf            # 8. SnpEff (main / legacy)
 │   ├── legacy_stats.nf        # 9. Per-sample metrics
 │   ├── multiqc_report.nf      # 10. MultiQC
-│   └── cohort_report.nf       # 11. Cohort summary, SNP matrix, QC report
+│   ├── cohort_report.nf       # 11. Cohort summary, SNP matrix, QC report
+│   └── gene_conversion.nf     # 12. Gene conversion (opt-in)
 ├── modules/                 # The processes themselves (Nextflow DSL2)
 │   ├── qc.nf                # FastP, Kraken, MultiQC, software versions
 │   ├── mapping.nf           # BWA-MEM2, MarkDup, length-aware read filter
@@ -106,6 +107,7 @@ BAMpiro/
 │   ├── report.nf            # Cohort summary, SNP matrix, DR collection, QC report
 │   ├── pathotypr.nf         # Lineage + drug-resistance typing
 │   ├── reference.nf         # Reference Prep
+│   ├── gene_conversion.nf   # Paralog map + conversion tract detection
 │   └── utils.nf             # Publish-path routing, parameter validation, --help
 ├── bin/                     # Everything a process actually runs, kept out of the process scripts
 │   ├── qc_report.py               # CLI for the interactive self-contained HTML QC report
@@ -122,6 +124,8 @@ BAMpiro/
 │   ├── WGS_fasta_allpos.py        # Consensus FASTA from the all-positions VCF
 │   ├── build_min_unique_len.py    # Per-reference mappability track (genmap)
 │   ├── filter_reads_mappability.py  # Length-aware read filter
+│   ├── paralog_map.py             # Donor/acceptor map + diagnostic sites from the self-alignment
+│   ├── gene_conversion.py         # Gene conversion tracts, with read-level breakpoint evidence
 │   ├── vcf_filter_rules.py        # The bcftools expressions defining a hom / het call
 │   ├── format_snps_for_backbone.awk # Genotype re-validation before the backbone merge
 │   ├── backbone_allpos.awk        # mpileup -> one VCF record per reference position
