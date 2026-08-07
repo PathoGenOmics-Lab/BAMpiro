@@ -20,6 +20,25 @@ def nullish(v) {
 }
 
 /**
+ * A parameter read as a real boolean, whatever type it arrived as.
+ *
+ * `--make_qc_report false` on the command line does not reach the workflow as `false`. Up to
+ * Nextflow 24 it was coerced to the type of the config default; from 26 it stays the STRING
+ * "false", and a non-empty String is truthy in Groovy. So `if (params.make_qc_report)` was true
+ * and the report was produced by a run that had explicitly asked for no report. Every boolean
+ * flag in this pipeline had the same hole, and it opened silently on a Nextflow upgrade rather
+ * than on any change here: the run does the opposite of what was asked and says nothing.
+ *
+ * Anything that is not recognisably true is false, so a typo turns a feature off rather than
+ * quietly on.
+ */
+def asBool(v) {
+    if (v instanceof Boolean) return v
+    if (v == null) return false
+    return cleanStr(v).toLowerCase() in ['true', 'yes', 'on', '1']
+}
+
+/**
  * Sanitizes IDs by replacing non-alphanumeric characters with underscores
  */
 def sanitizeId(v) {
@@ -39,7 +58,7 @@ def sanitizeId(v) {
  * Example: MIP00123 -> MIP/00/12/3
  */
 def getSampleDir(sampleId, params) {
-    if (params.nested_output) {
+    if (asBool(params.nested_output)) {
         // Regex to separate alphabetical prefix from numeric suffix
         def match = sampleId =~ /^([A-Za-z]+)(\d+)$/
         
@@ -107,7 +126,7 @@ def getSavePath(filename, params) {
 
     // A1b. With output_cram, CRAM is the published alignment form -> suppress the BAM/BAI
     //      (analysis still runs on the BAM in the work dir; only publishing changes).
-    if (params.output_cram && (lower.endsWith('.bam') || lower.endsWith('.bam.bai'))) {
+    if (asBool(params.output_cram) && (lower.endsWith('.bam') || lower.endsWith('.bam.bai'))) {
         return null
     }
 
@@ -117,26 +136,26 @@ def getSavePath(filename, params) {
     //     filter is off, final.* is the ONLY alignment and this gate does not trigger. Matches both
     //     .final.bam(.bai) and .final.cram(.crai).
     if ((lower.contains('.final.bam') || lower.contains('.final.cram'))
-        && params.dynamic_read_filter && !params.publish_prefilter_bam) {
+        && asBool(params.dynamic_read_filter) && !asBool(params.publish_prefilter_bam)) {
         return null
     }
 
     // A3. All-positions (per-position) VCFs are the consensus substrate. Gate publishing here
     //     (hoisted OUT of the annotate block so the flags work regardless of annotate_main_vcf).
     if (lower.contains('all.pos') && (lower.endsWith('.vcf.gz') || lower.endsWith('.vcf.gz.tbi'))) {
-        if (!params.publish_allpos_vcf) return null
-        if (lower.contains('.raw.') && !params.publish_virgin_allpos_vcf) return null
+        if (!asBool(params.publish_allpos_vcf)) return null
+        if (lower.contains('.raw.') && !asBool(params.publish_virgin_allpos_vcf)) return null
         return name
     }
 
     // B. ANNOTATION LOGIC (Filter Raw VCFs if annotation is enabled)
-    if (params.annotate_legacy_vcfs) {
+    if (asBool(params.annotate_legacy_vcfs)) {
         if ((lower.contains('.var.') || lower.contains('freebayes.raw')) && !lower.contains('.ann.')) {
             return null
         }
     }
 
-    if (params.annotate_main_vcf) {
+    if (asBool(params.annotate_main_vcf)) {
         // all.pos is already handled above; here we only drop the un-annotated main/virgin VCFs
         // (their .ann. versions are the deliverables).
         if ((lower.endsWith('.vcf.gz') || lower.endsWith('.vcf.gz.tbi')) &&

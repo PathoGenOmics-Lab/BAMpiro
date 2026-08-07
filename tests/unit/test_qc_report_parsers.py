@@ -390,6 +390,144 @@ def test_parse_dr_without_any_call_is_none(tmp_path):
     assert qc_parsers.parse_dr(write(tmp_path / "dr2.tsv", "sample\tdrug\n")) is None
 
 
+# --------------------------------------------------------------------------- parse_gene_conversion
+
+
+GCONV_HEADER = (
+    "sample\tpair_id\tcontig\tdonor\tverdict\treason\tstart\tend\tspan_bp\t"
+    "post_conv\tlog10_bf\tlog10_bf_vs_null\ttract_af\tmismap_frac\tmut_rate\tstart_ci\tend_ci\t"
+    "n_sites\tn_sites_outside\tn_undetermined\tdonor_af_in\tdonor_af_outside\t"
+    "min_depth\tcis_reads\tbreakpoint_reads\tdonor_only_reads\n"
+)
+GCONV = GCONV_HEADER + (
+    "S1\t7\tPPE34\tPPE12\tgene_conversion\tlog10 Bayes factor 18.4 over the best alternative"
+    "\t1000\t1400\t401\t1.0\t18.4\t612.5\t1.0\t0.0031\t0.0003\t1000-1000\t1400-1400"
+    "\t6\t9\t0\t0.97\t0.01\t18\t11\t3\t0\n"
+    "S1\t9\tPE_PGRS4\tPE_PGRS5\tmismapping\tthe locus is explained by reads from the donor at 0.48"
+    "\t2000\t2300\t301\t0.02\t0.4\t2.1\t0.62\t0.4812\t0.0003\t2000-2140\t2210-2300"
+    "\t4\t12\t1\t0.55\t0.48\t9\t5\t0\t7\n"
+    # the whole-locus case: no site outside the tract, so donor_af_outside cannot be measured at all
+    "S2\t7\tPPE34\tPPE12\tambiguous\tthe tract covers every diagnostic site\t1000\t1600\t601"
+    "\t0.31\t1.1\t1.1\t0.99\t0.9701\t0.05\t1000-1000\t1600-1600"
+    "\t15\t0\t0\t0.91\t\t12\t8\t0\t8\n"
+)
+
+
+def test_parse_gene_conversion_reads_the_tracts_samples_and_verdict_counts(tmp_path):
+    g = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV))
+    assert g["samples"] == ["S1", "S2"]
+    assert g["counts"] == {"gene_conversion": 1, "mismapping": 1, "ambiguous": 1,
+                           "coverage_shift": 0, "reference_artifact": 0}
+    assert g["tracts"][0] == {
+        "s": "S1", "pair": "7", "contig": "PPE34", "donor": "PPE12", "verdict": "gene_conversion",
+        "reason": "log10 Bayes factor 18.4 over the best alternative",
+        "sample_verdict": "gene_conversion", "event": "", "n_ev": None, "ev_frac": None,
+        "co_mismap": None, "co_bf": None, "don_start": None, "don_end": None,
+        "n_don": None, "don_call": "", "rep": None, "don_rank": None, "don_margin": None,
+        "start": 1000, "end": 1400, "span": 401,
+        "post": pytest.approx(1.0), "bf": pytest.approx(18.4), "bf_null": pytest.approx(612.5),
+        "mismap": pytest.approx(0.0031), "tract_af": pytest.approx(1.0),
+        "mut_rate": pytest.approx(0.0003), "start_ci": "1000-1000", "end_ci": "1400-1400",
+        "n_sites": 6, "n_out": 9, "n_undet": 0,
+        "af_in": pytest.approx(0.97), "af_out": pytest.approx(0.01),
+        "depth": 18, "cis_reads": 11, "bp_reads": 3, "donor_only": 0}
+
+
+def test_parse_gene_conversion_keeps_the_model_numbers_and_the_checkable_ones(tmp_path):
+    """The Bayes factor is the conclusion and the allele fractions are what it can be checked
+    against. Both travel to the panel: a verdict nobody can audit is not much use."""
+    tracts = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV))["tracts"]
+
+    assert [t["bf"] for t in tracts] == [pytest.approx(18.4), pytest.approx(0.4),
+                                         pytest.approx(1.1)]
+    assert [t["mismap"] for t in tracts] == [pytest.approx(0.0031), pytest.approx(0.4812),
+                                             pytest.approx(0.9701)]
+    assert [t["af_in"] for t in tracts] == [pytest.approx(0.97), pytest.approx(0.55),
+                                            pytest.approx(0.91)]
+
+
+def test_parse_gene_conversion_keeps_the_three_pieces_of_deciding_evidence(tmp_path):
+    """donor_af_in, donor_af_outside and breakpoint_reads are what separate a conversion from a
+    mismapping, so the panel reads them per row; none of them may be collapsed or dropped."""
+    tracts = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV))["tracts"]
+    assert [t["af_in"] for t in tracts] == [pytest.approx(0.97), pytest.approx(0.55), pytest.approx(0.91)]
+    assert [t["af_out"] for t in tracts] == [pytest.approx(0.01), pytest.approx(0.48), None]
+    assert [t["bp_reads"] for t in tracts] == [3, 0, 0]
+
+
+def test_parse_gene_conversion_reads_an_unmeasurable_value_as_none_not_zero(tmp_path):
+    """A tract covering every diagnostic site has no donor_af_outside. Reading the empty field as
+    0.0 would make the least-bounded case look like the best-bounded one."""
+    last = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV))["tracts"][-1]
+    assert last["af_out"] is None
+    assert last["n_out"] == 0
+
+
+def _gconv_row(**cells):
+    """One row laid out against GCONV_HEADER, so a column added upstream cannot silently shift
+    the fields of these fixtures into each other."""
+    columns = GCONV_HEADER.rstrip("\n").split("\t")
+    defaults = dict(sample="S1", pair_id="1", contig="c", donor="d", verdict="ambiguous",
+                    reason="r", start="1", end="2", span_bp="2", post_conv="0.5", log10_bf="1.0",
+                    log10_bf_vs_null="2.0", mismap_frac="0.01", start_ci="1-1", end_ci="2-2",
+                    tract_af="1.0", mut_rate="0.0003",
+                    n_sites="3", n_sites_outside="3", n_undetermined="0", donor_af_in="1.0",
+                    donor_af_outside="0.0", min_depth="9", cis_reads="3", breakpoint_reads="1",
+                    donor_only_reads="0")
+    defaults.update(cells)
+    return "\t".join(defaults[c] for c in columns) + "\n"
+
+
+def test_parse_gene_conversion_normalises_the_verdict_case(tmp_path):
+    row = _gconv_row(verdict="Gene_Conversion")
+    g = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV_HEADER + row))
+    assert g["tracts"][0]["verdict"] == "gene_conversion"
+    assert g["counts"]["gene_conversion"] == 1
+
+
+def test_parse_gene_conversion_counts_an_unrecognised_verdict_without_losing_the_known_ones(tmp_path):
+    row = _gconv_row(verdict="something_else")
+    counts = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV_HEADER + row))["counts"]
+    assert counts == {"gene_conversion": 0, "mismapping": 0, "ambiguous": 0,
+                      "coverage_shift": 0, "reference_artifact": 0, "something_else": 1}
+
+
+def test_parse_gene_conversion_reads_a_float_formatted_count(tmp_path):
+    row = _gconv_row(start="1.0", end="2.0", span_bp="2.0", n_sites="3.0", n_sites_outside="3.0",
+                     min_depth="9.0", cis_reads="3.0", breakpoint_reads="1.0",
+                     donor_only_reads="0.0")
+    t = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV_HEADER + row))["tracts"][0]
+    assert (t["start"], t["n_sites"], t["bp_reads"], t["depth"]) == (1, 3, 1, 9)
+
+
+def test_parse_gene_conversion_reads_the_missing_sentinels_as_none(tmp_path):
+    row = _gconv_row(start="NA", end=".", span_bp="", log10_bf="NA", mismap_frac=".",
+                     donor_af_in="NA", donor_af_outside=".", min_depth="", cis_reads="NA",
+                     breakpoint_reads=".", donor_only_reads="")
+    t = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV_HEADER + row))["tracts"][0]
+    assert [t[k] for k in ("start", "end", "span", "bf", "mismap", "af_in", "af_out", "depth",
+                           "cis_reads", "bp_reads", "donor_only")] == [None] * 11
+
+
+def test_parse_gene_conversion_skips_blank_lines_and_rows_without_a_sample(tmp_path):
+    body = "\n" + _gconv_row(sample="")
+    g = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV + body))
+    assert g["samples"] == ["S1", "S2"]
+    assert len(g["tracts"]) == 3
+
+
+@pytest.mark.parametrize("path", [None, "", MISSING])
+def test_parse_gene_conversion_of_an_absent_file_is_none(path):
+    assert qc_parsers.parse_gene_conversion(path) is None
+
+
+def test_parse_gene_conversion_without_any_tract_is_none(tmp_path):
+    """The pipeline always writes the file, header-only when the stage found nothing, so an empty
+    result must hide the panel rather than render an empty one."""
+    assert qc_parsers.parse_gene_conversion(write(tmp_path / "a.tsv", "")) is None
+    assert qc_parsers.parse_gene_conversion(write(tmp_path / "b.tsv", GCONV_HEADER)) is None
+
+
 # --------------------------------------------------------------------------- parse_kraken
 
 
@@ -888,6 +1026,7 @@ def test_mapdamage_stats_of_an_empty_or_absent_directory_is_none(tmp_path):
     (qc_parsers.parse_gene_burden, []),
     (qc_parsers.parse_pnps, []),
     (qc_parsers.parse_dr, None),
+    (qc_parsers.parse_gene_conversion, None),
     (qc_parsers.parse_gff, []),
     (qc_parsers.parse_gene_locus, {}),
     (qc_parsers.parse_sample_meta, None),
@@ -904,3 +1043,26 @@ def test_optional_parsers_degrade_quietly_on_an_unreadable_path(tmp_path, parser
 @pytest.mark.parametrize(("parser", "empty"), [(qc_parsers.parse_kraken, None), (qc_parsers.parse_vcfs, {})])
 def test_multi_file_parsers_skip_an_unreadable_path(tmp_path, parser, empty):
     assert parser([str(tmp_path)]) == empty
+
+
+def test_parse_gene_conversion_shows_the_cohort_verdict_when_there_is_one(tmp_path):
+    """The cohort pass may overrule the per-sample caller, in both directions. What the panel
+    shows is the final answer; the sample's own verdict is kept beside it rather than lost."""
+    header = GCONV_HEADER.rstrip("\n") + "\tevent_id\tevent_samples\tevent_frac\tcohort_verdict" \
+                                         "\tcohort_mismap\tcohort_bf_median\n"
+    row = _gconv_row(verdict="gene_conversion").rstrip("\n") + "\tchr:3\t9\t0.9\treference_artifact\t0.31\t8.0\n"
+    g = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", header + row))
+
+    t = g["tracts"][0]
+    assert t["verdict"] == "reference_artifact"
+    assert t["sample_verdict"] == "gene_conversion"
+    assert (t["n_ev"], t["ev_frac"], t["co_mismap"]) == (9, pytest.approx(0.9), pytest.approx(0.31))
+    assert g["counts"]["reference_artifact"] == 1
+
+
+def test_parse_gene_conversion_falls_back_to_the_sample_verdict_without_a_cohort_pass(tmp_path):
+    """A file written before the cohort pass, or by a run of one sample, has no cohort column."""
+    g = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV))
+
+    assert g["tracts"][0]["verdict"] == "gene_conversion"
+    assert g["tracts"][0]["n_ev"] is None

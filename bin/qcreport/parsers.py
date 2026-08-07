@@ -1,7 +1,7 @@
 """File parsers for the QC report: pipeline artefacts in, plain Python values out.
 
 Every parser is defensive by design. The optional inputs (BED, GFF, gene burden,
-pN/pS, drug resistance, Kraken, mapDamage, samplesheet, VCF) return an empty
+pN/pS, drug resistance, gene conversion, Kraken, mapDamage, samplesheet, VCF) return an empty
 value instead of raising, so a missing or malformed optional file hides its panel
 rather than failing the run. The two REQUIRED inputs, parse_summary and
 consensus_stats, deliberately raise: the pipeline always hands them a file it has
@@ -307,6 +307,99 @@ def parse_dr(path):
     drugs = sorted({c["drug"] for c in calls if c["drug"]},
                    key=lambda x: (_DR_DRUG_ORDER.index(x) if x in _DR_DRUG_ORDER else 99, x))
     return {"samples": samples, "drugs": drugs, "calls": calls}
+
+
+_GCONV_VERDICTS = ("gene_conversion", "mismapping", "ambiguous", "coverage_shift",
+                   "reference_artifact")
+
+
+def parse_gene_conversion(path):
+    """Cohort gene-conversion tracts (COLLECT_GENE_CONVERSION) -> {'samples','counts','tracts':[...]} or None.
+
+    One row per candidate tract. Two kinds of number are carried through, and they answer
+    different questions.
+
+    `log10_bf` and `post_conv` are what the model concluded: a conversion weighed against an
+    independent substitution and against reads that arrived from the donor. `mismap_frac` is the
+    donor-read rate it had to assume to say so.
+
+    `donor_af_in`, `donor_af_outside` and `breakpoint_reads` are what a person checks that
+    against in the BAM: how fixed the donor allele is inside the tract, whether it also turns up
+    outside it, and how many single molecules carry both in cis. The panel shows the judgement
+    and the evidence side by side, because a conclusion nobody can check is not much use.
+
+    Optional input: missing, empty or header-only returns None and the panel self-hides.
+    """
+    if not path or not os.path.exists(path):
+        return None
+
+    def ival(v):
+        try:   # via float(): a count written as '3.0' is still 3, not a parse failure
+            return int(float(v)) if v not in (None, "", "NA", ".") else None
+        except (TypeError, ValueError):
+            return None
+    tracts, samples = [], []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            header = None
+            for line in fh:
+                if not line.strip() or line.startswith("#"):
+                    continue
+                parts = line.rstrip("\n").split("\t")
+                if header is None:
+                    header = [h.strip().lower() for h in parts]
+                    continue
+                d = dict(zip(header, parts))
+                s = (d.get("sample") or "").strip()
+                if not s:
+                    continue
+                tracts.append({"s": s, "pair": (d.get("pair_id") or "").strip(),
+                               "contig": (d.get("contig") or "").strip(),
+                               "donor": (d.get("donor") or "").strip(),
+                               "verdict": ((d.get("cohort_verdict") or d.get("verdict") or "")
+                                           .strip().lower()),
+                               "sample_verdict": (d.get("verdict") or "").strip().lower(),
+                               "reason": (d.get("reason") or "").strip(),
+                               "start": ival(d.get("start")), "end": ival(d.get("end")),
+                               "span": ival(d.get("span_bp")), "n_sites": ival(d.get("n_sites")),
+                               "n_out": ival(d.get("n_sites_outside")),
+                               "n_undet": ival(d.get("n_undetermined")),
+                               "bf": to_float(d.get("log10_bf")),
+                               "bf_null": to_float(d.get("log10_bf_vs_null")),
+                               "post": to_float(d.get("post_conv")),
+                               "mismap": to_float(d.get("mismap_frac")),
+                               "tract_af": to_float(d.get("tract_af")),
+                               "mut_rate": to_float(d.get("mut_rate")),
+                               "event": (d.get("event_id") or "").strip(),
+                               "n_ev": ival(d.get("event_samples")),
+                               "ev_frac": to_float(d.get("event_frac")),
+                               "co_mismap": to_float(d.get("cohort_mismap")),
+                               "co_bf": to_float(d.get("cohort_bf_median")),
+                               "don_start": ival(d.get("don_start")),
+                               "don_end": ival(d.get("don_end")),
+                               "n_don": ival(d.get("n_donors")),
+                               "don_call": (d.get("donor_call") or "").strip(),
+                               "rep": ival(d.get("is_representative")),
+                               "don_rank": ival(d.get("donor_rank")),
+                               "don_margin": to_float(d.get("donor_margin")),
+                               "start_ci": (d.get("start_ci") or "").strip(),
+                               "end_ci": (d.get("end_ci") or "").strip(),
+                               "af_in": to_float(d.get("donor_af_in")),
+                               "af_out": to_float(d.get("donor_af_outside")),
+                               "depth": ival(d.get("min_depth")),
+                               "cis_reads": ival(d.get("cis_reads")),
+                               "bp_reads": ival(d.get("breakpoint_reads")),
+                               "donor_only": ival(d.get("donor_only_reads"))})
+                if s not in samples:
+                    samples.append(s)
+    except OSError:
+        return None
+    if not tracts:
+        return None
+    counts = dict.fromkeys(_GCONV_VERDICTS, 0)
+    for t in tracts:
+        counts[t["verdict"]] = counts.get(t["verdict"], 0) + 1
+    return {"samples": samples, "counts": counts, "tracts": tracts}
 
 
 def parse_kraken(paths):

@@ -57,8 +57,32 @@ results_bampiro/
         ├── MP00091...kraken.report         # -> Taxonomic classification report (only with --kraken2_db)
         ├── MP00091.LENS.snpeff.csv         # -> Variant effect statistics
         ├── MP00091__<runId>.dr_mutations.tsv  # -> Pathotypr per-sample DR mutations (only if --run_pathotypr)
+        ├── MP00091.LENS.gene_conversion.tsv       # -> Conversion tracts (only if --find_gene_conversion)
+        ├── MP00091.LENS.gene_conversion_loci.tsv  # -> One row per paralog pair looked at, found or not
         └── Locus_to_exclude_LENS.txt       # -> List of repetitive regions excluded from calling
 ```
+
+## Gene conversion
+
+Off unless `--find_gene_conversion true`. Four files, and which one to open depends on the
+question. Full detail in [gene conversion](gene-conversion.md).
+
+| File | Where | What it is |
+| :--- | :--- | :--- |
+| `<samplesheet>_gene_conversion.tsv` | `outdir/` | **Start here.** Every sample's tracts with the cohort's reading on top: how many samples carry each event, which relative it came from, and whether recurrence says the reference rather than the isolates |
+| `<sample>.<ref>.gene_conversion.tsv` | per sample, `stats/` | That sample's tracts on their own, before the cohort was consulted |
+| `<sample>.<ref>.gene_conversion_loci.tsv` | per sample, `stats/` | One row per paralog pair analysed, reported or not. Written for the cohort pass, and the place to look when you expected a call somewhere and got none |
+| `<refId>.paralog_pairs.tsv`, `<refId>.paralog_sites.tsv` | `references/<refId>/` | The donor/acceptor graph of your reference and every position the copies differ at. Computed once per reference and worth a look on its own |
+
+Every one of them opens with `#` lines naming the tool and each setting that moved a number in
+it, so a table can be checked against another run a year later. The cohort file carries the
+per-sample lines as well, which is what shows a cohort assembled from samples run differently.
+
+!!! note "These loci are excluded from variant calling by design"
+
+    A tract sits inside a repeat, so it will not appear in the SNP matrix or the consensus. That
+    is expected, and it is why the stage reads the deduplicated pre-filter alignment rather than
+    the one everything else uses.
 
 ## QC flag codes
 
@@ -96,7 +120,8 @@ BAMpiro/
 │   ├── annotate.nf            # 8. SnpEff (main / legacy)
 │   ├── legacy_stats.nf        # 9. Per-sample metrics
 │   ├── multiqc_report.nf      # 10. MultiQC
-│   └── cohort_report.nf       # 11. Cohort summary, SNP matrix, QC report
+│   ├── cohort_report.nf       # 11. Cohort summary, SNP matrix, QC report
+│   └── gene_conversion.nf     # 12. Gene conversion (opt-in)
 ├── modules/                 # The processes themselves (Nextflow DSL2)
 │   ├── qc.nf                # FastP, Kraken, MultiQC, software versions
 │   ├── mapping.nf           # BWA-MEM2, MarkDup, length-aware read filter
@@ -106,6 +131,7 @@ BAMpiro/
 │   ├── report.nf            # Cohort summary, SNP matrix, DR collection, QC report
 │   ├── pathotypr.nf         # Lineage + drug-resistance typing
 │   ├── reference.nf         # Reference Prep
+│   ├── gene_conversion.nf   # Paralog map + conversion tract detection
 │   └── utils.nf             # Publish-path routing, parameter validation, --help
 ├── bin/                     # Everything a process actually runs, kept out of the process scripts
 │   ├── qc_report.py               # CLI for the interactive self-contained HTML QC report
@@ -122,6 +148,8 @@ BAMpiro/
 │   ├── WGS_fasta_allpos.py        # Consensus FASTA from the all-positions VCF
 │   ├── build_min_unique_len.py    # Per-reference mappability track (genmap)
 │   ├── filter_reads_mappability.py  # Length-aware read filter
+│   ├── paralog_map.py             # Donor/acceptor map + diagnostic sites from the self-alignment
+│   ├── gene_conversion.py         # Gene conversion tracts, with read-level breakpoint evidence
 │   ├── vcf_filter_rules.py        # The bcftools expressions defining a hom / het call
 │   ├── format_snps_for_backbone.awk # Genotype re-validation before the backbone merge
 │   ├── backbone_allpos.awk        # mpileup -> one VCF record per reference position

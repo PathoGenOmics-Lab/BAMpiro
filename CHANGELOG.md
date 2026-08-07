@@ -6,6 +6,118 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ## [Unreleased] - targeting 1.1.0
 
+### Added
+
+- **Gene conversion detection** (`--find_gene_conversion`, off by default). Finds
+  tracts where one paralog has been copied onto another, which on a reference that
+  never saw the event reads as a run of variants that are exactly the donor's
+  bases between two breakpoints.
+ - The donor/acceptor map is recovered from the reference self-alignment the
+    repeat-masking step already computes and then discards, so no alignment is
+    redone; `show-snps` on the same file gives the positions where the two copies
+    differ, which are the only ones that can carry evidence.
+ - The stage deliberately bypasses the pipeline's own masking. Repeat exclusion
+    and the length-aware read filter remove paralogous sequence and multi-mapping
+    reads, which is right for variant calling and removes exactly this signal, so
+    the analysis reads the deduplicated **pre-filter** alignment and does not
+    filter on mapping quality.
+ - The hard part is not finding tracts but deciding whether to believe them. There
+    are three ways an acceptor site can show the donor's base and only one of them
+    is a conversion: it was converted with its neighbours, it mutated to that base
+    on its own, or the read carrying it came from the donor. All three are weighed
+    against each other by an explicit model, which evaluates every possible tract
+    exactly, weights each base by its quality, treats the molecule rather than the
+    site as the unit of evidence, and fits the fraction of reads that arrived from
+    the donor instead of testing an average against a threshold. It reports a log10
+    Bayes factor and a posterior over the breakpoints.
+ - Two components exist because a run over the REAL H37Rv genome, with its 411 real
+    paralog pairs and an isolate simulated with position-dependent quality decay,
+    indels, duplicates, uneven coverage and 3% contamination, showed the model
+    getting the wrong answer for a reason no toy dataset would have shown. The
+    fraction of reads that carry a tract is fitted rather than counted against it,
+    because 21% of H37Rv's paralog pairs have a relative closer than their own donor
+    and that relative's unconverted reads land on the acceptor. And the substitution
+    rate a run of donor bases has to beat is measured at the locus rather than taken
+    from the genome, because a hypervariable gene is one where a short run is
+    unremarkable: 39% of such loci were called conversions with a fixed rate
+    against 3% with the locus's own, and the same real tracts were found either way.
+ - Measured on that benchmark: 21 of 23 implanted tracts found at 30x and at 12x
+    alike, breakpoints exact on the clonal ones, and no false positive over the 388
+    pairs with nothing implanted. A negative-control isolate produced no conversion
+    call at all.
+ - Two things that used to need special cases now fall out of the arithmetic. A
+    tract covering the whole locus predicts the same bases as every read having
+    come from the donor, so its Bayes factor collapses to the ratio of the priors
+    on its own. And the number of sites a tract needs is set by how implausible
+    that many independent substitutions would be, so it is derived from a rate
+    rather than chosen, and it moves with the spacing of the diagnostic sites.
+ - The tracts whose reads have moved to the donor are reported as `coverage_shift`.
+    Once a tract is longer than the library insert a read pair falling inside it has
+    no unique anchor left, so the acceptor loses its coverage to the donor and every
+    allele-based signal evaporates exactly when the conversion is most complete. It
+    is not a conversion call: a deletion of the acceptor looks the same.
+ - The paralog map attaches each diagnostic site to EVERY pair that spans it. A gene
+    family produces overlapping and nested alignments on purpose, so stopping at the
+    first one cost 140 sites on H37Rv and left 12 pairs with none at all, among them
+    a 5.8 kb paralog at 98% identity that the caller then skipped for having nothing
+    to work with. Where two nested alignments compete for one acceptor position, the
+    offset between the copies says which pair it belongs to.
+ - `coverage_shift` requires the reads to have MOVED, not merely to be scarce: the
+    acceptor below its own level elsewhere in the locus AND the donor above its own.
+    The absolute depth floor it used before fired on any low-coverage paralog, which
+    is how a clean negative control reported two shifts over a locus running at 4x
+    throughout.
+ - **Deletions between the copies count as markers.** A stretch the donor does not
+    have still has a coordinate in the acceptor, so a read either carries a base
+    there or spans it with a deletion. A run of missing bases is one marker rather
+    than one per base, because it happened once. That is 423 more markers on H37Rv,
+    11% on top of the substitutions, and each is worth more than a substitution: the
+    headline Bayes factor is capped by how implausible it is that the markers arose
+    independently, and two copies losing the same bases is far longer odds than two
+    copies mutating to the same base. Measured against conversions that copy the
+    donor's deletions as a real one would, 15 of 15 implanted tracts were found
+    against 14, and the one that changed sides is a 99.4% pair with seven diagnostic
+    sites in the whole locus.
+ - **A gene family's several views of one event collapse into one, with a source
+    named where the reads can name it.** Those rows are two different things wearing
+    the same shape, and the donor coordinates tell them apart: naming the same
+    stretch of donor is redundancy, naming different places is a real choice of
+    source. It is settled by evidence per marker, which on the real genome separates
+    a true source from a bystander by 19.1 against 1.4, and honestly fails to
+    separate four relatives sitting within 0.17 of each other. Across the benchmark:
+    14 sources named correctly, 1 reported ambiguous, none named wrongly, and 27
+    rows collapsing to 19 events.
+ - **The cohort is read together, not one sample at a time.** Two questions cannot
+    be answered from a single sample however good the model is. A tract in one
+    sample of fifty is a finding; the same tract at the same coordinates in all
+    fifty is the reference being wrong there, or the aligner doing it to everybody,
+    and those are reported as `reference_artifact`. And a signal too weak for one
+    sample to commit to is a different proposition when the same tract is called
+    outright in another, because contamination and index hopping do not reproduce a
+    specific tract across independent libraries. Validated on the real genome: six
+    isolates sharing one tract had all twelve of its rows demoted while their
+    isolate-specific rows were left alone, and on an eight-isolate cohort three
+    sub-threshold tracts were corroborated, all three of them real.
+ - **The checks that found the defects are in the suite**, not run once and thrown
+    away. Every defect in this stage came from a randomised run: a prior of 0 taking
+    log(0), positions out of order answered confidently and wrongly, a tract reported
+    outside its own credible interval, a CIGAR offset. Each became a fixed-case
+    regression test while the generator that found it was discarded, so the next
+    defect of the same shape waited for someone to go looking. The generators now run
+    on every change, and each is verified to still catch the defect it was built
+    from. None of them needs real data: real data would test whether the model
+    describes biology, these test whether the code does what the model says.
+ - **Every output records the settings that produced it**, as `#` header lines. A
+    results table whose verdicts depend on seventeen settings and does not say what
+    they were cannot be checked against another run or reproduced a year later. The
+    cohort file carries the per-sample lines too, which is what shows a cohort
+    assembled from samples run differently.
+ - A **Gene conversion** panel in the QC report leads with the Bayes factor and puts
+    the observable evidence beside it, one row per event by default, with how many
+    samples of the cohort carry each and the settings that produced the verdicts.
+    See [gene conversion](docs/gene-conversion.md), and the output reference for
+    which of the four files answers which question.
+
 Headline: a **test suite and CI**, and a pipeline that runs correctly on a machine
 that is not the authors' cluster.
 
@@ -49,6 +161,20 @@ to rebuild. A release only needs a new image when the Dockerfile changes.
   without editing the modules.
 - **Community files** - CONTRIBUTING, a Code of Conduct, a security policy, issue
   forms, a pull-request template, `RELEASING.md` and `.zenodo.json`.
+
+### Fixed
+
+- **`--flag false` now means false on every supported Nextflow.** Up to Nextflow 24
+  a command-line parameter was coerced to the type of its config default; from
+  Nextflow 26 it arrives as the string `"false"`, which is truthy in Groovy. All 15
+  boolean flags were affected, so a run asked to skip the QC report, the consensus
+  or the SNP matrix produced them anyway, and the change arrived with a Nextflow
+  upgrade rather than with anything in this repository. Every Groovy-side test now
+  goes through `asBool()`, and the stub-run tests check both directions.
+- **`--find_gene_conversion` without `--exclude_repeats` stops the run.** The paralog
+  map comes from the self-alignment repeat masking computes, so with masking off the
+  stage produced a header-only file: an empty result that reads like "no conversion
+  anywhere" and means "this never ran".
 
 ### Changed
 

@@ -22,4 +22,7 @@ workflow PREPARE_REFERENCES {
     emit:
     bundle = ref_out.bundle       // (refId, ref_fa, indices, exclude_txt)
     snpeff = snpeff_out.db        // (refId, snpEff.config, data)
+    // The nucmer self-alignment, already computed for repeat masking. Only the gene-conversion
+    // stage reads it, and it is absent when exclude_repeats is off.
+    delta  = ref_out.delta        // (refId, self_aln.delta)
 }

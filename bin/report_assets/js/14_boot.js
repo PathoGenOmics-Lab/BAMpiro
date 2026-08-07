@@ -1,4 +1,4 @@
-function renderAll(){renderExec();renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderDoseTx();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderEpistasis();renderSnpMatrix();renderVarDose();renderDrug();renderKraken();renderFlags();renderCuration();renderInsights();}
+function renderAll(){renderExec();renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderDoseTx();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderEpistasis();renderSnpMatrix();renderVarDose();renderDrug();renderGconv();renderKraken();renderFlags();renderCuration();renderInsights();}
 
 // ---- static wiring ----
 el('meta').textContent=R.samples.length+' samples · '+R.generated;
@@ -31,7 +31,7 @@ Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),functio
 (function(){var ca=el('colall'),cn=el('colnone');
   if(ca)ca.onclick=function(e){e.preventDefault();st.hidden={};Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.checked=true;});renderTable();saveState();};
   if(cn)cn.onclick=function(e){e.preventDefault();Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.checked=false;st.hidden[cb.getAttribute('data-k')]=1;});renderTable();saveState();};})();
-el('q').oninput=function(e){st.q=e.target.value.toLowerCase().trim();renderTable();clearTimeout(_qdb);_qdb=setTimeout(function(){renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderTemporal();},160);};
+el('q').oninput=function(e){st.q=e.target.value.toLowerCase().trim();renderTable();clearTimeout(_qdb);_qdb=setTimeout(function(){renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderTemporal();renderGconv();},160);};
 // per-panel gene search (Functional gene burden / Variable genes / pN-pS): filter each gene table by gene name
 [['gbq','gbq',renderGeneBurden],['hotq','hotq',renderHotspots],['pnpsq','pnpsq',renderPnps],['vardoseq','vardoseq',renderVarDose]].forEach(function(w){var inp=el(w[0]);if(inp)inp.oninput=function(e){st[w[1]]=e.target.value.trim();w[2]();};});
 el('of').onchange=function(e){st.onlyFlagged=e.target.checked;renderAll();};
@@ -190,6 +190,7 @@ if(!R.n_ancient){var adx=el('adna');if(adx)adx.style.display='none';var nadx=el(
 if(!(R.dynamics&&R.dynamics.groups&&R.dynamics.groups.length)){var dyx=el('dynamics');if(dyx)dyx.style.display='none';var ndyx=el('nav-dyn');if(ndyx)ndyx.style.display='none';}
 if(!(R.epistasis&&R.epistasis.pairs&&R.epistasis.pairs.length)){var epx=el('epistasis');if(epx)epx.style.display='none';var nepx=el('nav-epi');if(nepx)nepx.style.display='none';}
 if(!(R.dr&&R.dr.calls&&R.dr.calls.length)){var drx=el('drug');if(drx)drx.style.display='none';var ndrx=el('nav-drug');if(ndrx)ndrx.style.display='none';}
+if(!(R.gconv&&R.gconv.tracts&&R.gconv.tracts.length)){var gcx=el('gconv');if(gcx)gcx.style.display='none';var ngcx=el('nav-gconv');if(ngcx)ngcx.style.display='none';}
 if(!(R.kraken&&R.kraken.samples&&R.kraken.samples.length)){var kkx=el('kraken');if(kkx)kkx.style.display='none';var nkkx=el('nav-kraken');if(nkkx)nkkx.style.display='none';}
 // genome track selector (Missing / SNPs / Het / Indels) - only offer tracks that have data
 (function(){var host=el('gtrack'); if(!host)return;var avail=GTRACKS.filter(function(g){return gtrackHas(g.k);});
@@ -202,7 +203,7 @@ if(!(R.kraken&&R.kraken.samples&&R.kraken.samples.length)){var kkx=el('kraken');
   if(!R.mask_bins){mb.style.display='none';return;}
   mb.title=(R.mask_pct||0)+'% of the reference masked (PE/PPE, IS, DR, repeats); toggle to exclude these zones';
   mb.onclick=function(){st.maskOn=!st.maskOn;mb.classList.toggle('on',st.maskOn);renderGenome();renderHotspots();};})();
-var rz;window.addEventListener('resize',function(){clearTimeout(rz);rz=setTimeout(function(){renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderGenome();renderTemporal();},120);});
+var rz;window.addEventListener('resize',function(){clearTimeout(rz);rz=setTimeout(function(){renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderGenome();renderTemporal();renderGconv();},120);});
 // metric help panel
 el('helpmenu').innerHTML=R.metrics.map(function(m){var d=R.defs[m.key]||['',''];return '<div class="hitem"><b>'+esc(m.label)+'</b> <span class="hk">'+esc(m.key)+'</span><div class="hd">'+esc(d[0]||'')+(d[1]?' <span class="hr">('+esc(d[1])+')</span>':'')+'</div></div>';}).join('');
 // ---- colour-by toggle (beeswarm + scatter); hides the whole lineage UI when there is no lineage data ----
@@ -293,13 +294,13 @@ function loadState(){try{var s=JSON.parse(localStorage.getItem(SKEY)||'null');if
 // ---- expand-to-fill (fullscreen within the window) for the big panels ----
 function collapseExpanded(){var ex=document.querySelector('.panel.expanded');if(!ex)return;ex.classList.remove('expanded');document.body.classList.remove('has-expanded');
   Array.prototype.forEach.call(document.querySelectorAll('.exp-h'),function(b){b.innerHTML=icon('maximize')+'full';});
-  renderGenome();renderPlots();renderScatter();renderTable();renderQCspace();renderRefBias();renderFunction();renderGeneBurden();renderHotspots();renderPnps();}
+  renderGenome();renderPlots();renderScatter();renderTable();renderQCspace();renderRefBias();renderFunction();renderGeneBurden();renderHotspots();renderPnps();renderGconv();}
 Array.prototype.forEach.call(document.querySelectorAll('.exp-h'),function(b){b.onclick=function(){
   var panel=el(b.getAttribute('data-panel')); if(!panel)return;
   var willExpand=!panel.classList.contains('expanded'); collapseExpanded();
   if(willExpand){panel.classList.add('expanded');document.body.classList.add('has-expanded');b.innerHTML=icon('minimize')+'close';}
   var rn=b.getAttribute('data-render');
-  setTimeout(function(){if(rn=='genome')renderGenome();else if(rn=='plots')renderPlots();else if(rn=='scatter')renderScatter();else if(rn=='corr')renderCorr();else if(rn=='pca')renderQCspace();else if(rn=='divcomp')renderRefBias();else if(rn=='function')renderFunction();else if(rn=='geneburden')renderGeneBurden();else if(rn=='hotspots')renderHotspots();else if(rn=='pnps')renderPnps();else if(rn=='dosetx')renderDoseTx();else if(rn=='vardose')renderVarDose();else if(rn=='table')renderTable();},20);};});
+  setTimeout(function(){if(rn=='genome')renderGenome();else if(rn=='plots')renderPlots();else if(rn=='scatter')renderScatter();else if(rn=='corr')renderCorr();else if(rn=='pca')renderQCspace();else if(rn=='divcomp')renderRefBias();else if(rn=='function')renderFunction();else if(rn=='geneburden')renderGeneBurden();else if(rn=='hotspots')renderHotspots();else if(rn=='pnps')renderPnps();else if(rn=='dosetx')renderDoseTx();else if(rn=='vardose')renderVarDose();else if(rn=='gconv')renderGconv();else if(rn=='table')renderTable();},20);};});
 if(el('expClose'))el('expClose').onclick=collapseExpanded;
 document.addEventListener('keydown',function(e){if(e.key=='Escape')collapseExpanded();});
 // per-sample detail modal close (button, backdrop, Esc)

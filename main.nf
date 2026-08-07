@@ -21,9 +21,10 @@ include { ANNOTATE }           from './subworkflows/annotate'             // 8. 
 include { LEGACY_STATS }       from './subworkflows/legacy_stats'         // 9. Legacy stats
 include { MULTIQC_REPORT }     from './subworkflows/multiqc_report'       // 10. MultiQC
 include { COHORT_REPORT }      from './subworkflows/cohort_report'        // 11. Cohort outputs
+include { GENE_CONVERSION }    from './subworkflows/gene_conversion'      // 12. Gene conversion (opt-in)
 
 // --- MODULE IMPORTS ---
-include { cleanStr; nullish; sanitizeId; validateParams; paramsHelp } from './modules/utils'
+include { asBool; cleanStr; nullish; sanitizeId; validateParams; paramsHelp } from './modules/utils'
 
 /* ----------------------------- Helpers ----------------------------- */
 // cleanStr / nullish / sanitizeId are shared with the modules; imported from modules/utils.nf above.
@@ -169,7 +170,7 @@ workflow {
 
     /* ----------------------------- Configuration ----------------------------- */
 
-    if (params.help) {
+    if (asBool(params.help)) {
         log.info paramsHelp("${projectDir}/nextflow.config", workflow.manifest.version)
         return
     }
@@ -185,6 +186,18 @@ workflow {
             "  Columns: sampleId, runId, r1, r2, refId, refFasta, refGff, taxId\n" +
             "  Example: nextflow run main.nf --tsv samples.tsv --outdir results -profile local,docker\n" +
             "  See docs/tutorials/samplesheet.md")
+    }
+
+    // The gene-conversion stage reads the paralog map out of the reference self-alignment that
+    // repeat masking produces, and with --exclude_repeats false that alignment is never computed.
+    // Left alone the stage runs, finds no map, and writes a header-only cohort file: an empty
+    // result that reads exactly like "no conversion anywhere" while meaning "this never ran".
+    if (asBool(params.find_gene_conversion) && !asBool(params.exclude_repeats)) {
+        throw new RuntimeException(
+            "--find_gene_conversion needs --exclude_repeats true (the default).\n" +
+            "  The paralog map comes from the reference self-alignment that repeat masking\n" +
+            "  computes, and with masking off it is never produced, so the stage would emit an\n" +
+            "  empty file rather than a finding. See docs/gene-conversion.md")
     }
 
     def final_outdir = file(params.outdir).toAbsolutePath().toString()
@@ -254,6 +267,10 @@ Run Pathotypr    : ${params.run_pathotypr}
     // 6. Variant Calling
     def variants = CALL_VARIANTS(bams.variant_base)
 
+    // 12. Gene conversion (opt-in). Reads the PRE-FILTER bam and the reference self-alignment,
+    // because the masking the rest of the pipeline applies removes exactly this signal.
+    def gconv = GENE_CONVERSION(refs.delta, bams.dedup_bam, tsv_name)
+
     // 7. Consensus Generation (Optional)
     def consensus = MAKE_CONSENSUS(bams.variant_base, bams.dedup_bam,
                                    variants.allpos, variants.snps, variants.mask_sites)
@@ -273,5 +290,5 @@ Run Pathotypr    : ${params.run_pathotypr}
     // 11. Cohort-level outputs (QC report + master SNP matrix).
     COHORT_REPORT(legacy.legacy_log, consensus.fasta, refs.bundle, reads.kraken_reports,
                   typing.dr_mutations, annotated.stats_vcf, annotated.freebayes_vcf,
-                  refMap, refGffMap, tsv_name)
+                  gconv.cohort_tsv, refMap, refGffMap, tsv_name)
 }

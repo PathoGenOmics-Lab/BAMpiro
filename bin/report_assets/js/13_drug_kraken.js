@@ -137,7 +137,7 @@ function renderDoseTx(){
     groups[c].forEach(function(o){var x=X(o.d),key=Math.round(x/6),off=((seen[key]=(seen[key]||0)+1)-1),dy=((off%2)?1:-1)*Math.ceil(off/2)*5;
       dy=Math.max(-20,Math.min(20,dy));   // keep a crowded x-bin (many samples at one dose) inside its own row band
       var hi=(st.hi==o.s);                 // clickable: highlight the sample everywhere (setHi)
-      svg+='<circle class="dtx-dot" data-s="'+esc(o.s)+'" cx="'+x.toFixed(1)+'" cy="'+(cy+dy).toFixed(1)+'" r="'+(hi?5.4:3.4)+'" fill="'+(o.v=='FAIL'?'#e0544f':col)+'" fill-opacity="0.92" stroke="'+(hi?TH.ink:'#fff')+'" stroke-width="'+(hi?1.6:0.6)+'" style="cursor:pointer"><title>'+esc(o.s)+' · '+esc(c)+' · dose '+o.d+' — click to highlight</title></circle>';});
+      svg+='<circle class="dtx-dot" data-s="'+esc(o.s)+'" cx="'+x.toFixed(1)+'" cy="'+(cy+dy).toFixed(1)+'" r="'+(hi?5.4:3.4)+'" fill="'+(o.v=='FAIL'?'#e0544f':col)+'" fill-opacity="0.92" stroke="'+(hi?TH.ink:'#fff')+'" stroke-width="'+(hi?1.6:0.6)+'" style="cursor:pointer"><title>'+esc(o.s)+' · '+esc(c)+' · dose '+o.d+' \u00b7 click to highlight</title></circle>';});
     svg+='<text x="'+(labW-8)+'" y="'+(cy-1)+'" text-anchor="end" font-size="11" font-weight="'+(gactive?'700':'400')+'" fill="'+(gactive?'#0e8ba8':TH.ink)+'" style="pointer-events:none">'+esc(c.length>20?c.slice(0,19)+'…':c)+'</text>'+
       '<text x="'+(labW-8)+'" y="'+(cy+12)+'" text-anchor="end" font-size="9.5" fill="'+TH.mut+'" style="pointer-events:none">n='+arr.length+' · med '+shortv(m,'float')+'</text>';
   });
@@ -149,7 +149,7 @@ function renderDoseTx(){
   if(cap){
     if(kw){var sig=kw.p<0.05;
       cap.innerHTML='<b>Kruskal–Wallis</b> H = '+kw.H.toFixed(2)+' · p = '+pfmt(kw.p)+' · '+kw.k+' groups, N = '+kw.N+
-        ' — '+(sig?'<span class="sc-sig">dose differs across treatment groups</span>':'no significant difference in dose across groups')+
+        ' \u00b7 '+(sig?'<span class="sc-sig">dose differs across treatment groups</span>':'no significant difference in dose across groups')+
         '. <span class="krk-mut">Non-parametric rank test over the full cohort; groups with &lt; 2 dosed samples are drawn but not tested. Click a group name to filter the whole report by it; click a point to highlight that sample.</span>';
     } else cap.innerHTML='<span class="krk-mut">Not enough dosed samples per group to test.</span>';
   }
@@ -207,7 +207,7 @@ function renderVarDose(){
   [0,0.25,0.5,0.75,1].forEach(function(t){var y=Y(t);svg+='<line x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y.toFixed(1)+'" stroke="'+TH.grid+'"/><text x="'+(padL-6)+'" y="'+(y+3).toFixed(1)+'" text-anchor="end" font-size="9" fill="'+TH.mut+'">'+t.toFixed(2).replace(/^0/,'')+'</text>';});
   [0,0.5,1].forEach(function(t){var d=dlo+t*(dhi-dlo),x=X(d);svg+='<text x="'+x.toFixed(1)+'" y="'+(Hs-padB+13)+'" text-anchor="middle" font-size="9" fill="'+TH.mut+'">'+shortv(d,'float')+'</text>';});
   for(var k=0;k<didx.length;k++){var sid=M.samples[didx[k]],hi=(st.hi==sid),x=X(dose[k]),y=Y(sel.af[k]);
-    svg+='<circle class="vd-dot" data-s="'+esc(sid)+'" cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+(hi?5.4:3.6)+'" fill="#0e8ba8" fill-opacity="0.82" stroke="'+(hi?TH.ink:'#fff')+'" stroke-width="'+(hi?1.6:0.6)+'" style="cursor:pointer"><title>'+esc(sid)+' · dose '+shortv(dose[k],'float')+' · AF '+sel.af[k].toFixed(2)+' — click to highlight</title></circle>';}
+    svg+='<circle class="vd-dot" data-s="'+esc(sid)+'" cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+(hi?5.4:3.6)+'" fill="#0e8ba8" fill-opacity="0.82" stroke="'+(hi?TH.ink:'#fff')+'" stroke-width="'+(hi?1.6:0.6)+'" style="cursor:pointer"><title>'+esc(sid)+' · dose '+shortv(dose[k],'float')+' · AF '+sel.af[k].toFixed(2)+' \u00b7 click to highlight</title></circle>';}
   svg+='<text x="'+((padL+W-padR)/2).toFixed(1)+'" y="'+(Hs-3)+'" text-anchor="middle" font-size="10" fill="'+TH.mut+'">'+esc(MET.dose.label)+'</text>'+
     '<text x="11" y="'+((padT+Hs-padB)/2).toFixed(1)+'" text-anchor="middle" font-size="10" fill="'+TH.mut+'" transform="rotate(-90 11 '+((padT+Hs-padB)/2).toFixed(1)+')">allele frequency</text></svg>';
   function vlabel(r){return '<b>'+esc(r.gene||r.contig)+'</b>'+geneRvTag(r.gene)+' '+refPos(r.pos,r.pos_h37rv)+' '+esc(r.ref)+'&#8594;'+esc(r.alt);}
@@ -232,5 +232,206 @@ function renderVarDose(){
     if(vardoseSort.k==sk)vardoseSort.asc=!vardoseSort.asc; else{vardoseSort.k=sk; vardoseSort.asc=(sk=='p'||sk=='q');}  // p/q default ascending (most significant first)
     renderVarDose();};});
   if(cap)cap.innerHTML=tests.length+' variant(s) tested against dose (&#8805; 3 carriers) · <b'+(nsig?' class="sc-sig"':'')+'>'+nsig+' significant at FDR q &#8804; 0.05</b>'+(vq?(' · showing <b>'+ord.length+'</b> matching &#8220;'+esc(st.vardoseq)+'&#8221;'):'')+'. <span class="krk-mut">Spearman rank correlation of per-sample allele frequency (0 where the site is reference) vs dose over the '+didx.length+' dosed samples; Benjamini–Hochberg q across all tested variants. Click a row to plot it, a header to sort, a point to highlight the sample. Complements the Dose × treatment test.</span>';
+}
+
+// ---- Gene conversion: candidate tracts, and the evidence that decides whether to believe them ----
+// A tract is a run of diagnostic sites carrying the DONOR paralog's alleles. Two other things produce
+// exactly that picture: an ordinary substitution that happens to match the paralog, and a read that
+// arrived from the donor in the first place. bin/gconv_model.py weighs a tract against both and reports
+// a log10 Bayes factor, so the panel leads with that and puts the observable evidence next to it: how
+// fixed the donor allele is inside the tract (donor_af_in), whether it also turns up outside (
+// donor_af_outside), and whether one molecule carries donor alleles on one side of a breakpoint and
+// acceptor alleles on the other, in cis (breakpoint_reads) - the piece a mismapping cannot fake.
+var gconvState={q:'',v:'',sk:'bf',asc:false,oneper:true};
+var GCONV_MAXROWS=400;
+var GCONV_V=[{k:'gene_conversion',lab:'gene conversion',c:'#2ea36b',r:0,
+              tip:'a tract explains the reads far better than an independent substitution or reads arriving from the donor'},
+             {k:'ambiguous',lab:'ambiguous',c:'#e0a11f',r:1,
+              tip:'reported but not called; the reason says what came closest. Often a tract covering every diagnostic site of its locus, which has the same likelihood as every read having come from the donor'},
+             {k:'mismapping',lab:'mismapping',c:'#e0544f',r:2,
+              tip:'the locus is explained by a fitted fraction of reads arriving from the donor, with nothing left for a tract to account for'},
+             {k:'coverage_shift',lab:'coverage shift',c:'#8b6fd6',r:3,
+              tip:'the acceptor lost its reads to the donor over a run of sites. Consistent with a conversion longer than the library insert, and equally with a deletion. Not a conversion call'},
+             {k:'reference_artifact',lab:'reference artifact',c:'#7a8794',r:4,
+              tip:'present in nearly every sample of the cohort. The reference being wrong here, or the aligner doing this to everybody, explains that more simply than the same conversion arising in every isolate. In a CLONAL cohort it may instead be shared ancestry, which recurrence alone cannot distinguish. Only a cohort can make this call at all'}];
+// The settings that produced these verdicts, shown beside them. A panel that displays a verdict
+// without saying under which rules cannot be checked against another run, and the global run
+// header only carries the reference and the container.
+function gconvSettings(){
+  var p=R.provenance||{}, keys=[], out=[];
+  for(var k in p){ if(k.indexOf('gconv_')===0)keys.push(k); }
+  if(!keys.length)return '';
+  keys.sort();
+  for(var i=0;i<keys.length;i++)out.push(esc(keys[i].replace('gconv_',''))+' '+esc(p[keys[i]]));
+  return '<div class="gcv-settings" title="Every setting here moves the verdicts above. The output TSV carries the full list as # header lines.">settings &#183; '+out.join(' &#183; ')+'</div>';
+}
+function gconvDef(v){for(var i=0;i<GCONV_V.length;i++){if(GCONV_V[i].k===v)return GCONV_V[i];}
+  return {k:v||'',lab:(v||'unknown').replace(/_/g,' '),c:'#94a3b8',r:3,tip:'verdict not recognised'};}
+function gconvId(t){return t.s+'|'+t.pair+'|'+t.start;}
+function gconvLocus(t){return esc(t.contig||'?')+' <span class="gcv-from">&#8592;</span> '+esc(t.donor||'?');}
+function gconvNum(v,dp){return v==null?'<span class="gcv-na">n/a</span>':(+v).toFixed(dp);}
+// donor allele fraction as a bar + the number, so "how fixed" is readable at a glance per row
+function gconvAF(v,col,why){
+  if(v==null)return '<span class="gcv-na" title="'+esc(why)+'">n/a</span>';
+  var w=Math.max(0,Math.min(1,v))*100;
+  return '<span class="gcv-ev"><span class="gcv-bar"><span style="width:'+w.toFixed(0)+'%;background:'+col+'"></span></span>'+v.toFixed(2)+'</span>';
+}
+function renderGconv(){
+  var host=el('gconv_body'), sec=el('gconv'), cap=el('gconv_caption'), nv=el('nav-gconv'), sb=el('gconvq');
+  if(!host)return;
+  var G=R.gconv;
+  if(!(G&&G.tracts&&G.tracts.length)){ if(sec)sec.style.display='none'; if(nv)nv.style.display='none'; return; }
+  if(sec)sec.style.display=''; if(nv)nv.style.display='';
+  var vis={}; visible().forEach(function(s){vis[s.s]=1;});   // the cohort filter drives this panel too
+  var rows=G.tracts.filter(function(t){return vis[t.s];});
+  if(sb){ if(sb.value!==gconvState.q)sb.value=gconvState.q;
+    sb.oninput=function(){ gconvState.q=this.value.trim(); draw(); }; }
+  var hasRep=rows.some(function(t){return t.rep!=null;});
+  function match(t){
+    // A gene family reports one converted stretch once per relationship. Showing them all makes
+    // one event look like three findings, so by default only the row that stands for the event
+    // and its source is listed, and the rest are one click away.
+    if(hasRep&&gconvState.oneper&&t.rep!==1)return false;
+    if(gconvState.v&&t.verdict!==gconvState.v)return false;
+    var q=gconvState.q.toLowerCase(); if(!q)return true;
+    return (t.s.toLowerCase().indexOf(q)>=0)||((t.contig||'').toLowerCase().indexOf(q)>=0)||
+      ((t.donor||'').toLowerCase().indexOf(q)>=0)||((t.verdict||'').replace(/_/g,' ').indexOf(q)>=0)||
+      ((t.reason||'').toLowerCase().indexOf(q)>=0)||((''+t.pair).indexOf(q)>=0);
+  }
+  function keyof(t,k){
+    if(k=='s')return t.s;
+    if(k=='locus')return (t.contig||'')+'|'+(t.donor||'');
+    if(k=='verdict')return gconvDef(t.verdict).r;
+    var v=t[k]; return v==null?-1:v;   // an unmeasurable value sorts to one end, never silently as 0
+  }
+  function draw(){
+    var sel=rows.filter(match), selSet={}; sel.forEach(function(t){selSet[gconvId(t)]=1;});
+    var counts={}, nbp=0; rows.forEach(function(t){counts[t.verdict]=(counts[t.verdict]||0)+1; if(t.bp_reads>0)nbp++;});
+    // ---- verdict chips: the judgement first, and a click filters the table to it ----
+    var chips=GCONV_V.map(function(d){ return '<span class="gcv-vchip'+(gconvState.v===d.k?' on':'')+'" data-v="'+d.k+
+      '" title="'+esc(d.tip)+'"><i style="background:'+d.c+'"></i>'+d.lab+' <b>'+(counts[d.k]||0)+'</b></span>'; }).join('');
+    // ---- evidence map: bounded-ness (x) vs fixedness (y), ringed when a read crosses a breakpoint ----
+    // Descriptive, not decisive: these are the two fractions a person can go and check in the BAM. The
+    // model works off the reads and their qualities, so no line here is a decision boundary and none
+    // is drawn. What the model concluded is the colour of the point and the BF column below.
+    var W=Math.max(340,Math.min(820,(host.clientWidth||760))), H=250, padL=48, padR=92, padT=14, padB=36;
+    var plotW=W-padL-padR, plotH=H-padT-padB, laneX=padL+plotW+44;
+    function X(v){return padL+Math.max(0,Math.min(1,v))*plotW;}
+    function Y(v){return padT+(1-Math.max(0,Math.min(1,v)))*plotH;}
+    function ax(f){return f.toFixed(2).replace(/^0/,'');}
+    var svg='<svg width="'+W+'" height="'+H+'" style="display:block;max-width:100%">';
+    [0,0.25,0.5,0.75,1].forEach(function(f){
+      svg+='<line x1="'+X(f).toFixed(1)+'" y1="'+padT+'" x2="'+X(f).toFixed(1)+'" y2="'+(padT+plotH)+'" stroke="'+TH.grid+'"/>'+
+        '<text x="'+X(f).toFixed(1)+'" y="'+(padT+plotH+13)+'" text-anchor="middle" font-size="9" fill="'+TH.mut+'">'+ax(f)+'</text>'+
+        '<line x1="'+padL+'" y1="'+Y(f).toFixed(1)+'" x2="'+(padL+plotW)+'" y2="'+Y(f).toFixed(1)+'" stroke="'+TH.grid+'"/>'+
+        '<text x="'+(padL-6)+'" y="'+(Y(f)+3).toFixed(1)+'" text-anchor="end" font-size="9" fill="'+TH.mut+'">'+ax(f)+'</text>';});
+    svg+='<line x1="'+(laneX-20)+'" y1="'+padT+'" x2="'+(laneX-20)+'" y2="'+(padT+plotH)+'" stroke="'+TH.grid+'" stroke-dasharray="2 3"/>'+
+      '<text x="'+laneX+'" y="'+(padT+plotH+13)+'" text-anchor="middle" font-size="9" fill="'+TH.mut+'">n/a</text>';
+    rows.forEach(function(t,i){
+      if(t.af_in==null)return;                                     // nothing to place on the fixedness axis
+      var d=gconvDef(t.verdict), on=selSet[gconvId(t)], hot=(st.hi==t.s), bp=(t.bp_reads>0);
+      var j=((i*2654435761)%997)/997-0.5;                          // deterministic jitter: tracts pile up on identical values
+      var cx=(t.af_out==null?laneX:X(t.af_out))+j*7, cy=Y(t.af_in)+j*7;
+      svg+='<circle class="gcv-dot" data-s="'+esc(t.s)+'" cx="'+cx.toFixed(1)+'" cy="'+cy.toFixed(1)+'" r="'+(hot?6.2:(bp?4.9:3.6))+
+        '" fill="'+d.c+'" fill-opacity="'+(on?0.85:0.1)+'" stroke="'+((bp||hot)?TH.ink:'#fff')+'" stroke-width="'+(bp?1.8:0.6)+
+        '" stroke-opacity="'+(on?1:0.12)+'" style="cursor:pointer"><title>'+esc(t.s)+' · '+esc(t.contig||'?')+' from '+esc(t.donor||'?')+
+        ' · '+esc(d.lab)+'\nAF in '+(t.af_in==null?'n/a':t.af_in.toFixed(2))+' · AF outside '+(t.af_out==null?'n/a (no site outside the tract)':t.af_out.toFixed(2))+
+        ' · '+(t.bp_reads||0)+' breakpoint read(s)'+(t.bf==null?'':'\nlog10 Bayes factor '+t.bf.toFixed(1))+
+        '\nclick to highlight this sample</title></circle>';});
+    svg+='<text x="'+(padL+plotW/2).toFixed(1)+'" y="'+(H-3)+'" text-anchor="middle" font-size="10" fill="'+TH.mut+'">donor allele fraction OUTSIDE the tract</text>'+
+      '<text x="12" y="'+(padT+plotH/2).toFixed(1)+'" text-anchor="middle" font-size="10" fill="'+TH.mut+'" transform="rotate(-90 12 '+(padT+plotH/2).toFixed(1)+')">donor AF inside the tract</text></svg>';
+    var legend='<div class="gcv-legend"><span><i class="gcv-ring"></i>a read crosses a breakpoint in cis</span>'+
+      '<span class="krk-mut">top-left of the map is what a fixed conversion looks like: donor alleles inside the tract, none outside. Points drift right as donor alleles appear outside it as well, which is what reads arriving from the donor produce. The <b>n/a</b> lane holds tracts with no diagnostic site outside them at all. These two fractions are descriptive: they are what you can go and check in the BAM, while the verdict comes from the model, which reads the bases and their qualities molecule by molecule. Click a point to highlight that sample everywhere.</span></div>';
+    // ---- per-tract table: the same evidence as numbers, sortable and searchable ----
+    var ord=sel.slice().sort(function(a,b){
+      var ka=keyof(a,gconvState.sk),kb=keyof(b,gconvState.sk),d;
+      if(typeof ka=='string'||typeof kb=='string'){ka=''+ka;kb=''+kb;d=ka<kb?-1:(ka>kb?1:0);} else d=ka-kb;
+      if(!d)d=(b.bp_reads||0)-(a.bp_reads||0)||(a.s<b.s?-1:(a.s>b.s?1:0));
+      return gconvState.asc?d:-d;});
+    function th(k,lbl,cls,tip){var on=(gconvState.sk===k),ar=on?(gconvState.asc?' &#9650;':' &#9660;'):'';
+      return '<th class="gcv-sortable'+(cls?' '+cls:'')+'" data-sk="'+k+'"'+(tip?' title="'+esc(tip)+'"':'')+
+        (on?' style="color:var(--accent)"':'')+'>'+lbl+ar+'</th>';}
+    var body=ord.slice(0,GCONV_MAXROWS).map(function(t){
+      var d=gconvDef(t.verdict), bp=(t.bp_reads||0);
+      return '<tr class="gcv-row" data-s="'+esc(t.s)+'"'+(st.hi==t.s?' style="background:'+TH.hl+'"':'')+'>'+
+        '<td>'+esc(t.s)+'</td>'+
+        '<td>'+gconvLocus(t)+(t.n_don>1?' <span class="gcv-mut" title="'+
+           (t.don_call==='resolved'?'the reads pick this relative out of '+t.n_don+' candidates':
+            'compatible with '+t.n_don+' relatives; short reads do not carry what would settle it')+
+           '">'+(t.don_call==='resolved'?'1 of ':'? of ')+t.n_don+'</span>':'')+'</td>'+
+        '<td><span class="gcv-badge" style="background:'+d.c+'" title="'+esc(t.reason||d.tip)+'">'+d.lab+'</span></td>'+
+        '<td class="gcv-num"><b'+(t.bf!=null&&t.bf>=3?' class="gcv-bp"':'')+'>'+gconvNum(t.bf,1)+'</b>'+
+          (t.bf_null==null?'':' <span class="gcv-mut" title="log10 Bayes factor against no conversion at all. This is where depth, base quality and read linkage show up; the headline number is also limited by how implausible independent substitution is">/ '+t.bf_null.toFixed(0)+' vs none</span>')+'</td>'+
+        '<td class="gcv-num">'+(t.n_ev==null?'<span class="gcv-na">n/a</span>':
+           (t.n_ev+(t.ev_frac==null?'':' <span class="gcv-mut">'+Math.round(t.ev_frac*100)+'%</span>')))+'</td>'+
+        '<td class="gcv-num">'+gconvNum(t.tract_af,2)+'</td>'+
+        '<td class="gcv-num">'+gconvNum(t.mismap,3)+'</td>'+
+        '<td class="gcv-num">'+(t.start==null?'':fmtpos(t.start))+(t.span==null?'':' <span class="gcv-mut">'+t.span.toLocaleString('en-US')+' bp</span>')+'</td>'+
+        '<td class="gcv-num">'+(t.n_sites==null?'':t.n_sites)+(t.n_out==null?'':' <span class="gcv-mut">/ '+t.n_out+' out</span>')+'</td>'+
+        '<td class="gcv-num">'+gconvAF(t.af_in,d.c,'no informative depth inside the tract')+'</td>'+
+        '<td class="gcv-num">'+gconvAF(t.af_out,'#e0544f','no diagnostic site outside the tract, so boundedness cannot be tested')+'</td>'+
+        '<td class="gcv-num"><b'+(bp>0?' class="gcv-bp"':'')+'>'+bp+'</b></td>'+
+        '<td class="gcv-num">'+(t.cis_reads==null?'':t.cis_reads)+'</td>'+
+        '<td class="gcv-num">'+gconvNum(t.depth,0)+'</td>'+
+        '<td><span class="gcv-reason">'+esc(t.reason||'')+'</span></td></tr>';}).join('');
+    if(!ord.length)body='<tr><td colspan="15" class="c" style="padding:18px;text-align:center">'+
+      (rows.length?'no tract matches the filter.':'no tract in the samples currently in view.')+'</td></tr>';
+    host.innerHTML='<div class="gcv-verdicts">'+chips+'</div>'+
+      '<div class="gcv-plotscroll">'+svg+'</div>'+legend+
+      '<div class="dr-controls">'+
+      (hasRep?'<label class="dyn-lab" title="A gene family reports one event once per relationship. Off, each of those rows is listed separately."><input type="checkbox" id="gcvrep"'+(gconvState.oneper?' checked':'')+'> one row per event</label>':'')+
+      '<button class="dyn-btn" id="gcvdl" title="Download the tracts listed below as a TSV">'+icon('download')+'download tracts (TSV)</button>'+
+      '<span class="dyn-count">'+ord.length+' tract(s)'+(ord.length>GCONV_MAXROWS?' · showing first '+GCONV_MAXROWS+' (download for all)':'')+'</span></div>'+
+      '<div class="epitbl-wrap gcv-tablewrap"><table class="epitbl gcv-table"><thead><tr>'+
+        th('s','Sample')+th('locus','Locus','','the acceptor locus and the donor its alleles came from')+th('verdict','Verdict')+
+        th('bf','BF','gcv-num','log10 Bayes factor for a conversion tract over the best alternative: an independent substitution at the same sites, or reads that arrived from the donor. 3 is decisive')+
+        th('n_ev','Samples','gcv-num','how many samples of the cohort carry this event, and what fraction that is. One or two is a finding; nearly all of them means the reference or the aligner, not the isolates')+
+        th('tract_af','Carried by','gcv-num','fraction of the reads that carry the tract. Below 1 means either a mixed infection or a third copy of the family contributing unconverted reads; nothing in short reads tells those apart')+
+        th('mismap','Donor reads','gcv-num','fraction of reads at this locus the model had to assume came from the donor')+
+        th('start','Tract','gcv-num','start position and length of the tract')+
+        th('n_sites','Sites','gcv-num','diagnostic sites inside the tract / outside it. No site outside means boundedness cannot be tested')+
+        th('af_in','AF in','gcv-num','donor allele fraction inside the tract: near 1 in a clonal sample, intermediate when reads are mismapping')+
+        th('af_out','AF out','gcv-num','donor allele fraction at the diagnostic sites OUTSIDE the tract: near 0 when the tract is bounded')+
+        th('bp_reads','Bp reads','gcv-num','reads carrying donor alleles one side of a breakpoint and acceptor alleles the other, in cis. A mismapping cannot fake this')+
+        th('cis_reads','Cis','gcv-num','reads carrying the donor allele at two or more sites inside the tract')+
+        th('depth','Depth','gcv-num','lowest informative depth at any site of the tract')+
+        '<th title="which test the verdict rests on">Reason</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+    Array.prototype.forEach.call(host.querySelectorAll('.gcv-vchip'),function(c){c.onclick=function(){
+      var v=c.getAttribute('data-v'); gconvState.v=(gconvState.v===v)?'':v; draw();};});
+    Array.prototype.forEach.call(host.querySelectorAll('.gcv-sortable'),function(h){h.onclick=function(){
+      var k=h.getAttribute('data-sk');
+      if(gconvState.sk===k)gconvState.asc=!gconvState.asc; else{gconvState.sk=k; gconvState.asc=(k=='s'||k=='locus'||k=='verdict');}
+      draw();};});
+    Array.prototype.forEach.call(host.querySelectorAll('[data-s]'),function(e){e.onclick=function(){setHi(e.getAttribute('data-s'));};});
+    var rb=el('gcvrep'); if(rb)rb.onchange=function(){gconvState.oneper=this.checked; draw();};
+    var db=el('gcvdl'); if(db)db.onclick=function(){
+      // Laid out exactly like the cohort TSV on disk: the tool's own columns, then the ones the
+      // cohort pass appends. The verdict column is the sample's own and cohort_verdict is what
+      // the rest of the cohort made of it, which is the pair the file itself carries.
+      var hdr=['sample','pair_id','contig','donor','verdict','reason','start','end','span_bp',
+               'don_start','don_end',
+               'post_conv','log10_bf','log10_bf_vs_null','tract_af','mismap_frac','mut_rate','start_ci','end_ci',
+               'n_sites','n_sites_outside','n_undetermined','donor_af_in','donor_af_outside',
+               'min_depth','cis_reads','breakpoint_reads','donor_only_reads',
+               'event_id','event_samples','event_frac','cohort_verdict','cohort_mismap','cohort_bf_median',
+               'donor_rank','n_donors','donor_margin','donor_call','is_representative'];
+      var lines=[hdr.join('\t')];
+      ord.forEach(function(t){lines.push([t.s,t.pair,t.contig,t.donor,(t.sample_verdict||t.verdict),t.reason,t.start,t.end,t.span,
+        t.don_start,t.don_end,
+        t.post,t.bf,t.bf_null,t.tract_af,t.mismap,t.mut_rate,t.start_ci,t.end_ci,
+        t.n_sites,t.n_out,t.n_undet,t.af_in,t.af_out,t.depth,t.cis_reads,t.bp_reads,t.donor_only,
+        t.event,t.n_ev,t.ev_frac,t.verdict,t.co_mismap,t.co_bf,
+        t.don_rank,t.n_don,t.don_margin,t.don_call,t.rep].map(function(x){return x==null?'':x;}).join('\t'));});
+      dl(lines.join('\n')+'\n','gene_conversion.tsv','text/tab-separated-values');};
+    if(cap){var nsamp={},ncall=0,nev={}; rows.forEach(function(t){nsamp[t.s]=1;
+        if(t.event!=null&&t.event!=='')nev[t.event]=1;
+        if(t.verdict==='gene_conversion'&&(t.rep==null||t.rep===1))ncall++;});
+      var evtxt=Object.keys(nev).length?(Object.keys(nev).length+' event(s) over '+rows.length+' row(s)')
+                                       :(rows.length+' candidate tract(s)');
+      cap.innerHTML=evtxt+' in '+Object.keys(nsamp).length+' sample(s) of the cohort in view &#183; <b'+
+        (ncall?' class="sc-sig"':'')+'>'+ncall+' called gene conversion</b>, '+(counts.ambiguous||0)+' ambiguous, '+(counts.mismapping||0)+
+        ' mismapping, '+(counts.coverage_shift||0)+' coverage shift, '+(counts.reference_artifact||0)+' reference artifact &#183; <b>'+nbp+'</b> supported by a read crossing a breakpoint in cis. <span class="krk-mut">These loci are repeats, so they are excluded from variant calling and the consensus by design: a tract will not appear in the SNP matrix, and that is expected. Breakpoints are located to diagnostic-site resolution, not to the base, and each paralog pair is judged independently, so one tract can be reported against more than one donor. Candidates to inspect, not confirmed events.</span>'+gconvSettings();}
+  }
+  draw();
 }
 

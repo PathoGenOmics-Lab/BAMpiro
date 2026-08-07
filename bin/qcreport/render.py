@@ -134,6 +134,21 @@ SECTION_INFO = {
             "as a sample x drug matrix (worst grade per drug) and a per-mutation table with the WHO confidence "
             "grade. Alignment-free (k-mer), so it works regardless of the mapping reference. A genomic screen, "
             "NOT a clinical drug-susceptibility result.",
+    "gconv": "Stretches where one paralog appears to have been copied onto another: the acceptor locus stops "
+             "carrying its own alleles and carries the donor's between two breakpoints. Finding a candidate is "
+             "easy; deciding whether to believe it is the whole problem. There are three ways an acceptor site "
+             "can show the donor's base and only one of them is a conversion: it was converted along with its "
+             "neighbours, it mutated to that base on its own, or the read carrying it came from the donor. All "
+             "three are weighed against each other read by read, with the base qualities and the fraction of "
+             "reads that arrived from the donor fitted rather than assumed. BF is the log10 Bayes factor for a "
+             "conversion over the best of the other two, and above 3 is decisive; the fraction next to it is how "
+             "much of the locus the model had to write off as donor reads. A tract covering every diagnostic "
+             "site of its locus stays 'ambiguous' by arithmetic rather than by rule: it predicts exactly the "
+             "same bases as every read having come from the donor. The allele fractions in the plot and the "
+             "table are descriptive, and they are what you can go and check in the BAM. These regions are "
+             "excluded from variant calling and the consensus by design, so a tract will not appear in the SNP "
+             "matrix. Candidates to inspect, NOT confirmed recombination events, and breakpoints are located "
+             "only to diagnostic-site resolution.",
     "flagged": "The samples the current thresholds flag as WARN / FAIL and the specific reason for each. This "
                "is the actionable QC summary; adjust the thresholds above to re-flag the whole report.",
     "dosetx": "The per-sample dose (a numeric samplesheet column) split by treatment group, drawn as a box (IQR "

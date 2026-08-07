@@ -6,6 +6,7 @@
 */
 
 include { ANNOTATE_LEGACY_VCF; ANNOTATE_MAIN_VCF } from '../modules/annotation'
+include { asBool } from '../modules/utils'
 
 workflow ANNOTATE {
 
@@ -23,7 +24,7 @@ workflow ANNOTATE {
     // 8. Annotation
     // Annotate Legacy split VCFs (Homo/Het/Indel/Raw)
     def freebayes_ann = Channel.empty()   // annotated freebayes.raw (AD + snpEff ANN) -> SNP dynamics
-    if (params.annotate_legacy_vcfs) {
+    if (asBool(params.annotate_legacy_vcfs)) {
         def leg_inputs = Channel.empty()
             .mix(homo_snp.map   { sId, rId, vcf -> tuple(rId, sId, "var.homo.SNPs", vcf) })
             .mix(het_snp.map    { sId, rId, vcf -> tuple(rId, sId, "var.het.SNPs", vcf) })
@@ -45,7 +46,7 @@ workflow ANNOTATE {
     def vcf_for_stats = Channel.empty()
     def ch_snpeff_stats = Channel.empty()
 
-    if (params.annotate_main_vcf) {
+    if (asBool(params.annotate_main_vcf)) {
         def main_pre = main_vcf.map { sId, rId, vcf, tbi -> tuple(rId, sId, vcf, tbi) }
         def ann_main_in = main_pre.combine(snpeff_db, by: 0)
             .map { rId, sId, vcf, tbi, cfg, dat -> tuple(sId, rId, vcf, tbi, cfg, dat) }

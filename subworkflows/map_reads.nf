@@ -7,6 +7,7 @@
 
 include { MAPPING_PE; MAPPING_SE; MERGE_AND_MARKDUP; FILTER_READS } from '../modules/mapping'
 include { BUILD_MAPPABILITY } from '../modules/reference'
+include { asBool } from '../modules/utils'
 
 workflow MAP_READS {
 
@@ -50,7 +51,7 @@ workflow MAP_READS {
     // Feature off -> call on the dedup BAM unchanged.
     def vbase
     def filter_stats = Channel.empty()
-    if (params.dynamic_read_filter) {
+    if (asBool(params.dynamic_read_filter)) {
         def mapp = BUILD_MAPPABILITY( ref_bundle.map { rId, fa, idx, excl -> tuple(rId, fa) } )
         def track_bed = mapp.track.join(mapp.repeat_bed, by: 0)                    // (rId, npz, repeat_bed)
         def filt_in = final_bams.final_bam
