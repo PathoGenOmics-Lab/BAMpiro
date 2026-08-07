@@ -243,6 +243,38 @@ def classify(ev, max_outside_af=0.25, min_af_in=0.85):
     return "ambiguous", "no read spans a breakpoint; tract is bounded but unconfirmed"
 
 
+def depleted_runs(positions, counts, donor_counts, min_depth=5, max_ratio=0.4, min_sites=3):
+    """Runs of diagnostic sites where the acceptor has lost its reads to the donor.
+
+    A conversion makes the acceptor identical to the donor over the tract. Once the tract is
+    LONGER than the library insert, a read pair falling inside it has no unique anchor left, and
+    the aligner assigns it to one copy arbitrarily. In practice the acceptor's tract is depleted
+    and the donor's matching region is enriched by the same reads, so the allele evidence this
+    tool is built on evaporates exactly when the conversion is most complete.
+
+    That failure is silent: the sites simply go undetermined and no tract is called. This reports
+    the depletion instead, as a candidate needing a different kind of evidence (longer reads, or
+    read-depth analysis over the pair). It is NOT a conversion call: a deletion of the acceptor
+    produces the same picture.
+    """
+    runs, run = [], []
+    for p in positions:
+        acc_dp = counts[p]["depth"]
+        don_dp = donor_counts.get(p, 0)
+        total = acc_dp + don_dp
+        depleted = (acc_dp < min_depth and total >= 2 * min_depth
+                    and (acc_dp / total if total else 1.0) <= max_ratio)
+        if depleted:
+            run.append(p)
+        else:
+            if len(run) >= min_sites:
+                runs.append(run)
+            run = []
+    if len(run) >= min_sites:
+        runs.append(run)
+    return runs
+
+
 def load_sites(path):
     """Diagnostic sites grouped by acceptor locus, from paralog_map.py."""
     loci = defaultdict(lambda: {"sites": {}, "donor": None, "contig": None})
@@ -259,6 +291,9 @@ def load_sites(path):
             loc["donor"] = f[idx["donor"]]
             loc["sites"][int(f[idx["acc_pos"]])] = (f[idx["acc_base"]].upper(),
                                                     f[idx["don_base"]].upper())
+            # Optional: only the depletion check needs it, and a hand-made sites file may omit it.
+            if "don_pos" in idx and f[idx["don_pos"]].strip().isdigit():
+                loc.setdefault("donor_pos", {})[int(f[idx["acc_pos"]])] = int(f[idx["don_pos"]])
     return loci
 
 
@@ -308,6 +343,38 @@ def main(argv=None) -> int:
             verdict, reason = classify(ev)
             rows.append({"sample": a.sample, "pair_id": pair_id, "contig": loc["contig"],
                          "donor": loc["donor"], "verdict": verdict, "reason": reason, **ev})
+
+        # Depth on the DONOR side of the same pair, to catch the tracts whose reads moved there.
+        don_pos = loc.get("donor_pos", {})
+        donor_counts = {}
+        if don_pos:
+            dvals = sorted(don_pos.values())
+            dproc = subprocess.run(
+                [a.samtools, "view", a.bam, f"{loc['donor']}:{dvals[0]}-{dvals[-1]}"],
+                capture_output=True, text=True)
+            if dproc.returncode == 0:
+                dsites = {dp: ("N", "N") for dp in dvals}     # only depth matters here
+                dreads = collect_read_alleles(dproc.stdout.splitlines(), dsites, a.min_bq)
+                dcounts = pileup(dreads, dvals)
+                donor_counts = {ap: dcounts[dp]["depth"] for ap, dp in don_pos.items()}
+
+        for run in depleted_runs(positions, counts, donor_counts, a.min_depth,
+                                 min_sites=a.min_sites):
+            if set(run) & in_any:
+                continue                                     # already reported as a tract
+            acc = sum(counts[p]["depth"] for p in run)
+            don = sum(donor_counts.get(p, 0) for p in run)
+            rows.append({
+                "sample": a.sample, "pair_id": pair_id, "contig": loc["contig"],
+                "donor": loc["donor"], "verdict": "coverage_shift",
+                "reason": (f"acceptor depleted ({acc} reads) while the donor carries {don} over the "
+                           "same sites; a tract longer than the insert loses its reads to the donor, "
+                           "but so does a deletion"),
+                "n_sites": len(run), "start": min(run), "end": max(run),
+                "span_bp": max(run) - min(run) + 1, "n_sites_outside": len(positions) - len(run),
+                "n_undetermined": 0, "donor_af_in": None, "donor_af_outside": None,
+                "min_depth": min(counts[p]["depth"] for p in run),
+                "cis_reads": 0, "breakpoint_reads": 0, "donor_only_reads": 0})
 
     with open(a.output, "w") as fh:
         fh.write("\t".join(COLUMNS) + "\n")

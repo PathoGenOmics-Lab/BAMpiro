@@ -77,6 +77,7 @@ a donor read: it carries donor alleles everywhere it reaches and never crosses b
 | `gene_conversion` | A read crosses a breakpoint in cis, or the tract is bounded with the donor allele near-fixed and supported by reads spanning several sites |
 | `mismapping` | Donor alleles are present outside the tract as well, so it is not bounded |
 | `ambiguous` | Reported, but not called. The `reason` column says which test it failed |
+| `coverage_shift` | The acceptor lost its reads to the donor over a run of sites. Consistent with a conversion longer than the library insert, and equally with a deletion. See below |
 
 The most common `ambiguous` case is a tract covering **every** diagnostic site of the locus. With
 no site outside it, there is nothing the donor alleles are bounded by, and a whole locus replaced
@@ -113,6 +114,32 @@ the donor/acceptor graph of your reference.
 
 Lower `--gconv_min_af` to catch a conversion present in only part of the population, at the cost of
 more `ambiguous` calls. Raise `--gconv_min_sites` on a reference with many close paralogs.
+
+## The blind spot: a tract longer than the insert
+
+A conversion makes the acceptor identical to the donor over the tract. Once that tract is **longer
+than the library insert**, a read pair falling entirely inside it has no unique anchor left, and
+the aligner assigns it to one copy arbitrarily. The acceptor's tract loses coverage and the
+donor's matching region gains the same reads.
+
+Measured on a simulated 99.7% paralog pair with a 1.4 kb tract and a 320 bp insert:
+
+| Region | Converted sample | Unconverted control |
+| :--- | ---: | ---: |
+| Acceptor, inside the tract | **36.7x** | 83.8x |
+| Donor, matching region | **127.4x** | 83.3x |
+| Acceptor, outside the tract | 80.1x | 81.1x |
+
+The reads did not disappear, they moved: the two loci together carry 164x against 167x in the
+control. Every allele-based signal this tool depends on evaporates exactly when the conversion is
+most complete, which is why the same detector finds a 350 bp tract at 98% identity without
+difficulty and misses a 1.4 kb one at 99.7%.
+
+That failure would otherwise be silent, so a run of diagnostic sites where the acceptor is
+depleted while the donor carries the reads is reported with the verdict `coverage_shift`. **It is
+not a conversion call.** A deletion of the acceptor produces exactly the same picture, and telling
+them apart needs evidence short reads do not carry: longer reads spanning the whole tract, or a
+read-depth analysis over the paralog pair as a whole.
 
 ## What it does not do
 

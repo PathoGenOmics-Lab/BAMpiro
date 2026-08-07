@@ -906,3 +906,43 @@ def test_a_quality_string_shorter_than_the_sequence_does_not_crash():
     """Malformed SAM should skip the base, not raise IndexError out of a CIGAR walk."""
     got = gc.read_bases_at(10, "5M", "ACGTA", "II", {10, 11, 12, 13, 14}, min_bq=13)
     assert got == {10: "A", 11: "C"}, "positions past the end of QUAL must be dropped, not crash"
+
+
+# --------------------------------------------------------------------------- #
+# The high-identity blind spot
+# --------------------------------------------------------------------------- #
+
+def test_a_depleted_run_is_reported_when_the_donor_holds_the_reads():
+    """A conversion longer than the library insert loses its reads to the donor.
+
+    Once the tract makes the acceptor identical to the donor, a read pair falling entirely inside
+    it has no unique anchor and the aligner assigns it arbitrarily. Measured on a simulated 99.7%
+    paralog pair: the acceptor's tract went from 84x to 37x while the donor's matching region went
+    from 83x to 127x, and every allele-based signal vanished. Reporting the depletion is the only
+    thing that keeps that from being a silent zero.
+    """
+    positions = [10, 20, 30, 40, 50]
+    counts = _counts(dict.fromkeys(positions, None),
+                     depth={10: 40, 20: 1, 30: 0, 40: 2, 50: 40})
+    donor = {10: 40, 20: 80, 30: 90, 40: 85, 50: 40}
+
+    runs = gc.depleted_runs(positions, counts, donor, min_depth=5, min_sites=3)
+    assert runs == [[20, 30, 40]]
+
+
+def test_a_locus_covered_on_both_sides_reports_no_depletion():
+    """Ordinary coverage on both copies is not a shift, however low it is overall."""
+    positions = [10, 20, 30, 40]
+    counts = _counts(dict.fromkeys(positions, 0.0), depth=40)
+    donor = dict.fromkeys(positions, 40)
+
+    assert gc.depleted_runs(positions, counts, donor, min_depth=5, min_sites=3) == []
+
+
+def test_depletion_needs_the_reads_to_be_somewhere():
+    """A locus with no coverage on either copy is missing data, not a shift of reads."""
+    positions = [10, 20, 30, 40]
+    counts = _counts(dict.fromkeys(positions, None), depth=0)
+    donor = dict.fromkeys(positions, 0)
+
+    assert gc.depleted_runs(positions, counts, donor, min_depth=5, min_sites=3) == []
