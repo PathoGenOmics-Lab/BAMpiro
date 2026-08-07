@@ -123,6 +123,37 @@ def test_short_or_garbage_lines_do_not_crash(junk):
     assert len(pairs) == 2
 
 
+@pytest.mark.parametrize("row", [
+    "1\tx\ty\tz\t-\t-\t-\t-\t-\t-\t-\tchr\tchr\n",
+    "x\t2300\ty\tz\t-\t-\t-\t-\t-\t-\t-\tchr\tchr\n",
+    "1\t2300\t1\tz\t-\t-\t-\t-\t-\t-\t-\tchr\tchr\n",
+])
+def test_a_line_with_only_some_numeric_coordinates_is_still_not_a_data_line(row):
+    """All four coordinates have to be numeric, not any of them.
+
+    The guard exists because MUMmer writes banners and a header above the table, and the
+    parametrised garbage above is all-or-nothing: every field is text. A line carrying ONE
+    number and three words gets past a loosened guard and reaches int() on the rest, which
+    turns a stray line in the middle of a coords file into a crash rather than a skip.
+    """
+    pairs = pm.parse_coords(row + COORDS_ROWS)
+
+    assert len(pairs) == 2
+
+
+def test_a_single_base_donor_interval_carries_no_inversion():
+    """S2 > E2 is what says the copies are inverted, and a one-base interval is not.
+
+    Reading it as inverted is not merely wrong on its own: `sites_within_pairs` requires the
+    site's strand and the pair's strand to agree, so a pair labelled the wrong way round takes
+    none of its own diagnostic sites and goes quiet.
+    """
+    pairs = pm.parse_coords(_coords_row(401, 1000, 1500, 1500))
+
+    assert pairs[0]["strand"] == "+"
+    assert (pairs[0]["don_start"], pairs[0]["don_end"]) == (1500, 1500)
+
+
 def test_min_identity_filters_divergent_pairs():
     text = COORDS_ROWS + _coords_row(2000, 2200, 2100, 2300, idy=88.00)
 
@@ -291,6 +322,40 @@ def test_sites_within_pairs_requires_both_ends_inside_the_pair():
     sites, _ = pm.parse_snps(_snps_row(471, "A", "G", 2250))    # acceptor in pair 0, donor not
 
     assert pm.sites_within_pairs(sites, pairs) == []
+
+
+@pytest.mark.parametrize("acc_pos,don_pos", [(401, 1301), (1000, 1900)])
+def test_a_site_on_the_first_or_last_base_of_a_pair_is_inside_it(acc_pos, don_pos):
+    """The alignment interval MUMmer reports is inclusive at both ends.
+
+    Reading it as exclusive drops a diagnostic site at each end of every pair, and it drops
+    them where they matter most: the ends of an alignment are where a conversion tract runs off
+    the aligned stretch, so those are the breakpoints the caller is least able to place already.
+    """
+    pairs = pm.parse_coords(COORDS)
+    sites, _ = pm.parse_snps(_snps_row(acc_pos, "A", "G", don_pos))
+
+    kept = pm.sites_within_pairs(sites, pairs)
+
+    assert [s["acc_pos"] for s in kept] == [acc_pos]
+
+
+def test_two_candidates_equally_far_from_the_alignment_resolve_the_same_way_every_time():
+    """One acceptor position can be reported against more than one donor position, and the one
+    that fits the alignment's own offset is the one kept.
+
+    Where two fit equally well the choice is arbitrary, but it must not be arbitrary from run to
+    run: the site table is compared between runs and feeds a caller whose output is compared
+    across a cohort. The first of the two wins, which given the sorted order is the lower donor
+    position.
+    """
+    pairs = pm.parse_coords(COORDS)
+    # the pair maps acceptor 471 onto donor 1371, so 1361 and 1381 are ten bases off either way
+    sites, _ = pm.parse_snps(_snps_row(471, "A", "G", 1361) + _snps_row(471, "A", "T", 1381))
+
+    kept = pm.sites_within_pairs(sites, pairs)
+
+    assert [(s["acc_pos"], s["don_pos"]) for s in kept] == [(471, 1361)]
 
 
 def test_sites_within_pairs_requires_matching_contigs():
