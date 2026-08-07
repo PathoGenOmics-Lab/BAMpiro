@@ -223,6 +223,28 @@ def test_a_clean_tract_is_located_exactly_and_called():
     assert gm.verdict(res, covers_locus=False)[0] == "gene_conversion"
 
 
+def _res(**kw):
+    """A model result, for asking `verdict` about one number at a time."""
+    out = {"log10_bf": 9.0, "log10_bf_null": 9.0, "log10_bf_mut": 9.0, "tract_af": 1.0,
+           "mismap_frac": 0.01, "map_i": 0, "map_j": 3}
+    out.update(kw)
+    return out
+
+
+@pytest.mark.parametrize("af,called", [(0.25, True), (0.2499, False), (0.26, True)])
+def test_a_tract_carried_by_exactly_the_required_fraction_is_called(af, called):
+    """`--min-tract-af` is the fraction a tract must reach, so reaching it is enough.
+
+    An off-by-one at a user-facing threshold is invisible: the setting still appears to work,
+    every tract at exactly the documented value quietly becomes `ambiguous`, and no failure ever
+    points at the comparison. It is worth pinning for that reason rather than for the odds of a
+    fraction landing on 0.25 exactly.
+    """
+    got = gm.verdict(_res(tract_af=af), covers_locus=False, min_tract_af=0.25)[0]
+
+    assert (got == "gene_conversion") is called
+
+
 def test_a_locus_with_no_conversion_is_not_called():
     positions = _positions(10)
     res = _fit(_tract_reads(6, 3, 10, tract=set()), positions)
@@ -584,6 +606,21 @@ def test_segment_stops_once_a_fit_is_not_worth_reporting():
     fits = gm.segment(*_delta(_tract_reads(6, 3, 10, tract=set()), positions), max_tracts=4)
 
     assert len(fits) == 1, "a locus with nothing in it is searched once, not four times"
+
+
+def test_a_fit_exactly_at_the_reporting_threshold_is_worth_reporting():
+    """`--report-bf` is the factor below which a fit stops the search, so landing on it does not.
+
+    The threshold is asked instead of assumed: the tract is fitted once to learn what it scores,
+    and the cap is then set to exactly that. Choosing a number and hoping the fit lands on it
+    would test the arithmetic of the fixture rather than the comparison.
+    """
+    positions = _positions(16)
+    delta, pos = _delta(_tract_reads(6, 3, 16, tract={4, 5, 6}), positions)
+    at = gm.segment(delta, pos, max_tracts=1)[0]["log10_bf"]
+
+    assert len(gm.segment(delta, pos, max_tracts=2, min_report_bf=at)) == 2
+    assert len(gm.segment(delta, pos, max_tracts=2, min_report_bf=at + 1e-9)) == 1
 
 
 def _delta(reads, positions):
