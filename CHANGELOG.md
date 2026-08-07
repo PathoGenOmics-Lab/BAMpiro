@@ -67,9 +67,20 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
     The absolute depth floor it used before fired on any low-coverage paralog, which
     is how a clean negative control reported two shifts over a locus running at 4x
     throughout.
+ - **The cohort is read together, not one sample at a time.** Two questions cannot
+    be answered from a single sample however good the model is. A tract in one
+    sample of fifty is a finding; the same tract at the same coordinates in all
+    fifty is the reference being wrong there, or the aligner doing it to everybody,
+    and those are reported as `reference_artifact`. And a signal too weak for one
+    sample to commit to is a different proposition when the same tract is called
+    outright in another, because contamination and index hopping do not reproduce a
+    specific tract across independent libraries. Validated on the real genome: six
+    isolates sharing one tract had all twelve of its rows demoted while their
+    isolate-specific rows were left alone, and on an eight-isolate cohort three
+    sub-threshold tracts were corroborated, all three of them real.
  - A **Gene conversion** panel in the QC report leads with the Bayes factor and puts
-    the observable evidence beside it. See
-    [gene conversion](docs/gene-conversion.md).
+    the observable evidence beside it, with how many samples of the cohort carry each
+    event. See [gene conversion](docs/gene-conversion.md).
 
 Headline: a **test suite and CI**, and a pipeline that runs correctly on a machine
 that is not the authors' cluster.

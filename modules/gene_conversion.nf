@@ -18,6 +18,12 @@ def gconvHeader() {
             'min_depth', 'cis_reads', 'breakpoint_reads', 'donor_only_reads'].join('\\t')
 }
 
+def gconvLocusHeader() {
+    return ['sample', 'pair_id', 'contig', 'donor', 'n_sites', 'n_reads', 'start', 'end',
+            'n_tract_sites', 'log10_bf', 'log10_bf_vs_null', 'tract_af', 'mismap_frac',
+            'mut_rate'].join('\\t')
+}
+
 process PARALOG_MAP {
     tag "Paralogs: ${refId}"
     publishDir path: { "${params.outdir}/references/${refId}" }, mode: params.publish_mode
@@ -62,6 +68,9 @@ process FIND_GENE_CONVERSION {
 
     output:
     tuple val(sampleId), val(refId), path("${sampleId}.${refId}.gene_conversion.tsv"), emit: tracts
+    // One row per paralog pair analysed, reported or not. Only the cohort pass reads it: a locus
+    // that says nothing in one sample means something only next to the same locus in the others.
+    tuple val(sampleId), val(refId), path("${sampleId}.${refId}.gene_conversion_loci.tsv"), emit: loci
 
     script:
     """
@@ -71,6 +80,7 @@ process FIND_GENE_CONVERSION {
         --bam ${bam} \\
         --sample ${sampleId} \\
         --output ${sampleId}.${refId}.gene_conversion.tsv \\
+        --output-loci ${sampleId}.${refId}.gene_conversion_loci.tsv \\
         --min-bf ${params.gconv_min_bf} \\
         --report-bf ${params.gconv_report_bf} \\
         --prior ${params.gconv_prior} \\
@@ -88,10 +98,14 @@ process FIND_GENE_CONVERSION {
     stub:
     """
     printf '${gconvHeader()}\\n' > ${sampleId}.${refId}.gene_conversion.tsv
+    printf '${gconvLocusHeader()}\\n' > ${sampleId}.${refId}.gene_conversion_loci.tsv
     """
 }
 
 process COLLECT_GENE_CONVERSION {
+    // Not a concatenation. Two questions a sample cannot answer about itself are answerable here:
+    // whether a tract is this isolate or the reference (recurrence across the cohort), and whether
+    // a signal too weak to call alone is the same tract another sample calls outright.
     tag "Gene conversion cohort"
     publishDir path: { "${params.outdir}" }, mode: params.publish_mode
     cpus 1
@@ -99,6 +113,7 @@ process COLLECT_GENE_CONVERSION {
 
     input:
     path(tracts)
+    path(loci)
     val(basename)
 
     output:
@@ -107,17 +122,18 @@ process COLLECT_GENE_CONVERSION {
     script:
     """
     set -euo pipefail
-    out=${basename}_gene_conversion.tsv
-    first=1
-    for f in ${tracts}; do
-        if [ "\$first" = "1" ]; then head -1 "\$f" > "\$out"; first=0; fi
-        tail -n +2 "\$f" >> "\$out"
-    done
-    [ -s "\$out" ] || printf '${gconvHeader()}\\n' > "\$out"
+    python3 ${projectDir}/bin/gconv_cohort.py \\
+        --tracts ${tracts} \\
+        --loci ${loci} \\
+        --output ${basename}_gene_conversion.tsv \\
+        --min-bf ${params.gconv_min_bf} \\
+        --corroborated-bf ${params.gconv_corroborated_bf} \\
+        --ubiquitous ${params.gconv_ubiquitous} \\
+        --min-samples ${params.gconv_cohort_min_samples}
     """
 
     stub:
     """
-    printf '${gconvHeader()}\\n' > ${basename}_gene_conversion.tsv
+    printf '${gconvHeader()}\\tevent_id\\tevent_samples\\tevent_frac\\tcohort_verdict\\tcohort_mismap\\tcohort_bf_median\\n' > ${basename}_gene_conversion.tsv
     """
 }

@@ -106,6 +106,49 @@ reads to the acceptor. The second is not an edge case, and this is worth stating
     below about a fifth of the reads there is nothing left to separate a minority conversion from
     index hopping or a contaminating sample.
 
+## What the cohort knows that a sample does not
+
+Two questions cannot be answered from one sample, however good the model is, and both are
+answered the moment the other samples are in the room. The cohort pass runs automatically after
+the per-sample stage; there is nothing to turn on.
+
+**Is this the isolate, or is it the reference?** A tract in one sample of fifty is a finding. The
+same tract at the same coordinates in all fifty is not the same conversion happening fifty times:
+the reference carries the wrong base there, or the aligner puts the same reads in the same wrong
+place for everybody. Nothing inside a single sample tells those apart, because mismapped reads
+look identical either way. Events at or above `--gconv_ubiquitous` of the cohort are reported as
+`reference_artifact`.
+
+!!! warning "That is an inference from recurrence, not a proof"
+
+    A third explanation fits the same pattern: a clonal cohort genuinely sharing an ancestral
+    conversion. Recurrence cannot separate it from a reference error, so the `reason` column
+    always carries the count. If you know your isolates are closely related, read it that way and
+    look at `verdict`, which keeps what the sample said on its own.
+
+**Is a weak signal a minority conversion or contamination?** The per-sample caller refuses to
+speak below `--gconv_min_tract_af`, and that floor is the reason two of the twenty-three
+benchmark tracts were missed. A weak signal is a different proposition when the SAME tract at the
+SAME coordinates is called outright in another sample: contamination and index hopping do not
+reproduce a specific tract across independent libraries. Such a row is promoted, provided it
+clears `--gconv_corroborated_bf` on its own evidence and the event is not one everybody has.
+
+A sample never corroborates itself. A gene family reports the same converted stretch through
+several relationships, so events are grouped on the acceptor's coordinates rather than on the
+paralog pair, and one sample's echoes count once.
+
+| Column | What it says |
+| :--- | :--- |
+| `event_id` | The same converted stretch across samples and across the relationships it is seen through |
+| `event_samples`, `event_frac` | How many samples of the cohort carry it, and what fraction |
+| `cohort_verdict` | The verdict after the cohort has spoken. `verdict` keeps the sample's own |
+| `cohort_mismap` | The locus's mismapping rate pooled over the cohort, which is a property of the reference and the aligner rather than of one sample |
+
+!!! note "Below `--gconv_cohort_min_samples` the recurrence argument is not made"
+
+    With four samples, "in all of them" is four, which says nothing about the reference. The
+    cohort columns are still filled in; only the demotion is withheld.
+
 ## Verdicts
 
 | Verdict | Meaning |
@@ -114,6 +157,7 @@ reads to the acceptor. The second is not an edge case, and this is worth stating
 | `mismapping` | The locus is explained by a fitted fraction of reads arriving from the donor, with nothing left for a tract to account for |
 | `ambiguous` | Reported, but not called. The `reason` column says what came closest |
 | `coverage_shift` | The acceptor lost its reads to the donor over a run of sites: it falls well below its own level elsewhere AND the donor rises above its own. Consistent with a conversion longer than the library insert, and equally with a deletion. See below |
+| `reference_artifact` | Present in nearly every sample of the cohort. Only a cohort can say this |
 
 A tract covering **every** diagnostic site of the locus is a special case that needs no special
 handling: "the whole locus was converted" and "every read here came from the donor" predict
@@ -151,7 +195,13 @@ Per sample, next to the other per-sample files:
 <sample>.<ref>.gene_conversion.tsv
 ```
 
-and one cohort-level `<samplesheet>_gene_conversion.tsv`. Columns: `sample`, `pair_id`, `contig`,
+plus a per-locus companion, `<sample>.<ref>.gene_conversion_loci.tsv`, with one row per paralog
+pair analysed whether or not anything was found there. Only the cohort pass reads it: a locus
+silent in one sample means something only next to the same locus in the others, and "no row"
+cannot tell "nothing there" from "not written out".
+
+The cohort file `<samplesheet>_gene_conversion.tsv` is the same rows with the cohort columns
+appended. Columns: `sample`, `pair_id`, `contig`,
 `donor`, `verdict`, `reason`, `start`, `end`, `span_bp`, `post_conv`, `log10_bf`,
 `log10_bf_vs_null`, `mismap_frac`, `start_ci`, `end_ci`, `n_sites`, `n_sites_outside`,
 `n_undetermined`, `donor_af_in`, `donor_af_outside`, `min_depth`, `cis_reads`,
@@ -179,6 +229,9 @@ the donor/acceptor graph of your reference.
 | `--gconv_min_sites` | `3` | Diagnostic sites a pair needs before it is analysed at all |
 | `--gconv_min_depth` | `5` | Depth below which a site is undetermined in the summaries |
 | `--gconv_min_bq` | `13` | Base-quality floor when reading an allele off a read |
+| `--gconv_ubiquitous` | `0.9` | Fraction of the cohort at which an event is a reference artifact |
+| `--gconv_corroborated_bf` | `2.0` | Bayes factor a sub-threshold tract needs before another sample's outright call can vouch for it |
+| `--gconv_cohort_min_samples` | `5` | Cohort size below which recurrence says too little to act on |
 
 !!! note "`--gconv_min_bq` is a floor, not a stringency dial"
 

@@ -251,7 +251,9 @@ var GCONV_V=[{k:'gene_conversion',lab:'gene conversion',c:'#2ea36b',r:0,
              {k:'mismapping',lab:'mismapping',c:'#e0544f',r:2,
               tip:'the locus is explained by a fitted fraction of reads arriving from the donor, with nothing left for a tract to account for'},
              {k:'coverage_shift',lab:'coverage shift',c:'#8b6fd6',r:3,
-              tip:'the acceptor lost its reads to the donor over a run of sites. Consistent with a conversion longer than the library insert, and equally with a deletion. Not a conversion call'}];
+              tip:'the acceptor lost its reads to the donor over a run of sites. Consistent with a conversion longer than the library insert, and equally with a deletion. Not a conversion call'},
+             {k:'reference_artifact',lab:'reference artifact',c:'#7a8794',r:4,
+              tip:'present in nearly every sample of the cohort. The reference being wrong here, or the aligner doing this to everybody, explains that more simply than the same conversion arising in every isolate. In a CLONAL cohort it may instead be shared ancestry, which recurrence alone cannot distinguish. Only a cohort can make this call at all'}];
 function gconvDef(v){for(var i=0;i<GCONV_V.length;i++){if(GCONV_V[i].k===v)return GCONV_V[i];}
   return {k:v||'',lab:(v||'unknown').replace(/_/g,' '),c:'#94a3b8',r:3,tip:'verdict not recognised'};}
 function gconvId(t){return t.s+'|'+t.pair+'|'+t.start;}
@@ -341,6 +343,8 @@ function renderGconv(){
         '<td><span class="gcv-badge" style="background:'+d.c+'" title="'+esc(t.reason||d.tip)+'">'+d.lab+'</span></td>'+
         '<td class="gcv-num"><b'+(t.bf!=null&&t.bf>=3?' class="gcv-bp"':'')+'>'+gconvNum(t.bf,1)+'</b>'+
           (t.bf_null==null?'':' <span class="gcv-mut" title="log10 Bayes factor against no conversion at all. This is where depth, base quality and read linkage show up; the headline number is also limited by how implausible independent substitution is">/ '+t.bf_null.toFixed(0)+' vs none</span>')+'</td>'+
+        '<td class="gcv-num">'+(t.n_ev==null?'<span class="gcv-na">n/a</span>':
+           (t.n_ev+(t.ev_frac==null?'':' <span class="gcv-mut">'+Math.round(t.ev_frac*100)+'%</span>')))+'</td>'+
         '<td class="gcv-num">'+gconvNum(t.tract_af,2)+'</td>'+
         '<td class="gcv-num">'+gconvNum(t.mismap,3)+'</td>'+
         '<td class="gcv-num">'+(t.start==null?'':fmtpos(t.start))+(t.span==null?'':' <span class="gcv-mut">'+t.span.toLocaleString('en-US')+' bp</span>')+'</td>'+
@@ -351,7 +355,7 @@ function renderGconv(){
         '<td class="gcv-num">'+(t.cis_reads==null?'':t.cis_reads)+'</td>'+
         '<td class="gcv-num">'+gconvNum(t.depth,0)+'</td>'+
         '<td><span class="gcv-reason">'+esc(t.reason||'')+'</span></td></tr>';}).join('');
-    if(!ord.length)body='<tr><td colspan="14" class="c" style="padding:18px;text-align:center">'+
+    if(!ord.length)body='<tr><td colspan="15" class="c" style="padding:18px;text-align:center">'+
       (rows.length?'no tract matches the filter.':'no tract in the samples currently in view.')+'</td></tr>';
     host.innerHTML='<div class="gcv-verdicts">'+chips+'</div>'+
       '<div class="gcv-plotscroll">'+svg+'</div>'+legend+
@@ -360,6 +364,7 @@ function renderGconv(){
       '<div class="epitbl-wrap gcv-tablewrap"><table class="epitbl gcv-table"><thead><tr>'+
         th('s','Sample')+th('locus','Locus','','the acceptor locus and the donor its alleles came from')+th('verdict','Verdict')+
         th('bf','BF','gcv-num','log10 Bayes factor for a conversion tract over the best alternative: an independent substitution at the same sites, or reads that arrived from the donor. 3 is decisive')+
+        th('n_ev','Samples','gcv-num','how many samples of the cohort carry this event, and what fraction that is. One or two is a finding; nearly all of them means the reference or the aligner, not the isolates')+
         th('tract_af','Carried by','gcv-num','fraction of the reads that carry the tract. Below 1 means either a mixed infection or a third copy of the family contributing unconverted reads; nothing in short reads tells those apart')+
         th('mismap','Donor reads','gcv-num','fraction of reads at this locus the model had to assume came from the donor')+
         th('start','Tract','gcv-num','start position and length of the tract')+
@@ -378,19 +383,24 @@ function renderGconv(){
       draw();};});
     Array.prototype.forEach.call(host.querySelectorAll('[data-s]'),function(e){e.onclick=function(){setHi(e.getAttribute('data-s'));};});
     var db=el('gcvdl'); if(db)db.onclick=function(){
+      // Laid out exactly like the cohort TSV on disk: the tool's own columns, then the ones the
+      // cohort pass appends. The verdict column is the sample's own and cohort_verdict is what
+      // the rest of the cohort made of it, which is the pair the file itself carries.
       var hdr=['sample','pair_id','contig','donor','verdict','reason','start','end','span_bp',
                'post_conv','log10_bf','log10_bf_vs_null','tract_af','mismap_frac','mut_rate','start_ci','end_ci',
                'n_sites','n_sites_outside','n_undetermined','donor_af_in','donor_af_outside',
-               'min_depth','cis_reads','breakpoint_reads','donor_only_reads'];
+               'min_depth','cis_reads','breakpoint_reads','donor_only_reads',
+               'event_id','event_samples','event_frac','cohort_verdict','cohort_mismap','cohort_bf_median'];
       var lines=[hdr.join('\t')];
-      ord.forEach(function(t){lines.push([t.s,t.pair,t.contig,t.donor,t.verdict,t.reason,t.start,t.end,t.span,
-        t.post,t.bf,t.bf_null,t.tract_af,t.mismap,t.mut_rate,t.start_ci,t.end_ci,t.n_sites,t.n_out,t.n_undet,
-        t.af_in,t.af_out,t.depth,t.cis_reads,t.bp_reads,t.donor_only].map(function(x){return x==null?'':x;}).join('\t'));});
+      ord.forEach(function(t){lines.push([t.s,t.pair,t.contig,t.donor,(t.sample_verdict||t.verdict),t.reason,t.start,t.end,t.span,
+        t.post,t.bf,t.bf_null,t.tract_af,t.mismap,t.mut_rate,t.start_ci,t.end_ci,
+        t.n_sites,t.n_out,t.n_undet,t.af_in,t.af_out,t.depth,t.cis_reads,t.bp_reads,t.donor_only,
+        t.event,t.n_ev,t.ev_frac,t.verdict,t.co_mismap,t.co_bf].map(function(x){return x==null?'':x;}).join('\t'));});
       dl(lines.join('\n')+'\n','gene_conversion.tsv','text/tab-separated-values');};
     if(cap){var nsamp={},ncall=counts.gene_conversion||0; rows.forEach(function(t){nsamp[t.s]=1;});
       cap.innerHTML=rows.length+' candidate tract(s) in '+Object.keys(nsamp).length+' sample(s) of the cohort in view &#183; <b'+
         (ncall?' class="sc-sig"':'')+'>'+ncall+' called gene conversion</b>, '+(counts.ambiguous||0)+' ambiguous, '+(counts.mismapping||0)+
-        ' mismapping, '+(counts.coverage_shift||0)+' coverage shift &#183; <b>'+nbp+'</b> supported by a read crossing a breakpoint in cis. <span class="krk-mut">These loci are repeats, so they are excluded from variant calling and the consensus by design: a tract will not appear in the SNP matrix, and that is expected. Breakpoints are located to diagnostic-site resolution, not to the base, and each paralog pair is judged independently, so one tract can be reported against more than one donor. Candidates to inspect, not confirmed events.</span>';}
+        ' mismapping, '+(counts.coverage_shift||0)+' coverage shift, '+(counts.reference_artifact||0)+' reference artifact &#183; <b>'+nbp+'</b> supported by a read crossing a breakpoint in cis. <span class="krk-mut">These loci are repeats, so they are excluded from variant calling and the consensus by design: a tract will not appear in the SNP matrix, and that is expected. Breakpoints are located to diagnostic-site resolution, not to the base, and each paralog pair is judged independently, so one tract can be reported against more than one donor. Candidates to inspect, not confirmed events.</span>';}
   }
   draw();
 }

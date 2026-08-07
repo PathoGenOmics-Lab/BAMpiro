@@ -417,10 +417,12 @@ def test_parse_gene_conversion_reads_the_tracts_samples_and_verdict_counts(tmp_p
     g = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV))
     assert g["samples"] == ["S1", "S2"]
     assert g["counts"] == {"gene_conversion": 1, "mismapping": 1, "ambiguous": 1,
-                           "coverage_shift": 0}
+                           "coverage_shift": 0, "reference_artifact": 0}
     assert g["tracts"][0] == {
         "s": "S1", "pair": "7", "contig": "PPE34", "donor": "PPE12", "verdict": "gene_conversion",
         "reason": "log10 Bayes factor 18.4 over the best alternative",
+        "sample_verdict": "gene_conversion", "event": "", "n_ev": None, "ev_frac": None,
+        "co_mismap": None, "co_bf": None,
         "start": 1000, "end": 1400, "span": 401,
         "post": pytest.approx(1.0), "bf": pytest.approx(18.4), "bf_null": pytest.approx(612.5),
         "mismap": pytest.approx(0.0031), "tract_af": pytest.approx(1.0),
@@ -486,7 +488,7 @@ def test_parse_gene_conversion_counts_an_unrecognised_verdict_without_losing_the
     row = _gconv_row(verdict="something_else")
     counts = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV_HEADER + row))["counts"]
     assert counts == {"gene_conversion": 0, "mismapping": 0, "ambiguous": 0,
-                      "coverage_shift": 0, "something_else": 1}
+                      "coverage_shift": 0, "reference_artifact": 0, "something_else": 1}
 
 
 def test_parse_gene_conversion_reads_a_float_formatted_count(tmp_path):
@@ -1040,3 +1042,26 @@ def test_optional_parsers_degrade_quietly_on_an_unreadable_path(tmp_path, parser
 @pytest.mark.parametrize(("parser", "empty"), [(qc_parsers.parse_kraken, None), (qc_parsers.parse_vcfs, {})])
 def test_multi_file_parsers_skip_an_unreadable_path(tmp_path, parser, empty):
     assert parser([str(tmp_path)]) == empty
+
+
+def test_parse_gene_conversion_shows_the_cohort_verdict_when_there_is_one(tmp_path):
+    """The cohort pass may overrule the per-sample caller, in both directions. What the panel
+    shows is the final answer; the sample's own verdict is kept beside it rather than lost."""
+    header = GCONV_HEADER.rstrip("\n") + "\tevent_id\tevent_samples\tevent_frac\tcohort_verdict" \
+                                         "\tcohort_mismap\tcohort_bf_median\n"
+    row = _gconv_row(verdict="gene_conversion").rstrip("\n") + "\tchr:3\t9\t0.9\treference_artifact\t0.31\t8.0\n"
+    g = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", header + row))
+
+    t = g["tracts"][0]
+    assert t["verdict"] == "reference_artifact"
+    assert t["sample_verdict"] == "gene_conversion"
+    assert (t["n_ev"], t["ev_frac"], t["co_mismap"]) == (9, pytest.approx(0.9), pytest.approx(0.31))
+    assert g["counts"]["reference_artifact"] == 1
+
+
+def test_parse_gene_conversion_falls_back_to_the_sample_verdict_without_a_cohort_pass(tmp_path):
+    """A file written before the cohort pass, or by a run of one sample, has no cohort column."""
+    g = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV))
+
+    assert g["tracts"][0]["verdict"] == "gene_conversion"
+    assert g["tracts"][0]["n_ev"] is None

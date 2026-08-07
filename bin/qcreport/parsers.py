@@ -309,7 +309,8 @@ def parse_dr(path):
     return {"samples": samples, "drugs": drugs, "calls": calls}
 
 
-_GCONV_VERDICTS = ("gene_conversion", "mismapping", "ambiguous", "coverage_shift")
+_GCONV_VERDICTS = ("gene_conversion", "mismapping", "ambiguous", "coverage_shift",
+                   "reference_artifact")
 
 
 def parse_gene_conversion(path):
@@ -355,7 +356,9 @@ def parse_gene_conversion(path):
                 tracts.append({"s": s, "pair": (d.get("pair_id") or "").strip(),
                                "contig": (d.get("contig") or "").strip(),
                                "donor": (d.get("donor") or "").strip(),
-                               "verdict": (d.get("verdict") or "").strip().lower(),
+                               "verdict": ((d.get("cohort_verdict") or d.get("verdict") or "")
+                                           .strip().lower()),
+                               "sample_verdict": (d.get("verdict") or "").strip().lower(),
                                "reason": (d.get("reason") or "").strip(),
                                "start": ival(d.get("start")), "end": ival(d.get("end")),
                                "span": ival(d.get("span_bp")), "n_sites": ival(d.get("n_sites")),
@@ -367,6 +370,11 @@ def parse_gene_conversion(path):
                                "mismap": to_float(d.get("mismap_frac")),
                                "tract_af": to_float(d.get("tract_af")),
                                "mut_rate": to_float(d.get("mut_rate")),
+                               "event": (d.get("event_id") or "").strip(),
+                               "n_ev": ival(d.get("event_samples")),
+                               "ev_frac": to_float(d.get("event_frac")),
+                               "co_mismap": to_float(d.get("cohort_mismap")),
+                               "co_bf": to_float(d.get("cohort_bf_median")),
                                "start_ci": (d.get("start_ci") or "").strip(),
                                "end_ci": (d.get("end_ci") or "").strip(),
                                "af_in": to_float(d.get("donor_af_in")),

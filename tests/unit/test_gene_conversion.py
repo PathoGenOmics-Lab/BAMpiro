@@ -682,7 +682,8 @@ def test_the_report_download_writes_the_same_header_the_tool_does(repo_root):
     # that instead and pass for the wrong reason.
     before = js.split("'gene_conversion.tsv'", 1)[0]
     block = before.rsplit("var hdr=[", 1)[1].split("]", 1)[0]
-    assert re.findall(r"'([a-z0-9_]+)'", block) == gc.COLUMNS
+    cohort = load_script("gconv_cohort")
+    assert re.findall(r"'([a-z0-9_]+)'", block) == gc.COLUMNS + cohort.COHORT_COLUMNS
 
 
 def test_main_fails_loudly_when_samtools_fails(tmp_path, samtools):

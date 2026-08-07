@@ -36,9 +36,12 @@ workflow GENE_CONVERSION {
             .combine(maps.sites, by: 0)
             .map { rId, sId, bam, bai, sites -> tuple(sId, rId, bam, bai, sites) }
 
-        tracts = FIND_GENE_CONVERSION(gconv_in).tracts
+        def found = FIND_GENE_CONVERSION(gconv_in)
+        tracts = found.tracts
         cohort = COLLECT_GENE_CONVERSION(
-            tracts.map { sId, rId, tsv -> tsv }.collect().ifEmpty([]), tsv_name).cohort
+            tracts.map { sId, rId, tsv -> tsv }.collect().ifEmpty([]),
+            found.loci.map { sId, rId, tsv -> tsv }.collect().ifEmpty([]),
+            tsv_name).cohort
     }
 
     emit:

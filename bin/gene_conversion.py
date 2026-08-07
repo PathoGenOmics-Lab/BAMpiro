@@ -342,11 +342,24 @@ def load_sites(path):
     return loci
 
 
+# One row per paralog pair analysed, whatever came of it. Feeds the cohort pass, which needs to
+# see the quiet loci as well as the loud ones.
+LOCUS_COLUMNS = ["sample", "pair_id", "contig", "donor", "n_sites", "n_reads", "start", "end",
+                 "n_tract_sites", "log10_bf", "log10_bf_vs_null", "tract_af", "mismap_frac",
+                 "mut_rate"]
+
 COLUMNS = ["sample", "pair_id", "contig", "donor", "verdict", "reason", "start", "end", "span_bp",
            "post_conv", "log10_bf", "log10_bf_vs_null", "tract_af", "mismap_frac", "mut_rate",
            "start_ci", "end_ci",
            "n_sites", "n_sites_outside", "n_undetermined", "donor_af_in", "donor_af_outside",
            "min_depth", "cis_reads", "breakpoint_reads", "donor_only_reads"]
+
+
+def write_tsv(path, columns, rows):
+    with open(path, "w") as fh:
+        fh.write("\t".join(columns) + "\n")
+        for r in rows:
+            fh.write("\t".join("" if r.get(c) is None else str(r.get(c, "")) for c in columns) + "\n")
 
 
 def parse_args(argv=None):
@@ -358,6 +371,10 @@ def parse_args(argv=None):
                         "exactly the reads this analysis depends on")
     p.add_argument("--sample", required=True)
     p.add_argument("-o", "--output", required=True)
+    p.add_argument("--output-loci",
+                   help="one row per paralog pair analysed, reported or not. This is what the "
+                        "cohort pass reads: a locus that says nothing in one sample only means "
+                        "something next to the same locus in the others")
     p.add_argument("--min-bf", type=float, default=3.0,
                    help="log10 Bayes factor over the best alternative before a tract is called "
                         "a conversion")
@@ -407,7 +424,7 @@ def main(argv=None) -> int:
     a = parse_args(argv)
     loci = load_sites(a.sites)
 
-    rows = []
+    rows, locus_rows = [], []
     for pair_id, loc in sorted(loci.items(), key=lambda kv: int(kv[0])):
         positions = sorted(loc["sites"])
         if len(positions) < a.min_sites:
@@ -430,6 +447,23 @@ def main(argv=None) -> int:
         fits = gm.segment(delta, positions, max_tracts=a.max_tracts, min_report_bf=a.report_bf,
                           prior=a.prior, mean_span_bp=a.mean_tract_bp, mut_rate=a.mut_rate,
                           max_span_bp=a.max_tract_bp)
+        # What the best tract at this locus looked like, whatever it came to. The tracts file
+        # holds findings and is what a person reads; this holds the evidence at EVERY locus,
+        # including the loci where there was none, and it is what the cohort pass needs. A locus
+        # silent in this sample is only informative next to the same locus in the others, and
+        # "no row" cannot tell "nothing there" from "not written out".
+        if fits:
+            f0 = fits[0]
+            locus_rows.append({
+                "sample": a.sample, "pair_id": pair_id, "contig": loc["contig"],
+                "donor": loc["donor"], "n_sites": len(positions), "n_reads": f0["n_reads"],
+                "start": f0["start"], "end": f0["end"], "n_tract_sites": f0["map_j"] - f0["map_i"] + 1,
+                "log10_bf": round(f0["log10_bf"], 2),
+                "log10_bf_vs_null": round(f0["log10_bf_null"], 2),
+                "tract_af": round(f0["tract_af"], 3),
+                "mismap_frac": round(f0["mismap_frac"], 4),
+                "mut_rate": round(f0["mut_rate"], 5)})
+
         # A locus whose reads plainly came from its paralog is a result too, so it is written out
         # even when no tract clears the reporting threshold.
         keep = [f for f in fits
@@ -486,14 +520,13 @@ def main(argv=None) -> int:
                 "min_depth": min(counts[p]["depth"] for p in run),
                 "cis_reads": 0, "breakpoint_reads": 0, "donor_only_reads": 0})
 
-    with open(a.output, "w") as fh:
-        fh.write("\t".join(COLUMNS) + "\n")
-        for r in rows:
-            fh.write("\t".join("" if r.get(c) is None else str(r.get(c, "")) for c in COLUMNS) + "\n")
+    write_tsv(a.output, COLUMNS, rows)
+    if a.output_loci:
+        write_tsv(a.output_loci, LOCUS_COLUMNS, locus_rows)
 
     called = sum(1 for r in rows if r["verdict"] == "gene_conversion")
     sys.stderr.write(f"[gene_conversion] {a.sample}: {len(rows)} candidate tract(s), "
-                     f"{called} called as conversion\n")
+                     f"{called} called as conversion, {len(locus_rows)} locus/loci measured\n")
     return 0
 
 
