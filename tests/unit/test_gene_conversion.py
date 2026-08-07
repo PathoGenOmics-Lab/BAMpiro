@@ -669,6 +669,22 @@ def test_the_nextflow_module_writes_the_same_header_the_tool_does(repo_root):
     assert "printf 'sample" not in module, "the header belongs in gconvHeader(), not restated"
 
 
+def test_the_report_download_writes_the_same_header_the_tool_does(repo_root):
+    """The panel's "download tracts (TSV)" button rebuilds the file from the parsed payload.
+
+    Its column list is hand written, so a column added here and not there silently mislabels
+    every field after the gap in a file someone will open in a spreadsheet and believe.
+    """
+    js = (repo_root / "bin" / "report_assets" / "js" / "13_drug_kraken.js").read_text()
+
+    # Anchored on the file the button writes, because the drug-resistance panel in the same
+    # module builds its own download the same way and matching the first one found would test
+    # that instead and pass for the wrong reason.
+    before = js.split("'gene_conversion.tsv'", 1)[0]
+    block = before.rsplit("var hdr=[", 1)[1].split("]", 1)[0]
+    assert re.findall(r"'([a-z0-9_]+)'", block) == gc.COLUMNS
+
+
 def test_main_fails_loudly_when_samtools_fails(tmp_path, samtools):
     sites = _sites_tsv(tmp_path / "sites.tsv", {0: [100, 110, 120]})
 

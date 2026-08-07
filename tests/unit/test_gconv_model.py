@@ -485,9 +485,12 @@ def test_a_locus_that_substitutes_freely_makes_a_short_run_ordinary():
     """
     positions = _positions(24)
     tract = {10, 11}
-
+    # The scattered sites are kept clear of the tract. Put one right beside it and the two
+    # intervals tie in likelihood exactly, because the substituted site and the unsubstituted one
+    # between them cancel, and the winner is then decided by a prior term worth half a nat. Real
+    # data does not tie like that, and a test should not pin an arbitrary tie-break.
     clean = _fit(_scatter(positions, tract, []), positions)
-    peppered = _fit(_scatter(positions, tract, [2, 5, 8, 15, 18, 21]), positions)
+    peppered = _fit(_scatter(positions, tract, [1, 4, 7, 16, 19, 22]), positions)
 
     assert clean["mut_rate"] == pytest.approx(gm.MUT_RATE)
     assert peppered["mut_rate"] > 0.2
@@ -556,6 +559,57 @@ def _delta(reads, positions):
     """(delta, positions) ready for segment()."""
     _, delta = gm.delta_matrix(_obs(reads, positions), positions, _sites(positions))
     return delta, positions
+
+
+# ------------------------------------------------------- degenerate inputs
+#
+# Each of these was a real failure found by running the model over random inputs. They are
+# grouped because they share a shape: a value that is legal to pass, produces no error where it
+# is passed, and goes wrong somewhere it cannot be traced back from.
+
+
+@pytest.mark.parametrize("prior", [0.0, 1.0])
+def test_a_prior_of_zero_or_one_is_answered_rather_than_crashed(prior):
+    """log(0) is a domain error, and "I do not believe this happens" is a fair thing to say."""
+    positions = _positions(8)
+    res = _fit(_tract_reads(6, 3, 8, tract={3, 4}), positions, prior=prior)
+
+    assert res is not None
+    assert math.isfinite(res["log10_bf"])
+    assert res["post_conv"] == (0.0 if prior == 0.0 else 1.0)
+
+
+@pytest.mark.parametrize("kw", [{"mut_rate": 0.0}, {"mut_rate": 1.0}, {"mut_rate": -0.1},
+                                {"prior": -0.1}, {"prior": 1.5}, {"mean_span_bp": 0}])
+def test_a_degenerate_parameter_is_refused_where_it_was_passed(kw):
+    """Not deep inside the arithmetic, where the message names a local variable instead."""
+    positions = _positions(6)
+    with pytest.raises(ValueError):
+        _fit(_tract_reads(4, 3, 6, tract={2, 3}), positions, **kw)
+
+
+@pytest.mark.parametrize("positions", [[40, 30, 20, 10], [7, 7, 7, 7], [1, 5, 5, 9]])
+def test_positions_out_of_order_are_refused_rather_than_answered(positions):
+    """Descending positions give negative spans, which turns the length prior upside down and
+    makes the model REWARD long tracts, and two sites at one coordinate is not a thing. Both
+    produced a confident, plausible-looking, wrong answer."""
+    with pytest.raises(ValueError, match="strictly increasing"):
+        gm.fit_locus(np.zeros((4, len(positions))) + 8.0, positions)
+
+
+@pytest.mark.parametrize("delta,positions", [
+    (np.zeros((20, 10)), _positions(10)),                    # no information anywhere
+    (np.full((10, 6), -1e3), _positions(6)),                 # every site emphatically acceptor
+    (np.full((10, 6), 1e3), _positions(6)),                  # every site emphatically donor
+])
+def test_the_tract_is_always_inside_its_own_credible_interval(delta, positions):
+    """The boundary comes from the joint posterior over intervals and the interval from a
+    marginal, so on a flat or bimodal posterior the two disagreed and the tract was reported
+    outside the range it was supposed to lie in. Nobody can read that."""
+    res = gm.fit_locus(delta, positions)
+
+    assert res["start_ci"][0] <= res["start"] <= res["start_ci"][1]
+    assert res["end_ci"][0] <= res["end"] <= res["end_ci"][1]
 
 
 # ---------------------------------------------------------------------- verdict

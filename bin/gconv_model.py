@@ -105,8 +105,8 @@ and they are hypervariable in exactly the positions where the copies already dif
 that carries a scattering of donor-matching bases on its own is a locus where a run of two or three
 is unremarkable. Every diagnostic site outside the candidate tract is a direct observation of that
 rate, so it is estimated rather than assumed. Measured on a simulated hypervariable isolate: 39% of
-those loci were called conversions with the genome-average rate, 8% with the locus's own, and the
-same 10 of 10 real tracts were found either way.
+those loci were called conversions with the genome-average rate and 3% with the locus's own, with
+the same 10 of 10 real tracts found either way.
 """
 
 from __future__ import annotations
@@ -296,20 +296,25 @@ def _candidates(positions, free, max_span_bp=None, stride=1, fine_len=8):
             np.array([j for _, j in ordered], dtype=int))
 
 
-def _credible_interval(weights, mass=0.95):
+def _credible_interval(weights, point, mass=0.95):
     """Smallest index range holding `mass` of the posterior, as (lo, hi) indices.
 
-    Highest-density first: take candidates in order of decreasing weight until enough mass is
+    Highest-density first: take indices in order of decreasing weight until enough mass is
     covered, then report the span of what was taken. A sharp posterior gives a single index and a
     diffuse one gives a wide range, which is the honest statement about where a breakpoint is.
+
+    `point` is the reported boundary, and the interval always contains it. It comes from the JOINT
+    posterior over intervals while this is a marginal, so on a flat or bimodal posterior the two
+    can disagree and the tract would be reported outside its own credible interval, which is not
+    a statement anyone can read.
     """
     order = np.argsort(weights)[::-1]
-    taken, acc = [], 0.0
+    taken, acc = [int(point)], 0.0
     for k in order:
-        taken.append(int(k))
-        acc += float(weights[k])
         if acc >= mass:
             break
+        taken.append(int(k))
+        acc += float(weights[k])
     return min(taken), max(taken)
 
 
@@ -343,6 +348,21 @@ def fit_locus(delta, positions, free=None, prior=0.01, mean_span_bp=1000.0,
     caller decides what to report; this function never applies a threshold.
     """
     n_sites = len(positions)
+    # Everything downstream reads `positions` as an ascending coordinate list: the span prior
+    # subtracts them, the credible intervals index into them, and a repeated position would mean
+    # two diagnostic sites at one base. Out of order they all produce a plausible-looking answer
+    # that is wrong, including negative spans that make the length prior REWARD long tracts.
+    if any(b <= a for a, b in zip(positions, positions[1:])):
+        raise ValueError("positions must be strictly increasing")
+    # Degenerate parameters take log(0) somewhere well downstream, where the failure is a domain
+    # error with no hint of which knob caused it. A prior of 0 or 1 is a real thing to ask for
+    # and works; a substitution rate of 0 or 1 is not, and says so here.
+    if not 0.0 < mut_rate < 1.0:
+        raise ValueError(f"mut_rate must be between 0 and 1, exclusive; got {mut_rate}")
+    if not 0.0 <= prior <= 1.0:
+        raise ValueError(f"prior must be between 0 and 1; got {prior}")
+    if mean_span_bp <= 0:
+        raise ValueError(f"mean_span_bp must be positive; got {mean_span_bp}")
     if free is None:
         free = np.ones(n_sites, dtype=bool)
     n_free = int(free.sum())
@@ -400,21 +420,18 @@ def fit_locus(delta, positions, free=None, prior=0.01, mean_span_bp=1000.0,
     log_prior_span = -span / float(mean_span_bp)
     log_prior_span -= _logsumexp(log_prior_span)
 
-    joint = cand_ll + log_prior_span
-    log_ev_conv = _logsumexp(joint)
-    # Posterior over tracts, given that one exists. Only the span prior enters, so this is
-    # settled before the substitution rate is, and the tract it picks is what that rate is then
-    # estimated around.
-    weights = np.exp(joint - log_ev_conv)
-    best = int(np.argmax(weights))
+    # A provisional tract, from the span prior alone. The substitution rate below is estimated
+    # around it, and the rate then feeds back into the priors, so this first pass exists only to
+    # say which part of the locus to measure the rate outside of.
+    best = int(np.argmax(cand_ll + log_prior_span))
 
     # How often a site at THIS locus carries the donor base on its own, measured here rather than
     # assumed. A locus is not a random stretch of genome: PE/PPE genes are hypervariable, and
     # they are hypervariable in exactly the positions where the copies already differ. A rate
     # taken from the genome average says two adjacent donor-matching sites are a one-in-ten-
-    # million coincidence, and a genome-wide run showed that calling 22 of 60 isolated
-    # substitutions a conversion. Every diagnostic site outside the candidate tract is a direct
-    # observation of that rate, so the locus is asked instead of told.
+    # million coincidence, and a genome-wide run showed that calling 14 of 36 hypervariable loci
+    # a conversion. Every diagnostic site outside the candidate tract is a direct observation of
+    # that rate, so the locus is asked instead of told.
     #
     # Only ISOLATED substituted sites count. A run of them is what a conversion looks like, so
     # counting runs would let a second genuine tract in the same locus inflate the rate and talk
@@ -433,17 +450,39 @@ def fit_locus(delta, positions, free=None, prior=0.01, mean_span_bp=1000.0,
     # not be able to explain away a long clean tract, but an explicit rate is an instruction.
     mut_rate = max(mut_rate, min(MAX_MUT_RATE, local_rate))
 
-    # Prior over the same site sets arising as independent substitutions: one factor of mut_rate
-    # per site that carries the donor base, and one of (1 - mut_rate) per site that does not.
+    # What each hypothesis says about the ACCEPTOR GENOME, priced per site. The null says no
+    # diagnostic site was substituted; the mutation hypothesis says the ones in the set were and
+    # the rest were not; a conversion says the sites outside its tract were not, its own being
+    # accounted for by the conversion event itself.
+    #
+    # The term belongs on ALL THREE, and leaving it off the conversion alone was a real defect:
+    # it handed a conversion free evidence that grew with the locus rate, up to 3.2 orders of
+    # magnitude on a hypervariable locus, undoing exactly what estimating that rate was for.
+    #
+    # It is priced on what the hypothesis CLAIMS, not on what the reads happen to show. Pricing
+    # it on the reads instead double-counts: a locus whose reads all arrived from the donor shows
+    # every site reading as donor without a single base of the acceptor having changed, and the
+    # null already has the mismapping rate to say so. Charging it a substitution per site as well
+    # turned wholesale mismapping into a called conversion at a Bayes factor of 33.
     n_in = (ends - starts + 1).astype(float)
-    log_prior_mut = n_in * math.log(mut_rate) + (n_sites - n_in) * math.log1p(-mut_rate)
+    log_mu, log_1mu = math.log(mut_rate), math.log1p(-mut_rate)
+    log_bg_outside = (n_sites - n_in) * log_1mu
+    log_prior_mut = n_in * log_mu + log_bg_outside
 
+    joint = cand_ll + log_prior_span + log_bg_outside
+    log_ev_conv = _logsumexp(joint)
     log_ev_mut = _logsumexp(cand_ll + log_prior_mut)
-    log_ev_null = null_ll + n_sites * math.log1p(-mut_rate)
+    log_ev_null = null_ll + n_sites * log_1mu
+
+    # Posterior over tracts, given that one exists.
+    weights = np.exp(joint - log_ev_conv)
+    best = int(np.argmax(weights))
 
     # Priors between the three families. A conversion is the rare event; not-a-conversion carries
     # the rest, and inside it the mutation and no-mutation cases are already weighted by mut_rate.
-    log_pi, log_1pi = math.log(prior), math.log1p(-prior)
+    # A prior of 0 or 1 is a legitimate thing to ask for and must not be a crash.
+    log_pi = math.log(prior) if prior > 0.0 else -math.inf
+    log_1pi = math.log1p(-prior) if prior < 1.0 else -math.inf
     log_ev_alt = _logsumexp([log_1pi + log_ev_null, log_1pi + log_ev_mut])
     log_bf = log_ev_conv + log_pi - log_ev_alt
     # The Bayes factor itself, prior on the conversion divided back out, so it stays a statement
@@ -465,15 +504,14 @@ def fit_locus(delta, positions, free=None, prior=0.01, mean_span_bp=1000.0,
     np.add.at(edges, ends + 1, -weights)
     site_post = np.cumsum(edges)[:n_sites]
 
-    s_lo, s_hi = _credible_interval(start_w)
-    e_lo, e_hi = _credible_interval(end_w)
+    s_lo, s_hi = _credible_interval(start_w, starts[best])
+    e_lo, e_hi = _credible_interval(end_w, ends[best])
 
     # Posterior over the mismapping rate under the full model, both hypotheses weighted by their
     # priors, so the number reported is what the locus as a whole implies rather than what the
     # winning hypothesis alone would like it to be.
     conv_by_m = np.array([_logsumexp(cand_by_m[k] + log_prior_span) for k in range(len(m_grid))])
-    m_ev = np.logaddexp(math.log1p(-prior) + null_by_m,
-                        (math.log(prior) if prior > 0 else -np.inf) + conv_by_m)
+    m_ev = np.logaddexp(log_1pi + null_by_m, log_pi + conv_by_m)
     m_post = np.exp(m_ev - _logsumexp(m_ev))
     mismap = float(np.dot(m_post, np.array(m_grid, dtype=float)))
 

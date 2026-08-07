@@ -39,8 +39,8 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
     and that relative's unconverted reads land on the acceptor. And the substitution
     rate a run of donor bases has to beat is measured at the locus rather than taken
     from the genome, because a hypervariable gene is one where a short run is
-    unremarkable: 39% of such loci were called conversions with a fixed rate against
-    8% with the locus's own, and the same real tracts were found either way.
+    unremarkable: 39% of such loci were called conversions with a fixed rate
+    against 3% with the locus's own, and the same real tracts were found either way.
  - Measured on that benchmark: 21 of 23 implanted tracts found at 30x and at 12x
     alike, breakpoints exact on the clonal ones, and no false positive over the 388
     pairs with nothing implanted. A negative-control isolate produced no conversion

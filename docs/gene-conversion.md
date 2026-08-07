@@ -206,7 +206,7 @@ then mapped and deduplicated exactly as the pipeline does.
 | False positives over the 388 pairs with nothing implanted | **0**, at every threshold down to `log10_bf` 1 |
 | A negative control isolate: 411 real pairs, no conversion anywhere | **no conversion call at all** |
 | 22 isolated substitutions that happen to match the donor's base | **0 called** |
-| Hypervariable loci, 10% of diagnostic sites substituted | 8% called, against 39% with a fixed genome-average substitution rate, with the same 10 of 10 real tracts found either way |
+| Hypervariable loci, 10% of diagnostic sites substituted | **3% called**, against 39% with a fixed genome-average substitution rate, with the same 10 of 10 real tracts found either way |
 
 The two tracts that were missed sat at 25% and 40% frequency, which is what the floor under
 `tract_af` is for.

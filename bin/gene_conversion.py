@@ -351,7 +351,19 @@ def parse_args(argv=None):
                         "descriptive columns and in the depletion check")
     p.add_argument("--min-bq", type=int, default=13, help="base-quality floor")
     p.add_argument("--samtools", default="samtools")
-    return p.parse_args(argv)
+    a = p.parse_args(argv)
+    # Check the ranges here rather than letting the model take log(0) on the first locus: by then
+    # the run has already spent a samtools call on it, and the error names a variable rather than
+    # the flag that set it.
+    if not 0.0 < a.mut_rate < 1.0:
+        p.error(f"--mut-rate must be between 0 and 1, exclusive (got {a.mut_rate})")
+    if not 0.0 <= a.prior <= 1.0:
+        p.error(f"--prior must be between 0 and 1 (got {a.prior})")
+    if a.mean_tract_bp <= 0:
+        p.error(f"--mean-tract-bp must be positive (got {a.mean_tract_bp})")
+    if a.max_tracts < 1:
+        p.error(f"--max-tracts must be at least 1 (got {a.max_tracts})")
+    return a
 
 
 def main(argv=None) -> int:
