@@ -169,12 +169,43 @@ def test_a_coarse_grid_still_keeps_every_short_interval():
     assert (0, 35) in pairs and (0, 34) not in pairs, "long intervals land on the grid"
 
 
+def test_the_last_site_of_a_locus_can_still_end_a_tract_on_a_coarse_grid():
+    """The grid steps from the first site and stops before the last unless the last is added.
+
+    A run whose length is not a multiple of the stride leaves its final site off the grid, and
+    then the only intervals ending there are the short ones the fine window contributes. A long
+    tract running to the end of the aligned stretch would have nothing to be found by, which is
+    both the hardest place to place reads and the easiest failure to mistake for a quiet locus.
+    """
+    n = 302                                     # not a multiple of the stride below
+    positions = _positions(n)
+    starts, ends = gm._candidates(positions, np.ones(n, bool), stride=3, fine_len=8)
+
+    pairs = set(zip(starts.tolist(), ends.tolist()))
+    assert any(j == n - 1 for _, j in pairs), "nothing can end at the last site"
+    assert any(j == n - 1 and i < n - 9 for i, j in pairs), \
+        "the last site is only reachable from inside the fine window"
+
+
 def test_the_span_cap_removes_the_tracts_that_are_out_of_scope():
     positions = _positions(6, step=1000)
     starts, ends = gm._candidates(positions, np.ones(6, bool), max_span_bp=2500)
 
     spans = [positions[j] - positions[i] + 1 for i, j in zip(starts, ends)]
     assert spans and max(spans) <= 2500
+
+
+def test_the_span_cap_is_a_limit_not_a_boundary_to_stay_under():
+    """A tract of exactly the cap is in scope. Off by one here silently narrows the search by a
+    site at every locus, and the tracts it drops are the longest ones considered."""
+    positions = [0, 500, 999]                   # first to last is exactly 1000 bases
+    free = np.ones(3, bool)
+
+    at_cap = set(zip(*(x.tolist() for x in gm._candidates(positions, free, max_span_bp=1000))))
+    under = set(zip(*(x.tolist() for x in gm._candidates(positions, free, max_span_bp=999))))
+
+    assert (0, 2) in at_cap, "a tract of exactly the cap is within it"
+    assert (0, 2) not in under, "and one base over is not"
 
 
 # -------------------------------------------------------------------- fit_locus
