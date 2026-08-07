@@ -787,6 +787,32 @@ def test_a_depleted_run_is_reported_when_the_donor_holds_the_reads():
     assert runs == [[20, 30, 40]]
 
 
+def test_a_depletion_running_to_the_last_site_is_still_reported():
+    """A run is closed when a healthy site ends it, and the last site of the locus ends nothing.
+
+    A depletion reaching the end of the diagnostic sites has no site after it to trigger the
+    close, so it is only reported if the loop flushes what it is still holding when it stops.
+    Miss that and the run is dropped in silence: not a wrong verdict, no verdict, and the case is
+    not exotic. A conversion running off the end of the aligned stretch is exactly where the
+    reads are hardest to place.
+    """
+    positions = [10, 20, 30, 40, 50]
+    counts = _counts(dict.fromkeys(positions, None),
+                     depth={10: 40, 20: 40, 30: 1, 40: 0, 50: 2})
+    donor = {10: 40, 20: 40, 30: 90, 40: 95, 50: 85}
+
+    assert gc.depleted_runs(positions, counts, donor, min_depth=5, min_sites=3) == [[30, 40, 50]]
+
+
+def test_a_run_at_the_end_still_has_to_be_long_enough():
+    """The flush at the end is not a way around `min_sites`."""
+    positions = [10, 20, 30, 40]
+    counts = _counts(dict.fromkeys(positions, None), depth={10: 40, 20: 40, 30: 1, 40: 0})
+    donor = {10: 40, 20: 40, 30: 90, 40: 95}
+
+    assert gc.depleted_runs(positions, counts, donor, min_depth=5, min_sites=3) == []
+
+
 def test_a_locus_covered_on_both_sides_reports_no_depletion():
     """Ordinary coverage on both copies is not a shift, however low it is overall."""
     positions = [10, 20, 30, 40]
@@ -883,3 +909,31 @@ def test_the_output_records_the_settings_that_produced_it(tmp_path, samtools):
         assert f"{name}=" in head, f"{name} moves the numbers but is not recorded"
     # and the table underneath is still exactly a TSV
     assert out.read_text().splitlines()[1] == "\t".join(gc.COLUMNS)
+
+
+# --------------------------------------------------------------------------- #
+# The settings are checked before the work starts                              #
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("flag,value,says", [
+    ("--mut-rate", "0", "--mut-rate"),
+    ("--mut-rate", "1", "--mut-rate"),
+    ("--mut-rate", "-0.1", "--mut-rate"),
+    ("--prior", "1.5", "--prior"),
+    ("--prior", "-0.1", "--prior"),
+    ("--mean-tract-bp", "0", "--mean-tract-bp"),
+    ("--mean-tract-bp", "-500", "--mean-tract-bp"),
+    ("--max-tracts", "0", "--max-tracts"),
+])
+def test_a_setting_the_model_cannot_use_is_refused_before_any_reading_is_done(flag, value, says):
+    """These guards exist to fail while the message can still name the flag.
+
+    The model raises on all of them, but it raises after the BAM has been read, from inside an
+    expression, naming a variable nobody typed. Every one of these was uncovered: the guards were
+    written and nothing checked that they fire, so a wrong comparison in any of them would have
+    turned a clean refusal back into a crash halfway through a sample.
+    """
+    with pytest.raises(SystemExit) as e:
+        gc.parse_args(["--sites", "s.tsv", "--bam", "b.bam", "--sample", "S1", "-o", "o.tsv",
+                       flag, value])
+    assert e.value.code != 0
