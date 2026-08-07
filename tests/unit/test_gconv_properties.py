@@ -500,5 +500,11 @@ def test_the_cohort_pass_annotates_every_row_it_is_given(seed):
         assert r["donor_call"] in ("", "resolved", "ambiguous", "only candidate")
         if r["donor_rank"] != "":
             assert 1 <= r["donor_rank"] <= r["n_donors"], f"seed {seed}: rank outside the field"
-        if r["event_samples"]:
+        # None is the cohort size being unknown, which happens when no per-locus rows were given:
+        # the samples with nothing to report are then uncountable, so there is no denominator.
+        if n_samples is None:
+            assert r["event_frac"] == "", f"seed {seed}: a fraction of an unknown cohort"
+            assert r["cohort_verdict"] != "reference_artifact", \
+                f"seed {seed}: recurrence applied without a cohort to be recurrent in"
+        elif r["event_samples"]:
             assert r["event_samples"] <= n_samples, f"seed {seed}: more samples than the cohort has"

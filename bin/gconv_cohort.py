@@ -209,6 +209,8 @@ def cohort_verdict(row, event, background, n_samples, min_bf, corroborated_bf,
     """
     verdict = (row.get("verdict") or "").strip()
     bf = num(row, "log10_bf")
+    # None means the cohort size is unknown, which is not the same as small. A fraction cannot be
+    # formed at all, so the recurrence rule below is skipped rather than fed a stand-in.
     frac = event["n_samples"] / n_samples if n_samples else 0.0
 
     # An event in nearly every sample of the cohort is usually not an event: the reference
@@ -218,7 +220,7 @@ def cohort_verdict(row, event, background, n_samples, min_bf, corroborated_bf,
     # It is an inference from recurrence, not a proof, and there is a third explanation the data
     # cannot rule out: a clonal cohort really does share an ancestral conversion. The reason says
     # the count so a reader who knows their isolates are related can read it that way.
-    if n_samples >= min_samples and frac >= ubiquitous:
+    if n_samples is not None and n_samples >= min_samples and frac >= ubiquitous:
         return "reference_artifact", (
             f"present in {event['n_samples']} of {n_samples} samples ({frac:.0%}): at that "
             "recurrence the reference or the aligner explains it more simply than the same "
@@ -238,14 +240,32 @@ def cohort_verdict(row, event, background, n_samples, min_bf, corroborated_bf,
 
 
 def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
-             ubiquitous=0.9, min_samples=5, slack=0, donor_margin=1.0):
-    """Add the cohort columns to every tract row, revising the verdict where the cohort speaks."""
+             ubiquitous=0.9, min_samples=5, slack=0, donor_margin=1.0, cohort_size=None):
+    """Add the cohort columns to every tract row, revising the verdict where the cohort speaks.
+
+    `cohort_size` is how many samples were RUN. It matters because the ubiquity rule is a
+    fraction, and the samples a tract file can name are only the ones that had something to
+    report: a sample whose genome is clean writes no tract row and is invisible to the numerator
+    and the denominator alike. Counting only those leaves an event in 5 of 8 samples looking like
+    an event in 5 of 5, which demotes a real conversion to a reference artifact, the exact
+    inversion of what this pass exists to do.
+
+    The per-locus rows are the census that fixes it, since every sample writes one per pair it
+    evaluated whether or not anything came of it. Without them, and without an explicit size, the
+    cohort is genuinely unknown and the rule is left unapplied rather than applied to a number
+    that only looks like an answer.
+    """
     event_of = group_events(tract_rows, slack)
     background = locus_background(locus_rows)
 
     samples = {r.get("sample") for r in tract_rows} | {r.get("sample") for r in locus_rows}
     samples.discard(None)
-    n_samples = len(samples)
+    if cohort_size is not None:
+        n_samples = max(int(cohort_size), len(samples))
+    elif locus_rows:
+        n_samples = len(samples)
+    else:
+        n_samples = None
 
     events = defaultdict(lambda: {"samples": set(), "called": set(), "bf": []})
     for i, r in enumerate(tract_rows):
@@ -317,6 +337,9 @@ def parse_args(argv=None):
                         "next distinct one before the source is called resolved")
     p.add_argument("--slack", type=int, default=0,
                    help="bases of tolerance when deciding two tracts are the same event")
+    p.add_argument("--cohort-size", type=int, default=None,
+                   help="how many samples were run, when --loci is not available to say so; "
+                        "without either, recurrence has no denominator and is left alone")
     return p.parse_args(argv)
 
 
@@ -330,14 +353,22 @@ def main(argv=None) -> int:
     # a header made only of the columns this script adds.
     columns = (list(tracts[0].keys()) if tracts else list(TRACT_COLUMNS)) + COHORT_COLUMNS
     rows, n_samples = annotate(tracts, loci, a.min_bf, a.corroborated_bf,
-                               a.ubiquitous, a.min_samples, a.slack, a.donor_margin)
+                               a.ubiquitous, a.min_samples, a.slack, a.donor_margin,
+                               a.cohort_size)
+
+    if n_samples is None and tracts:
+        sys.stderr.write(
+            "[gconv_cohort] no --loci and no --cohort-size, so the number of samples run is not "
+            "known: a sample with nothing to report writes no tract row and cannot be counted. "
+            "Recurrence is left unapplied, and no event will be called a reference artifact\n")
 
     with open(a.output, "w") as fh:
         for note in notes:
             fh.write(note + "\n")
         fh.write(f"# gconv_cohort.py min_bf={a.min_bf} corroborated_bf={a.corroborated_bf} "
                  f"ubiquitous={a.ubiquitous} min_samples={a.min_samples} "
-                 f"donor_margin={a.donor_margin} slack={a.slack}\n")
+                 f"donor_margin={a.donor_margin} slack={a.slack} "
+                 f"cohort_size={n_samples if n_samples is not None else 'unknown'}\n")
         fh.write("\t".join(columns) + "\n")
         for r in rows:
             fh.write("\t".join(str(r.get(c, "")) for c in columns) + "\n")
@@ -349,7 +380,7 @@ def main(argv=None) -> int:
     reps = sum(1 for r in rows if r.get("is_representative") == 1)
     sys.stderr.write(
         f"[gconv_cohort] {len(rows)} tract row(s) collapsing to {reps} event/donor call(s) "
-        f"over {n_samples} sample(s), "
+        f"over {n_samples if n_samples is not None else 'an unknown number of'} sample(s), "
         f"{len({r['event_id'] for r in rows})} distinct event(s); {changed} verdict(s) revised "
         f"({artifacts} as reference artifacts, {rescued} corroborated across samples)\n")
     return 0

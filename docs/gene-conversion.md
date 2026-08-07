@@ -241,6 +241,15 @@ pair analysed whether or not anything was found there. Only the cohort pass read
 silent in one sample means something only next to the same locus in the others, and "no row"
 cannot tell "nothing there" from "not written out".
 
+!!! warning "Running the cohort pass by hand needs that companion file"
+
+    The pipeline always passes both. If you run `bin/gconv_cohort.py` yourself, pass `--loci` as
+    well as `--tracts`, or state `--cohort-size`. The recurrence rule is a fraction of the samples
+    that were run, and a sample with a clean genome writes no tract row at all: counting only the
+    samples the tract files name turns an event in 5 of 8 into an event in 5 of 5 and demotes a
+    real conversion to `reference_artifact`. Given neither, the cohort size is unknown rather than
+    assumed, `event_frac` is left empty and no event is demoted.
+
 The cohort file `<samplesheet>_gene_conversion.tsv` is the same rows with the cohort columns
 appended. Columns: `sample`, `pair_id`, `contig`,
 `donor`, `verdict`, `reason`, `start`, `end`, `span_bp`, `post_conv`, `log10_bf`,

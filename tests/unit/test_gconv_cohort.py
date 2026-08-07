@@ -115,6 +115,46 @@ def test_a_cohort_too_small_to_argue_from_recurrence_is_not_argued_from():
     assert all(r["cohort_verdict"] == "gene_conversion" for r in out)
 
 
+def test_the_samples_with_nothing_to_report_still_count_towards_the_cohort():
+    """The denominator of the ubiquity rule is how many samples were RUN, not how many had
+    something to say. A clean sample writes no tract row, so counting the samples named in the
+    tract files alone turns an event in 5 of 8 into an event in 5 of 5 and demotes a real
+    conversion to a reference artifact, which is this pass doing the opposite of its job."""
+    rows = [tract(f"S{i}") for i in range(5)]
+
+    out, n = gcc.annotate(rows, cohort(8))
+
+    assert n == 8
+    assert all(r["cohort_verdict"] == "gene_conversion" for r in out)
+    assert out[0]["event_frac"] == 0.625
+
+
+def test_a_cohort_of_unknown_size_is_not_a_cohort_of_the_size_that_spoke():
+    """Without the per-locus rows there is no census, and the quiet samples cannot be counted at
+    all. An unknown denominator is not a small one, so recurrence is left unapplied rather than
+    computed against the only number to hand."""
+    rows = [tract(f"S{i}") for i in range(5)]
+
+    out, n = gcc.annotate(rows, [])
+
+    assert n is None
+    assert all(r["cohort_verdict"] == "gene_conversion" for r in out)
+    assert all(r["event_frac"] == "" for r in out)
+
+    stated, n_stated = gcc.annotate(rows, [], cohort_size=5)
+    assert n_stated == 5
+    assert all(r["cohort_verdict"] == "reference_artifact" for r in stated)
+
+
+def test_a_stated_cohort_size_cannot_be_smaller_than_the_samples_seen():
+    rows = [tract(f"S{i}") for i in range(6)]
+
+    out, n = gcc.annotate(rows, [], cohort_size=2)
+
+    assert n == 6, "a size that contradicts the rows read would make the fraction exceed 1"
+    assert out[0]["event_frac"] == 1.0
+
+
 def test_the_recurrence_at_which_an_event_is_demoted_is_a_parameter():
     rows = [tract(f"S{i}") for i in range(7)]
 
