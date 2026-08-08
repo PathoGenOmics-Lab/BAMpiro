@@ -417,7 +417,8 @@ def test_parse_gene_conversion_reads_the_tracts_samples_and_verdict_counts(tmp_p
     g = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV))
     assert g["samples"] == ["S1", "S2"]
     assert g["counts"] == {"gene_conversion": 1, "mismapping": 1, "ambiguous": 1,
-                           "coverage_shift": 0, "reference_artifact": 0}
+                           "coverage_shift": 0, "reference_artifact": 0,
+                           "reference_derived": 0}
     assert g["tracts"][0] == {
         "s": "S1", "pair": "7", "contig": "PPE34", "donor": "PPE12", "verdict": "gene_conversion",
         "reason": "log10 Bayes factor 18.4 over the best alternative",
@@ -430,7 +431,9 @@ def test_parse_gene_conversion_reads_the_tracts_samples_and_verdict_counts(tmp_p
         "mut_rate": pytest.approx(0.0003), "start_ci": "1000-1000", "end_ci": "1400-1400",
         "n_sites": 6, "n_out": 9, "n_undet": 0,
         "af_in": pytest.approx(0.97), "af_out": pytest.approx(0.01),
-        "depth": 18, "cis_reads": 11, "bp_reads": 3, "donor_only": 0}
+        "depth": 18, "cis_reads": 11, "bp_reads": 3, "donor_only": 0,
+        # absent from a file written without an outgroup, which is the default
+        "n_derived": None, "n_ancestral": None, "n_unpol": None}
 
 
 def test_parse_gene_conversion_keeps_the_model_numbers_and_the_checkable_ones(tmp_path):
@@ -489,7 +492,8 @@ def test_parse_gene_conversion_counts_an_unrecognised_verdict_without_losing_the
     row = _gconv_row(verdict="something_else")
     counts = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV_HEADER + row))["counts"]
     assert counts == {"gene_conversion": 0, "mismapping": 0, "ambiguous": 0,
-                      "coverage_shift": 0, "reference_artifact": 0, "something_else": 1}
+                      "coverage_shift": 0, "reference_artifact": 0,
+                      "reference_derived": 0, "something_else": 1}
 
 
 def test_parse_gene_conversion_reads_a_float_formatted_count(tmp_path):

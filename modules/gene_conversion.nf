@@ -16,7 +16,8 @@ def gconvHeader() {
             'post_conv', 'log10_bf', 'log10_bf_vs_null', 'tract_af', 'mismap_frac', 'mut_rate',
             'start_ci', 'end_ci',
             'n_sites', 'n_sites_outside', 'n_undetermined', 'donor_af_in', 'donor_af_outside',
-            'min_depth', 'cis_reads', 'breakpoint_reads', 'donor_only_reads'].join('\\t')
+            'min_depth', 'cis_reads', 'breakpoint_reads', 'donor_only_reads',
+            'n_derived', 'n_ancestral', 'n_unpolarised'].join('\\t')
 }
 
 def gconvLocusHeader() {

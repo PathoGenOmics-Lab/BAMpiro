@@ -384,7 +384,30 @@ def load_sites(path):
             # Optional: only the depletion check needs it, and a hand-made sites file may omit it.
             if "don_pos" in idx and f[idx["don_pos"]].strip().isdigit():
                 loc.setdefault("donor_pos", {})[int(f[idx["acc_pos"]])] = int(f[idx["don_pos"]])
+            # Which copy the difference is on, when an outgroup was given to say so.
+            if "polarity" in idx:
+                loc.setdefault("polarity", {})[int(f[idx["acc_pos"]])] = \
+                    f[idx["polarity"]].strip()
     return loci
+
+
+def polarity_counts(tract, polarity):
+    """How the sites under a tract are polarised: (derived, ancestral, unreadable).
+
+    `derived` sites are the ones that can support a conversion: the reference's acceptor carries
+    the ancestral base there, so a sample carrying the donor's base has changed. `ancestral` sites
+    say the opposite, that the REFERENCE carries the derived base and a sample carrying the
+    donor's has changed nothing.
+
+    A tract made mostly of the second kind is a real observation about the reference and not
+    about the sample, and without an outgroup the two are the same picture.
+    """
+    if not polarity:
+        return 0, 0, 0
+    kinds = [polarity.get(p, "") for p in tract]
+    derived = sum(1 for k in kinds if k == "derived")
+    ancestral = sum(1 for k in kinds if k == "ancestral")
+    return derived, ancestral, len(kinds) - derived - ancestral
 
 
 # One row per paralog pair analysed, whatever came of it. Feeds the cohort pass, which needs to
@@ -398,7 +421,8 @@ COLUMNS = ["sample", "pair_id", "contig", "donor", "verdict", "reason", "start",
            "post_conv", "log10_bf", "log10_bf_vs_null", "tract_af", "mismap_frac", "mut_rate",
            "start_ci", "end_ci",
            "n_sites", "n_sites_outside", "n_undetermined", "donor_af_in", "donor_af_outside",
-           "min_depth", "cis_reads", "breakpoint_reads", "donor_only_reads"]
+           "min_depth", "cis_reads", "breakpoint_reads", "donor_only_reads",
+           "n_derived", "n_ancestral", "n_unpolarised"]
 
 
 # Parameters that change the numbers in the output. Recorded in the file itself, because a
@@ -547,6 +571,17 @@ def main(argv=None) -> int:
             covers_locus = fit["map_i"] == 0 and fit["map_j"] == len(positions) - 1
             verdict, reason = gm.verdict(fit, covers_locus, a.min_bf, a.min_mismap,
                                          a.min_tract_af)
+            # Which copy the change is on, where an outgroup was given to say so. The model has
+            # no view on this: it sees the acceptor carrying the donor's base and that is the
+            # same picture whether the sample changed or the reference did.
+            derived, ancestral, unread = polarity_counts(tract, loc.get("polarity"))
+            if ancestral > derived:
+                verdict = "reference_derived"
+                reason = (
+                    f"{ancestral} of the {derived + ancestral} polarised site(s) here carry the "
+                    "ancestral base in the reads and a derived one in the reference, so it is the "
+                    "REFERENCE's copy that was converted or mutated and this sample retains what "
+                    "the outgroup has. Not a conversion in this sample")
             if fit["stride"] > 1:
                 reason += (f"; breakpoints resolved to every {fit['stride']} diagnostic sites "
                            "because the locus has too many to search exhaustively")
@@ -562,6 +597,8 @@ def main(argv=None) -> int:
                          "end_ci": "{}-{}".format(*fit["end_ci"]),
                          "don_start": min(dpos) if dpos else None,
                          "don_end": max(dpos) if dpos else None,
+                         "n_derived": derived, "n_ancestral": ancestral,
+                         "n_unpolarised": unread,
                          **ev})
 
         # Depth on the DONOR side of the same pair, to catch the tracts whose reads moved there.
@@ -591,6 +628,7 @@ def main(argv=None) -> int:
                 "n_sites": len(run), "start": min(run), "end": max(run),
                 "span_bp": max(run) - min(run) + 1, "n_sites_outside": len(positions) - len(run),
                 "n_undetermined": 0, "donor_af_in": None, "donor_af_outside": None,
+                "n_derived": 0, "n_ancestral": 0, "n_unpolarised": len(run),
                 "min_depth": min(counts[p]["depth"] for p in run),
                 "cis_reads": 0, "breakpoint_reads": 0, "donor_only_reads": 0})
 
