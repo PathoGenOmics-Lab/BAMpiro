@@ -32,8 +32,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 TARGETS = ["bin/gconv_model.py", "bin/gconv_cohort.py", "bin/gene_conversion.py",
-           "bin/paralog_map.py"]
+           "bin/paralog_map.py", "bin/gconv_annotate.py"]
 TESTS = ["tests/unit/test_gconv_model.py", "tests/unit/test_gconv_cohort.py",
+         "tests/unit/test_gconv_annotate.py",
          "tests/unit/test_gene_conversion.py", "tests/unit/test_paralog_map.py",
          "tests/unit/test_gconv_properties.py", "tests/unit/test_gene_conversion_chain.py"]
 
@@ -68,6 +69,13 @@ EQUIVALENT = {
         "donor has no sites left to establish a baseline from and the run is dropped anyway",
     ('if per is not None and (c["per"] is None or per > c["per"]):', ">="):
         "replaces a candidate's evidence per marker with a value equal to it",
+    ('if not genome_depth or genome_depth <= 0:', "<"):
+        "the left arm already short-circuits on 0, which is falsy, so the comparison only ever "
+        "sees a negative depth and both forms reject one",
+    ('if not (feature["start"] <= pos <= feature["end"]) or len(alt) != 1:', "and"):
+        "a substitution of any length other than one produces a mutated codon of a length other "
+        "than three, which the codon table then declines. Checked over every strand, phase and "
+        "position with alts of length 0, 1, 2 and 4: the two forms never differ",
     ('carries = measured & (site_lr > 0)', ">="):
         "`measured` already requires |site_lr| above the calling threshold, so nothing inside "
         "the mask can be zero",
@@ -170,6 +178,14 @@ def run(only):
         work = Path(tempfile.mkdtemp(prefix="bampiro-mutants-"))
         root = checkout(work)
         path = root / target
+        if not path.exists():
+            # The checkout is `git ls-files`, so a target missing here is a target git does not
+            # know about yet. Worth saying, because the alternative is a stack trace from a
+            # temporary directory that no longer exists by the time anyone reads it.
+            print(f"{target}: not tracked by git, so it is not in the checkout. Skipped",
+                  flush=True)
+            shutil.rmtree(work, ignore_errors=True)
+            continue
         original = path.read_text()
         backup = original
         muts = decisions(path)

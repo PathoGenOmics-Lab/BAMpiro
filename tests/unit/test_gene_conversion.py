@@ -882,6 +882,353 @@ def test_a_run_at_the_end_still_has_to_be_long_enough():
     assert gc.depleted_runs(positions, counts, donor, min_depth=5, min_sites=3) == []
 
 
+# --------------------------------------------------------------------------- #
+# How many copies are contributing reads here                                  #
+# --------------------------------------------------------------------------- #
+
+
+def _depths(spec):
+    return {p: {"acceptor": 0, "donor": 0, "other": 0, "depth": d, "donor_af": None}
+            for p, d in spec.items()}
+
+
+@pytest.mark.parametrize("depth,ratio,copies,expected", [
+    (30, 1.0, 1, 1.0),
+    (60, 2.0, 2, 0.5),
+    (90, 3.0, 3, 0.333),
+    (75, 2.5, 2, 0.5),          # rounds to the nearer whole number of copies
+])
+def test_a_locus_says_how_many_copies_its_reads_look_like(depth, ratio, copies, expected):
+    """Against the sample's OWN genome depth, because half the reads of a shallow run and half of
+    a deep one are the same fraction and not the same evidence."""
+    positions = [10, 20, 30]
+    counts = _depths(dict.fromkeys(positions, depth))
+
+    assert gc.locus_copies(counts, positions, genome_depth=30.0) == (ratio, copies, expected)
+
+
+def test_without_a_genome_depth_the_copy_number_is_unknown_not_one():
+    """An assumed single copy is exactly the assumption that makes a clonal conversion in a
+    three-copy family look like contamination."""
+    counts = _depths({10: 90, 20: 90})
+
+    assert gc.locus_copies(counts, [10, 20], genome_depth=None) == (None, None, None)
+    assert gc.locus_copies(counts, [10, 20], genome_depth=0) == (None, None, None)
+
+
+def test_sites_too_shallow_to_genotype_do_not_set_the_copy_number():
+    """A locus half of which is unread runs at the depth of the half that IS read."""
+    counts = _depths({10: 60, 20: 60, 30: 1, 40: 0})
+
+    ratio, copies, _ = gc.locus_copies(counts, [10, 20, 30, 40], genome_depth=30.0, min_depth=5)
+
+    assert (ratio, copies) == (2.0, 2)
+
+
+@pytest.mark.parametrize("shallow,ratio,copies", [(5, 0.17, 1), (4, 2.0, 2)])
+def test_a_site_at_exactly_the_depth_floor_counts_towards_the_copy_number(shallow, ratio, copies):
+    """The same floor as everywhere else: at it, a site is read. Here it decides the median, so
+    one step out moves the copy number of the whole locus and with it what a clonal conversion
+    would be expected to reach."""
+    counts = _depths({10: 60, 20: shallow, 30: shallow})
+
+    assert gc.locus_copies(counts, [10, 20, 30], genome_depth=30.0,
+                           min_depth=5)[:2] == (ratio, copies)
+
+
+def test_a_locus_with_nothing_readable_says_nothing():
+    counts = _depths({10: 1, 20: 0})
+
+    assert gc.locus_copies(counts, [10, 20], genome_depth=30.0) == (None, None, None)
+
+
+def _af_case(tmp_path, samtools, converted, total, extra=()):
+    """A locus where `converted` of `total` molecules carry the tract, so the read fraction is
+    exactly what a clonal conversion of one copy out of `total` looks like."""
+    positions = [100, 110, 120, 130, 140, 150, 160, 170]
+    tract = {110, 120, 130}
+    records = []
+    for i in range(total * 6):
+        seq = ["A"] * 90
+        if i % total < converted:
+            for p in tract:
+                seq[p - 95] = "G"
+        records.append(_sam_line(f"r{i}", 95, "90M", "".join(seq), qual="I" * 90))
+    bam = _bam(tmp_path, records)
+    sites = _sites_tsv(tmp_path / f"s{converted}{total}.sites", {0: positions})
+    out = tmp_path / f"o{converted}{total}.tsv"
+
+    assert gc.main(["--sites", sites, "--bam", bam, "--sample", "S1", "-o", str(out),
+                    "--samtools", samtools, "--min-sites", "2", "--report-bf", "-99",
+                    *extra]) == 0
+    return _only_row(out)
+
+
+def test_a_diluted_tract_is_told_what_its_fraction_would_mean(tmp_path, samtools):
+    """The bucket this splits open, and what it deliberately does NOT do.
+
+    A fifth of the reads carrying a tract is below the floor that separates a minority conversion
+    from contamination, so it is reported as ambiguous and was reported with nothing else. At a
+    locus running at eight times the genome's depth, that fraction is roughly one whole copy of
+    eight, converted outright, with the other seven never converted because they are other
+    copies.
+
+    The verdict does not move. At that copy number a clonal conversion of one copy and a
+    contamination at the same level ARE the same fraction, and saying otherwise would be claiming
+    a discrimination the reads cannot make. What changes is that the row now says which readings
+    fit rather than only that it could not choose.
+    """
+    plain = _af_case(tmp_path, samtools, converted=1, total=8)
+    assert plain["verdict"] == "ambiguous"
+    assert plain["locus_cn"] == "" and plain["expected_af"] == ""
+    assert "looks like" not in plain["reason"]
+
+    with_cn = _af_case(tmp_path, samtools, converted=1, total=8,
+                       extra=["--genome-depth", str(48 / 8)])
+
+    assert with_cn["verdict"] == "ambiguous", "copy number explains the fraction, it does not call it"
+    assert with_cn["locus_cn"] == "8.0"
+    assert with_cn["expected_af"] == "0.125"
+    assert "looks like 8 copies" in with_cn["reason"]
+
+
+def test_a_single_copy_locus_gets_no_such_excuse(tmp_path, samtools):
+    """At one copy there is no other copy for the unconverted reads to have come from, so a
+    diluted tract is diluted and the row says nothing to soften it."""
+    row = _af_case(tmp_path, samtools, converted=1, total=8,
+                   extra=["--genome-depth", "48"])
+
+    assert row["locus_cn"] == "1.0"
+    assert "looks like" not in row["reason"]
+
+
+@pytest.mark.parametrize("af,said", [(0.25, False), (0.2499, True)])
+def test_a_tract_at_exactly_the_floor_is_not_a_diluted_one(af, said):
+    """`--min-tract-af` is the fraction a tract must reach, so reaching it is reaching it, and
+    the excuses for a diluted fraction have no business on a tract that is not diluted.
+
+    Asked of the function rather than through a run, because the only view of the fraction from
+    outside is a column rounded to three decimals, where a value on the floor and one under it
+    read the same. The first version of this test went through a run and asserted nothing.
+    """
+    notes = gc.dilution_notes(af, 0.25, cn_ratio=8.0, copies=8, expected_af=0.125,
+                              het_fraction=0.31)
+
+    assert bool(notes) is said
+
+
+def test_a_tract_with_no_fitted_fraction_gets_no_excuses():
+    assert gc.dilution_notes(None, 0.25, 8.0, 8, 0.125, 0.31) == ""
+
+
+def test_each_excuse_appears_only_when_its_own_input_was_given():
+    """Neither is inferred from the other: a copy number is a measurement of this locus and a
+    het fraction is a statement about the sample, and one arriving does not supply the other."""
+    both = gc.dilution_notes(0.1, 0.25, 8.0, 8, 0.125, 0.31)
+    cn_only = gc.dilution_notes(0.1, 0.25, 8.0, 8, 0.125, None)
+    het_only = gc.dilution_notes(0.1, 0.25, None, None, None, 0.31)
+
+    assert "looks like 8 copies" in both and "heterozygous" in both
+    assert "looks like 8 copies" in cn_only and "heterozygous" not in cn_only
+    assert "looks like" not in het_only and "heterozygous" in het_only
+    assert gc.dilution_notes(0.1, 0.25, None, None, None, None) == ""
+
+
+def test_a_mixed_sample_is_reported_beside_a_diluted_tract_and_never_decides_one(tmp_path,
+                                                                                 samtools):
+    """Knowing the sample is mixed genome-wide does not say THIS tract is the other strain, and
+    a verdict that moved on it would be saying exactly that."""
+    row = _af_case(tmp_path, samtools, converted=1, total=8, extra=["--het-fraction", "0.31"])
+
+    assert row["verdict"] == "ambiguous"
+    assert "31% of this sample's variant sites are heterozygous" in row["reason"]
+    assert "context, not a reading of this locus" in row["reason"]
+
+
+# --------------------------------------------------------------------------- #
+# Non-reciprocal is the definition, not a detail of it                         #
+# --------------------------------------------------------------------------- #
+
+
+def test_the_polarity_counts_tell_the_kinds_apart():
+    """Three counts, three meanings, and a tract is judged on which of them is larger.
+
+    `derived` is the only kind that can support a conversion; `ancestral` argues the opposite;
+    everything else is a site the outgroup could not settle. Counting any two of them together
+    makes the comparison between them meaningless.
+    """
+    polarity = {10: "derived", 20: "derived", 30: "ancestral", 40: "third", 50: ""}
+
+    assert gc.polarity_counts([10, 20, 30, 40, 50], polarity) == (2, 1, 2)
+
+
+def test_without_an_outgroup_the_counts_are_all_zero():
+    assert gc.polarity_counts([10, 20], {}) == (0, 0, 0)
+    assert gc.polarity_counts([10, 20], None) == (0, 0, 0)
+
+
+def test_the_reference_sequence_is_not_read_without_a_gff_to_use_it_with(tmp_path, samtools):
+    """Nothing to place a codon in means nothing to read a codon from.
+
+    Asserted by RUNNING it rather than by inspecting the parsed arguments, which was the first
+    version of this test and exercised nothing at all: the reference here does not exist, so a
+    run that opens it fails and a run that ignores it does not.
+    """
+    positions = [100, 110, 120]
+    bam = _bam(tmp_path, [_sam_line("r", 95, "30M", "A" * 30, qual="I" * 30)])
+    sites = _sites_tsv(tmp_path / "sites.tsv", {0: positions})
+    out = tmp_path / "tracts.tsv"
+
+    assert gc.main(["--sites", sites, "--bam", bam, "--sample", "S1", "-o", str(out),
+                    "--samtools", samtools, "--min-sites", "2",
+                    "--reference", str(tmp_path / "does_not_exist.fa")]) == 0
+
+
+def test_reciprocity_reports_the_donors_swap_inside_the_tract_and_outside_it():
+    """Both, because the fraction inside on its own says nothing at all."""
+    positions = [10, 20, 30, 40, 50, 60]
+    swap = {10: 0.9, 20: 1.0, 30: 0.8, 40: 0.1, 50: 0.0, 60: 0.2}
+
+    inside, outside = gc.reciprocity([10, 20, 30], positions, swap)
+
+    assert inside == pytest.approx(0.9)
+    assert outside == pytest.approx(0.1)
+
+
+def test_a_donor_too_little_read_on_either_side_says_nothing():
+    """None, not zero, and on BOTH sides. Silence is not evidence the donor stayed put, and it is
+    not evidence it moved either."""
+    positions = [10, 20, 30, 40, 50, 60]
+
+    assert gc.reciprocity([10, 20, 30], positions, {}) == (None, None)
+    assert gc.reciprocity([10, 20, 30], positions, {10: 0.9}) == (None, None)
+    # enough inside, nothing outside to compare it with
+    assert gc.reciprocity([10, 20, 30], positions,
+                          {10: 0.9, 20: 0.9, 30: 0.9}) == (None, None)
+
+
+def test_only_the_tracts_own_sites_count_as_inside_it():
+    positions = [10, 20, 90, 95]
+    swap = {10: 0.0, 20: 0.0, 90: 1.0, 95: 1.0}
+
+    assert gc.reciprocity([10, 20], positions, swap) == (pytest.approx(0.0), pytest.approx(1.0))
+
+
+@pytest.mark.parametrize("inside,outside,exchange", [
+    (1.0, 0.0, True),          # bounded: the donor swapped over this stretch and nowhere else
+    (1.0, 1.0, False),         # everywhere: these reads came from the acceptor, nothing swapped
+    (0.6, 0.6, False),
+    (0.49, 0.0, False),        # too little of the donor to call it swapped
+    (0.5, 0.0, True),          # exactly at the threshold, which is reaching it
+    (1.0, 0.5, False),         # outside AT the threshold is already too much to call it bounded
+    (1.0, 0.49, True),
+    (None, None, False),
+    (1.0, None, False),
+])
+def test_an_exchange_has_to_be_bounded_to_be_an_exchange(inside, outside, exchange):
+    """The half that keeps wholesale mismapping out, and it was missing.
+
+    Reads from the unconverted acceptor that the aligner placed at the donor carry the acceptor's
+    bases at EVERY site they reach. Measured on a donor that had changed nothing, with 60% of the
+    reads at its locus arriving from the acceptor: the verdict came out `reciprocal_exchange`,
+    which both invented an exchange and buried the real conversion at the acceptor. A real event
+    is bounded, and that is what separates them.
+    """
+    assert gc.is_exchange(inside, outside, reciprocal_af=0.5) is exchange
+
+
+def _swap_case(tmp_path, samtools, donor_swapped, mismapped=0, extra=()):
+    """One locus with a clean tract, and a donor copy that has or has not swapped with it.
+
+    `mismapped` adds reads from the UNCONVERTED acceptor at the donor's locus, which is what an
+    aligner does in a paralogous region. They carry the acceptor's bases everywhere, not over a
+    bounded stretch, which is the whole difference.
+    """
+    positions = [100, 110, 120, 130, 140, 150, 160, 170]
+    tract = {110, 120, 130}
+    acc_seq = ["A"] * 90
+    for p in tract:
+        acc_seq[p - 95] = "G"                       # the acceptor carries the donor's base
+    records = [_sam_line(f"a{i}", 95, "90M", "".join(acc_seq), qual="I" * 90) for i in range(14)]
+    # The donor copy sits 1200 along. Its own base is G everywhere; when it has swapped, it
+    # carries the acceptor's A over the same three sites.
+    don_seq = ["G"] * 90
+    if donor_swapped:
+        for p in tract:
+            don_seq[p - 95] = "A"
+    records += [_sam_line(f"d{i}", 1295, "90M", "".join(don_seq), qual="I" * 90)
+                for i in range(14 - mismapped)]
+    records += [_sam_line(f"m{i}", 1295, "90M", "A" * 90, qual="I" * 90)
+                for i in range(mismapped)]
+    bam = _bam(tmp_path, records, contig_length=3000)
+    sites = _sites_tsv(tmp_path / f"s{donor_swapped}.sites", {0: positions})
+    out = tmp_path / f"o{donor_swapped}.tsv"
+
+    assert gc.main(["--sites", sites, "--bam", bam, "--sample", "S1", "-o", str(out),
+                    "--samtools", samtools, "--min-sites", "2", "--report-bf", "-99",
+                    *extra]) == 0
+    return _only_row(out)
+
+
+def test_a_donor_that_kept_its_own_bases_leaves_the_conversion_a_conversion(tmp_path, samtools):
+    row = _swap_case(tmp_path, samtools, donor_swapped=False)
+
+    assert row["verdict"] == "gene_conversion"
+    assert float(row["donor_swap_af"]) < 0.1
+
+
+def test_both_copies_carrying_the_others_bases_is_an_exchange_not_a_conversion(tmp_path,
+                                                                              samtools):
+    """The one thing that separates conversion from unequal crossover, and it was asserted in the
+    docstring and never measured.
+
+    A conversion is non-reciprocal: the donor hands over a copy of its sequence and keeps its
+    own. If the donor has also taken on the acceptor's bases over the same stretch, one event
+    changed both copies, and what it did to the family is not what a conversion does.
+    """
+    row = _swap_case(tmp_path, samtools, donor_swapped=True)
+
+    assert row["verdict"] == "reciprocal_exchange"
+    assert float(row["donor_swap_af"]) > 0.9
+    assert "both copies changed" in row["reason"]
+
+
+def test_reads_arriving_from_the_acceptor_are_not_an_exchange(tmp_path, samtools):
+    """The failure this check was written without, measured end to end.
+
+    An aligner in a paralogous region puts reads from the unconverted acceptor at the donor's
+    locus, and they carry the acceptor's bases at every site they reach. Read as a fraction at
+    the tract's sites alone, a donor that had changed nothing came out as `reciprocal_exchange`
+    with 60% of its reads swapped, and the real conversion at the acceptor was lost with it: the
+    check both invented a finding and buried a true one.
+    """
+    row = _swap_case(tmp_path, samtools, donor_swapped=False, mismapped=9)
+
+    assert float(row["donor_swap_af"]) > 0.5, "the raw fraction inside the tract does look swapped"
+    assert row["donor_swap_af"] == row["donor_swap_af_outside"], "and outside it, identically"
+    assert row["verdict"] == "gene_conversion"
+
+
+def test_an_exchange_survives_some_mismapping_on_top_of_it(tmp_path, samtools):
+    """The other direction: requiring the outside to be quiet must not throw away a real exchange
+    that a few stray reads have muddied."""
+    row = _swap_case(tmp_path, samtools, donor_swapped=True, mismapped=4)
+
+    assert row["verdict"] == "reciprocal_exchange"
+    assert float(row["donor_swap_af"]) > float(row["donor_swap_af_outside"])
+
+
+@pytest.mark.parametrize("cap,exchange", [(1.0, True), (1.01, False)])
+def test_the_fraction_at_which_it_becomes_an_exchange_is_a_setting(tmp_path, samtools, cap,
+                                                                   exchange):
+    """`--reciprocal-af` is the share the donor must reach, so reaching it is enough. The donor
+    here has swapped at every read, which is a fraction of exactly 1."""
+    row = _swap_case(tmp_path, samtools, donor_swapped=True,
+                     extra=["--reciprocal-af", str(cap)])
+
+    assert (row["verdict"] == "reciprocal_exchange") is exchange
+
+
 # Every constant in `depleted_runs` is a threshold, and each one reads perfectly well when it is
 # a step out. The cases below sit exactly ON each of them, in the direction that has to pass.
 #

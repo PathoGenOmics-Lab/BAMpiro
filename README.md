@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/bampiro2.png" height="200" alt="BAMpiro logo" />
+  <img src="docs/assets/bampiro.svg" height="200" alt="BAMpiro logo" />
 </p>
 
 <div align="center">

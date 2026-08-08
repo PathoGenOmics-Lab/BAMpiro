@@ -16,13 +16,42 @@ def gconvHeader() {
             'post_conv', 'log10_bf', 'log10_bf_vs_null', 'tract_af', 'mismap_frac', 'mut_rate',
             'start_ci', 'end_ci',
             'n_sites', 'n_sites_outside', 'n_undetermined', 'donor_af_in', 'donor_af_outside',
-            'min_depth', 'cis_reads', 'breakpoint_reads', 'donor_only_reads'].join('\\t')
+            'min_depth', 'cis_reads', 'breakpoint_reads', 'donor_only_reads',
+            'n_derived', 'n_ancestral', 'n_unpolarised', 'donor_swap_af', 'donor_swap_af_outside',
+            'locus_cn', 'expected_af',
+            'genes', 'n_syn', 'n_nonsyn', 'aa_changes'].join('\\t')
 }
 
 def gconvLocusHeader() {
     return ['sample', 'pair_id', 'contig', 'donor', 'n_sites', 'n_reads', 'start', 'end',
             'n_tract_sites', 'log10_bf', 'log10_bf_vs_null', 'tract_af', 'mismap_frac',
             'mut_rate'].join('\\t')
+}
+
+process ALIGN_OUTGROUP {
+    // An outgroup aligned against the reference, which is what says WHICH copy a difference is
+    // on. Without it a sample carrying the donor's base and a reference carrying a derived one
+    // are the same picture, and the reference's history gets reported as the sample's.
+    tag "Outgroup: ${refId}"
+    cpus 2
+    memory { 8.GB * task.attempt }
+
+    input:
+    tuple val(refId), path(ref_fa), path(outgroup)
+
+    output:
+    tuple val(refId), path("${refId}.outgroup.delta"), emit: delta
+
+    script:
+    """
+    set -euo pipefail
+    nucmer --maxmatch --prefix ${refId}.outgroup ${ref_fa} ${outgroup} --threads ${task.cpus}
+    """
+
+    stub:
+    """
+    touch ${refId}.outgroup.delta
+    """
 }
 
 process PARALOG_MAP {
@@ -32,7 +61,10 @@ process PARALOG_MAP {
     memory { 4.GB * task.attempt }
 
     input:
-    tuple val(refId), path(delta)
+    // The outgroup delta is optional and arrives as assets/NO_FILE_OUTGROUP when absent. With it
+    // each diagnostic site says which copy the difference is on, so a sample carrying the donor's
+    // base can be told from a reference that carries a derived one.
+    tuple val(refId), path(delta), path(outgroup_delta)
 
     output:
     tuple val(refId), path("${refId}.paralog_pairs.tsv"), emit: pairs
@@ -41,18 +73,20 @@ process PARALOG_MAP {
     script:
     """
     set -euo pipefail
+    ANC_ARG=""; case "${outgroup_delta}" in ""|NO_FILE*) ;; *) ANC_ARG="--ancestor-delta ${outgroup_delta}";; esac
     python3 ${projectDir}/bin/paralog_map.py \\
         --delta ${delta} \\
         --out-pairs ${refId}.paralog_pairs.tsv \\
         --out-sites ${refId}.paralog_sites.tsv \\
         --min-identity ${params.gconv_min_identity} \\
-        --min-length ${params.gconv_min_paralog_length}
+        --min-length ${params.gconv_min_paralog_length} \\
+        \$ANC_ARG
     """
 
     stub:
     """
     printf 'pair_id\\tacceptor\\tacc_start\\tacc_end\\tdonor\\tdon_start\\tdon_end\\tstrand\\tidentity\\tlength\\tn_diagnostic\\n' > ${refId}.paralog_pairs.tsv
-    printf 'pair_id\\tacceptor\\tacc_pos\\tacc_base\\tdonor\\tdon_pos\\tdon_base\\tstrand\\tkind\\tlength\\n' > ${refId}.paralog_sites.tsv
+    printf 'pair_id\\tacceptor\\tacc_pos\\tacc_base\\tdonor\\tdon_pos\\tdon_base\\tstrand\\tkind\\tlength\\tanc_acc\\tanc_don\\tpolarity\\tdon_derived\\n' > ${refId}.paralog_sites.tsv
     """
 }
 
@@ -65,7 +99,7 @@ process FIND_GENE_CONVERSION {
     input:
     // The BAM is the deduplicated, PRE-FILTER one on purpose: the mappability filter drops the
     // multi-mapping reads that carry the evidence.
-    tuple val(sampleId), val(refId), path(bam), path(bai), path(sites)
+    tuple val(sampleId), val(refId), path(bam), path(bai), path(sites), path(ref_fa), path(gff)
 
     output:
     tuple val(sampleId), val(refId), path("${sampleId}.${refId}.gene_conversion.tsv"), emit: tracts
@@ -76,6 +110,14 @@ process FIND_GENE_CONVERSION {
     script:
     """
     set -euo pipefail
+    # Without a GFF the tract is coordinates and nothing else, which is a finding nobody can act
+    # on. With one it names the genes it landed on and what its copied bases do to their proteins.
+    GFF_ARG=""; case "${gff}" in ""|NO_FILE*) ;; *) GFF_ARG="--gff ${gff} --reference ${ref_fa}";; esac
+    # The sample's own genome-wide depth, so a locus can be compared with it. One extra pass
+    # over an already indexed BAM, and it is what turns "a diluted tract" into "a clonal
+    # conversion of one copy out of three".
+    GDEPTH=\$(samtools coverage ${bam} \\
+        | awk 'NR>1 && \$3>0 {len+=\$3; sum+=\$3*\$7} END {print (len>0) ? sum/len : 0}')
     python3 ${projectDir}/bin/gene_conversion.py \\
         --sites ${sites} \\
         --bam ${bam} \\
@@ -94,7 +136,10 @@ process FIND_GENE_CONVERSION {
         --min-mismap ${params.gconv_min_mismap} \\
         --min-sites ${params.gconv_min_sites} \\
         --min-depth ${params.gconv_min_depth} \\
-        --min-bq ${params.gconv_min_bq}
+        --min-bq ${params.gconv_min_bq} \\
+        --reciprocal-af ${params.gconv_reciprocal_af} \\
+        --genome-depth "\$GDEPTH" \\
+        \$GFF_ARG
     """
 
     stub:

@@ -190,6 +190,115 @@ named wrongly, with 27 rows collapsing to 19 events.
     With four samples, "in all of them" is four, which says nothing about the reference. The
     cohort columns are still filled in; only the demotion is withheld.
 
+## How many copies are contributing reads here
+
+A gene family with more members than the reference pair puts the extra copies' reads at this
+locus too, and they carry the acceptor's alleles because they were never converted. A clonal
+conversion of ONE copy then shows up in one copy's worth of the reads, which at four or five
+copies is below the floor that separates a real minority event from contamination.
+
+The pipeline measures the sample's own genome-wide depth and passes it in, so each locus reports
+`locus_cn`, how many times the genome's depth it runs at, and `expected_af`, the read fraction a
+clonal conversion of one copy would reach at that copy number. Compare it with `tract_af`.
+
+!!! warning "This explains a diluted fraction. It does not discriminate one"
+
+    At a locus with five copies, a clonal conversion of one copy and a contamination at 20% are
+    the same fraction, and no amount of depth separates them. So the verdict does not move: a
+    diluted tract stays `ambiguous` and the reason now says what the number would mean if it were
+    the first reading. That is the difference between a bucket and a reading, not a new call.
+
+A mixed sample is weaker still. `bin/gene_conversion.py --het-fraction` takes the share of a
+sample's variant sites that are heterozygous and prints it beside a diluted tract, never using it
+to decide one: a sample that is mixed genome-wide is a sample where another strain is present
+SOMEWHERE, which is not a statement about this locus. The pipeline does not pass it, because that
+number comes from the variant statistics and those run after this stage. It is there for running
+the script by hand over a cohort whose stats you already have.
+
+## Was it a conversion at all
+
+Gene conversion is **non-reciprocal**: the donor hands over a copy of its sequence and keeps its
+own. That is the definition, and until now it was only ever asserted in it.
+
+The donor's own reads are read over the same diagnostic sites, and `donor_swap_af` says how much
+of the donor now carries the ACCEPTOR's bases. If that clears `--gconv_reciprocal_af`, the two
+copies swapped: one event changed both, which is an unequal crossover, and what it does to the
+gene family is not what a conversion does. The verdict is `reciprocal_exchange`.
+
+`donor_swap_af_outside` is the same fraction at the locus's OTHER diagnostic sites, and the
+verdict needs both: high inside, low outside. That second half is not a refinement, it is what
+makes the check mean anything. Reads from the unconverted acceptor that the aligner placed at the
+donor carry the acceptor's bases at every site they reach, which at the tract's sites alone is
+the same picture as a donor that genuinely swapped. A real event is bounded; reads that arrived
+from next door are not.
+
+Both columns are empty rather than zero where too few sites could be read on either side. Silence
+there is not evidence the donor stayed put, and not evidence it moved.
+
+!!! note "A deletion marker cannot be read from the donor's side"
+
+    The donor is the copy that has no base there, so there is nothing at that position for a read
+    to carry either way. Those sites are left out of the fraction.
+
+## Which copy changed
+
+A sample whose acceptor carries the donor's base at a diagnostic site has either changed or not,
+and the site alone cannot tell which. The reference is one genome among many. Where ITS acceptor
+copy carries a derived allele, a sample carrying the donor's base is holding the **ancestral**
+state and has converted nothing: the finding belongs to the reference, and reported as a
+conversion it is the reference's history attributed to the sample.
+
+Point `--gconv_outgroup` at a genome outside the clade being studied (for MTBC, the inferred
+ancestor) and each diagnostic site is labelled:
+
+| `polarity` | What it means |
+| :--- | :--- |
+| `derived` | The reference's acceptor is ancestral, so a sample carrying the donor's base has changed. This is the site a conversion can be built from |
+| `ancestral` | The reference's acceptor is derived and the ancestral allele is the donor's. A sample carrying the donor's base has retained it |
+| `third` | The outgroup carries neither base. Something happened here, but not this |
+| *(empty)* | The outgroup does not reach the position, or has deleted it |
+
+A tract whose polarised sites mostly say `ancestral` is reported as `reference_derived` rather
+than as a conversion. The per-tract counts are in `n_derived`, `n_ancestral` and `n_unpolarised`.
+
+!!! tip "`don_derived` is the strongest a single site gets"
+
+    Where the DONOR's allele is itself an innovation, a sample cannot be carrying it by
+    retention: there is nothing to retain. It had to be copied.
+
+!!! note "The outgroup alignment is merged before it is used"
+
+    `nucmer --maxmatch` emits nested and overlapping alignments deliberately, and a containment
+    test that consults only the last alignment starting before a position answers it with the
+    short nested one. Positions inside a long alignment then came back uncovered and went
+    unpolarised, which is indistinguishable from the outgroup not reaching them.
+
+!!! warning "Silence in the outgroup alignment is not agreement"
+
+    A position the outgroup does not reach is left unpolarised rather than assumed identical.
+    Treating "no difference reported here" as "the same base here" would hand the reference's own
+    allele the authority of the ancestor over exactly the regions where the two genomes have
+    diverged most, which in a paralog family is where the question is.
+
+## What a tract does to the genes it lands on
+
+With a GFF for the reference, each tract reports the genes it covers and the consequence of its
+copied bases: `genes`, `n_syn`, `n_nonsyn`, and `aa_changes` as `Rv0001:K2Q` entries. The GFF
+comes from the samplesheet's `refGff` column, so this needs no new input.
+
+Only the diagnostic sites change. Everywhere else the two copies are identical, so a conversion
+there is invisible and also inconsequential, and the consequence of a tract is the consequence of
+substituting the donor's base at each diagnostic site under it. Each is scored alone against the
+reference codon rather than compounded with its neighbours: two changes in one codon are rare at
+the density paralogs differ, and reporting a joint effect would claim a phase for the conversion
+that the breakpoints do not resolve.
+
+!!! note "Deletion markers are not scored"
+
+    What a deletion between the copies does to a protein is a frameshift question, not a codon
+    one, and half an answer there is worse than none. Deletion sites still count towards the
+    tract and towards the genes it covers.
+
 ## Verdicts
 
 | Verdict | Meaning |
@@ -199,6 +308,8 @@ named wrongly, with 27 rows collapsing to 19 events.
 | `ambiguous` | Reported, but not called. The `reason` column says what came closest |
 | `coverage_shift` | The acceptor lost its reads to the donor over a run of sites: it falls well below its own level elsewhere AND the donor rises above its own. Consistent with a conversion longer than the library insert, and equally with a deletion. See below |
 | `reference_artifact` | Present in nearly every sample of the cohort. Only a cohort can say this |
+| `reference_derived` | An outgroup says the REFERENCE carries the derived base over this stretch and the reads carry the ancestral one. The sample changed nothing. Only an outgroup can say this |
+| `reciprocal_exchange` | The donor carries the ACCEPTOR's bases over the same stretch, so both copies changed. That is an exchange, and gene conversion is non-reciprocal |
 
 A tract covering **every** diagnostic site of the locus is a special case that needs no special
 handling: "the whole locus was converted" and "every read here came from the donor" predict
@@ -267,6 +378,7 @@ the donor/acceptor graph of your reference.
 | :--- | :--- | :--- |
 | `--gconv_min_identity` | `90.0` | Ignore paralog pairs below this % identity |
 | `--gconv_min_paralog_length` | `200` | Ignore paralog pairs shorter than this |
+| `--gconv_outgroup` | *(empty)* | FASTA of a genome outside the clade. Without it, nothing says WHICH copy changed |
 | `--gconv_min_bf` | `3.0` | log10 Bayes factor before a tract is called a conversion |
 | `--gconv_report_bf` | `1.0` | log10 Bayes factor below which a tract is not written out |
 | `--gconv_prior` | `0.01` | Prior that a given paralog pair carries a tract |
@@ -280,6 +392,7 @@ the donor/acceptor graph of your reference.
 | `--gconv_min_sites` | `3` | Diagnostic sites a pair needs before it is analysed at all |
 | `--gconv_min_depth` | `5` | Depth below which a site is undetermined in the summaries |
 | `--gconv_min_bq` | `13` | Base-quality floor when reading an allele off a read |
+| `--gconv_reciprocal_af` | `0.5` | Share of the DONOR's reads carrying the acceptor's bases at which the event is an exchange rather than a conversion |
 | `--gconv_ubiquitous` | `0.9` | Fraction of the cohort at which an event is a reference artifact |
 | `--gconv_corroborated_bf` | `2.0` | Bayes factor a sub-threshold tract needs before another sample's outright call can vouch for it |
 | `--gconv_cohort_min_samples` | `5` | Cohort size below which recurrence says too little to act on |

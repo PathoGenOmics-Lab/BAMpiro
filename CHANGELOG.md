@@ -8,6 +8,31 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Added
 
+- **Whether the donor kept its own bases.** Gene conversion is non-reciprocal by
+  definition, and until now that was only asserted in the definition. The donor's
+  reads are read as alleles over the same sites, and `donor_swap_af` says how much
+  of the donor carries the ACCEPTOR's bases. Past `--gconv_reciprocal_af` both
+  copies changed, which is an unequal crossover: the verdict is
+  `reciprocal_exchange`. The swap has to be BOUNDED, high over the tract and low
+  outside it: reads from the unconverted acceptor that the aligner placed at the
+  donor carry the acceptor's bases everywhere, and reading the tract's sites
+  alone called a donor that had changed nothing an exchange.
+- **How many copies are contributing reads at a locus.** `locus_cn` and
+  `expected_af` say how many times the genome's depth a locus runs at and what a
+  clonal conversion of one copy would reach there, so a fraction that reads as a
+  minority event can be recognised as one whole copy of several. It explains a
+  diluted fraction and does not discriminate one, so no verdict moves on it.
+- **Which copy the conversion is on** (`--gconv_outgroup`, off by default). A sample
+  whose acceptor carries the donor's base has either changed or not, and the site
+  alone cannot tell which: where the REFERENCE's acceptor carries a derived allele,
+  a sample carrying the donor's base is holding the ancestral state and has
+  converted nothing. An outgroup aligned against the reference labels every
+  diagnostic site, and a tract whose sites mostly say ancestral is reported as
+  `reference_derived` instead of as a conversion.
+- **What a tract does to the genes it lands on.** With the reference's GFF, each
+  tract reports the genes it covers, how many of its copied bases are synonymous and
+  how many are not, and the amino-acid changes as `Rv0001:K2Q`. Deletion markers are
+  left out, being a frameshift question rather than a codon one.
 - **Gene conversion detection** (`--find_gene_conversion`, off by default). Finds
   tracts where one paralog has been copied onto another, which on a reference that
   never saw the event reads as a run of variants that are exactly the donor's

@@ -310,7 +310,7 @@ def parse_dr(path):
 
 
 _GCONV_VERDICTS = ("gene_conversion", "mismapping", "ambiguous", "coverage_shift",
-                   "reference_artifact")
+                   "reference_artifact", "reference_derived", "reciprocal_exchange")
 
 
 def parse_gene_conversion(path):
@@ -389,7 +389,18 @@ def parse_gene_conversion(path):
                                "depth": ival(d.get("min_depth")),
                                "cis_reads": ival(d.get("cis_reads")),
                                "bp_reads": ival(d.get("breakpoint_reads")),
-                               "donor_only": ival(d.get("donor_only_reads"))})
+                               "donor_only": ival(d.get("donor_only_reads")),
+                               "n_derived": ival(d.get("n_derived")),
+                               "n_ancestral": ival(d.get("n_ancestral")),
+                               "n_unpol": ival(d.get("n_unpolarised")),
+                               "donor_swap": to_float(d.get("donor_swap_af")),
+                               "donor_swap_out": to_float(d.get("donor_swap_af_outside")),
+                               "locus_cn": to_float(d.get("locus_cn")),
+                               "expected_af": to_float(d.get("expected_af")),
+                               "genes": (d.get("genes") or "").strip(),
+                               "n_syn": ival(d.get("n_syn")),
+                               "n_nonsyn": ival(d.get("n_nonsyn")),
+                               "aa_changes": (d.get("aa_changes") or "").strip()})
                 if s not in samples:
                     samples.append(s)
     except OSError:

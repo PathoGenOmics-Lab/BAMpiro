@@ -23,6 +23,7 @@ Both files come from MUMmer's own `show-coords` and `show-snps`, so no alignment
 from __future__ import annotations
 
 import argparse
+import bisect
 import subprocess
 import sys
 
@@ -141,6 +142,126 @@ def parse_snps(text):
     return sites, skipped
 
 
+def aligned_intervals(text):
+    """Reference intervals an outgroup alignment covers, as {contig: [(start, end)]}.
+
+    Needed because "no difference was reported here" and "nothing was aligned here" are the same
+    silence in a SNP file and mean opposite things. A position the outgroup does not reach is not
+    a position where the outgroup agrees.
+    """
+    out = {}
+    for line in text.splitlines():
+        f = line.rstrip("\n").split("\t")
+        if len(f) < COORDS_FIELDS or not (f[0].isdigit() and f[1].isdigit()):
+            continue
+        s, e = int(f[0]), int(f[1])
+        out.setdefault(f[11], []).append((min(s, e), max(s, e)))
+
+    # Merged, and that is not tidying. An outgroup is aligned with the same `--maxmatch` that
+    # produces the paralog map, so it emits nested and overlapping alignments on purpose. The
+    # lookup below finds the last interval starting at or before a position and asks only that
+    # one, so a position inside a long alignment that also contains a short nested one was
+    # answered by the short one and came back uncovered. Whole stretches of the outgroup then
+    # went unpolarised, and an unpolarised site is indistinguishable from one the outgroup
+    # genuinely does not reach.
+    for contig, spans in out.items():
+        spans.sort()
+        merged = []
+        for start, end in spans:
+            if merged and start <= merged[-1][1] + 1:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append((start, end))
+        out[contig] = merged
+    return out
+
+
+def ancestral_bases(snps_text, coords_text):
+    """What an outgroup carries at each reference position: (differences, covered intervals).
+
+    `differences` holds only the positions where the outgroup differs from the reference, which is
+    what `show-snps` reports. Everywhere inside a covered interval the two agree, so the reference
+    base IS the ancestral base there and no entry is needed.
+
+    Outgroup indels are recorded as None rather than skipped. A position the outgroup has deleted
+    has no ancestral base to speak of, and treating it as agreement would hand the reference's own
+    allele the authority of the ancestor.
+    """
+    diffs = {}
+    for line in snps_text.splitlines():
+        f = line.rstrip("\n").split("\t")
+        if len(f) < SNPS_FIELDS or not f[0].isdigit():
+            continue
+        ref_base, anc_base = f[1].upper(), f[2].upper()
+        if ref_base == ".":
+            continue                      # the outgroup has extra sequence; no reference position
+        diffs[(f[12], int(f[0]))] = None if anc_base == "." else anc_base
+    return diffs, aligned_intervals(coords_text)
+
+
+def _covered(intervals, contig, pos):
+    spans = intervals.get(contig)
+    if not spans:
+        return False
+    i = bisect.bisect_right(spans, (pos, float("inf")))
+    return i > 0 and spans[i - 1][1] >= pos
+
+
+def ancestral_at(diffs, intervals, contig, pos, ref_base):
+    """The outgroup's base at one reference position, or None when it cannot be read there."""
+    if (contig, pos) in diffs:
+        return diffs[(contig, pos)]
+    return ref_base if _covered(intervals, contig, pos) else None
+
+
+def polarise(sites, diffs, intervals):
+    """Say, per diagnostic site, which copy the change is on.
+
+    A sample whose acceptor carries the DONOR's base at a diagnostic site has either changed or
+    not, and the site alone cannot tell which. The reference is one genome among many: where its
+    acceptor copy carries a derived allele, a sample carrying the donor's base is holding the
+    ANCESTRAL state and has changed nothing at all. Read as a conversion, that is the reference's
+    history reported as the sample's.
+
+    An outgroup settles it, per site:
+
+    * `derived` - the reference's acceptor is ancestral, so a sample carrying the donor's base
+      there has changed. This is the site that can support a conversion.
+    * `ancestral` - the reference's acceptor is derived and the ancestral allele is the donor's.
+      A sample carrying the donor's base has retained it, and the finding belongs to the
+      reference rather than to the sample.
+    * `third` - the outgroup carries neither base. Something happened here, but not this.
+    * `` - the outgroup does not reach the position, or has deleted it.
+
+    `don_derived` is separate and stronger where it holds: when the DONOR's allele is itself an
+    innovation, a sample cannot be carrying it by retention. It had to be copied.
+    """
+    for s in sites:
+        # A deletion site is not polarised, so it is not looked up either. Its `acc_base` is the
+        # whole run of bases the donor lacks, and handing that to a per-position lookup gets it
+        # back unchanged: the column would then claim the outgroup carries all of them, on the
+        # strength of having checked one position.
+        if s["kind"] != "snp":
+            s["anc_acc"] = s["anc_don"] = ""
+            s["polarity"] = ""
+            s["don_derived"] = 0
+            continue
+        anc_acc = ancestral_at(diffs, intervals, s["acceptor"], s["acc_pos"], s["acc_base"])
+        anc_don = ancestral_at(diffs, intervals, s["donor"], s["don_pos"], s["don_base"])
+        s["anc_acc"] = anc_acc or ""
+        s["anc_don"] = anc_don or ""
+        if anc_acc is None:
+            s["polarity"] = ""
+        elif anc_acc == s["acc_base"]:
+            s["polarity"] = "derived"
+        elif anc_acc == s["don_base"]:
+            s["polarity"] = "ancestral"
+        else:
+            s["polarity"] = "third"
+        s["don_derived"] = int(anc_don is not None and anc_don != s["don_base"])
+    return sites
+
+
 def alignment_offset(start, end, acc_start, strand):
     """Where the donor sits relative to the acceptor along an alignment.
 
@@ -204,7 +325,7 @@ def sites_within_pairs(sites, pairs):
 PAIR_COLS = ["pair_id", "acceptor", "acc_start", "acc_end", "donor", "don_start", "don_end",
              "strand", "identity", "length", "n_diagnostic"]
 SITE_COLS = ["pair_id", "acceptor", "acc_pos", "acc_base", "donor", "don_pos", "don_base",
-             "strand", "kind", "length"]
+             "strand", "kind", "length", "anc_acc", "anc_don", "polarity", "don_derived"]
 
 
 def write_tsv(path, columns, rows):
@@ -224,6 +345,11 @@ def parse_args(argv=None):
                    help="ignore pairs below this %% identity (default: %(default)s)")
     p.add_argument("--min-length", type=int, default=200,
                    help="ignore pairs shorter than this many bp (default: %(default)s)")
+    p.add_argument("--ancestor-delta",
+                   help="nucmer .delta of an OUTGROUP aligned against this reference, as "
+                        "`nucmer reference.fasta outgroup.fasta`. With it, each diagnostic site "
+                        "says which copy the difference is on, so a sample carrying the donor's "
+                        "base can be told from a reference that carries a derived one")
     p.add_argument("--show-coords", default="show-coords")
     p.add_argument("--show-snps", default="show-snps")
     return p.parse_args(argv)
@@ -239,6 +365,12 @@ def main(argv=None) -> int:
     all_sites, indels = parse_snps(_run([a.show_snps, "-l", "-r", "-T", "-H", a.delta]))
     sites = sites_within_pairs(all_sites, pairs)
 
+    if a.ancestor_delta:
+        diffs, intervals = ancestral_bases(
+            _run([a.show_snps, "-l", "-r", "-T", "-H", a.ancestor_delta]),
+            _run([a.show_coords, "-r", "-c", "-l", "-T", a.ancestor_delta]))
+        polarise(sites, diffs, intervals)
+
     counts = {}
     for s in sites:
         counts[s["pair_id"]] = counts.get(s["pair_id"], 0) + 1
@@ -253,6 +385,15 @@ def main(argv=None) -> int:
         f"[paralog_map] {len(pairs)} paralogous pair(s), {len(sites)} diagnostic site(s) "
         f"({sum(1 for s in sites if s['kind'] == 'del')} of them deletions)"
         f"{f', {indels} position(s) skipped' if indels else ''}\n")
+    if a.ancestor_delta:
+        by = {}
+        for s in sites:
+            by[s["polarity"]] = by.get(s["polarity"], 0) + 1
+        sys.stderr.write(
+            f"[paralog_map] polarised against the outgroup: {by.get('derived', 0)} site(s) where "
+            f"the reference is ancestral, {by.get('ancestral', 0)} where it is not and the donor's "
+            f"base is the ancestral one, {by.get('third', 0)} where the outgroup carries neither, "
+            f"{by.get('', 0)} it cannot reach\n")
     return 0
 
 

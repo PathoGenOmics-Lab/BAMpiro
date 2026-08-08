@@ -13,7 +13,7 @@
  * DEDUPLICATED, PRE-FILTER BAM.
  */
 
-include { PARALOG_MAP; FIND_GENE_CONVERSION; COLLECT_GENE_CONVERSION } from '../modules/gene_conversion'
+include { ALIGN_OUTGROUP; PARALOG_MAP; FIND_GENE_CONVERSION; COLLECT_GENE_CONVERSION } from '../modules/gene_conversion'
 include { asBool } from '../modules/utils'
 
 workflow GENE_CONVERSION {
@@ -21,6 +21,7 @@ workflow GENE_CONVERSION {
     take:
     ref_delta      // [refId, self_aln.delta] from PREPARE_REFERENCE
     dedup_bam      // [sampleId, refId, bam, bai, ref_fa, exclude_txt] BEFORE the mappability filter
+    ref_gff        // [refId, gff] so a tract can name the genes it landed on
     tsv_name
 
     main:
@@ -28,13 +29,27 @@ workflow GENE_CONVERSION {
     def tracts = Channel.empty()
 
     if (asBool(params.find_gene_conversion)) {
-        def maps = PARALOG_MAP(ref_delta)
+        // The outgroup is one sequence for the whole run: a genome ancestral to, or outside, the
+        // clade being studied. Absent, the placeholder rides along and every polarity column
+        // comes out empty rather than guessed at.
+        def no_outgroup = file("${projectDir}/assets/NO_FILE_OUTGROUP")
+        def anc_delta = params.gconv_outgroup
+            ? ALIGN_OUTGROUP(dedup_bam
+                  .map { sId, rId, bam, bai, fa, excl -> tuple(rId, fa) }
+                  .unique { it[0] }
+                  .map { rId, fa -> tuple(rId, fa, file(params.gconv_outgroup)) }).delta
+            : ref_delta.map { rId, d -> tuple(rId, no_outgroup) }
+
+        def maps = PARALOG_MAP(ref_delta.join(anc_delta))
 
         // Fan the per-reference site list out to every sample mapped against that reference.
+        def no_gff = file("${projectDir}/assets/NO_FILE_GCONV_GFF")
+        def gff_by_ref = ref_gff.map { rId, gff -> tuple(rId, gff ? file(gff) : no_gff) }
         def gconv_in = dedup_bam
-            .map { sId, rId, bam, bai, fa, excl -> tuple(rId, sId, bam, bai) }
+            .map { sId, rId, bam, bai, fa, excl -> tuple(rId, sId, bam, bai, fa) }
             .combine(maps.sites, by: 0)
-            .map { rId, sId, bam, bai, sites -> tuple(sId, rId, bam, bai, sites) }
+            .combine(gff_by_ref, by: 0)
+            .map { rId, sId, bam, bai, fa, sites, gff -> tuple(sId, rId, bam, bai, sites, fa, gff) }
 
         def found = FIND_GENE_CONVERSION(gconv_in)
         tracts = found.tracts

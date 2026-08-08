@@ -292,6 +292,233 @@ def test_parse_snps_ignores_banner_header_and_short_lines(junk):
     assert indels == 0
 
 
+# ------------------------------------------------------------------- polarising
+
+
+def _anc_snps(*rows):
+    """`show-snps` of an OUTGROUP against this reference: P1 is a reference position."""
+    return "".join("\t".join([str(p), ref, anc, "1", "50", "50", "1", "1",
+                              "2300", "2300", "1", "1", "chr", "anc"]) + "\n"
+                   for p, ref, anc in rows)
+
+
+def _anc_coords(start=1, end=2300):
+    """One alignment covering the reference, so a position with no SNP row is agreement."""
+    return "\t".join([str(start), str(end), "1", str(end - start + 1),
+                       str(end - start + 1), str(end - start + 1), "99.00",
+                       "2300", "2300", "99.00", "99.00", "chr", "anc"]) + "\n"
+
+
+def _polarised(snps_rows, sites_text=None, coords=None):
+    sites, _ = pm.parse_snps(sites_text or SNPS)
+    diffs, intervals = pm.ancestral_bases(_anc_snps(*snps_rows), coords or _anc_coords())
+    return {s["acc_pos"]: s for s in pm.polarise(sites, diffs, intervals)}
+
+
+def test_a_site_where_the_reference_is_ancestral_can_support_a_conversion():
+    """The outgroup agrees with the reference's acceptor, so a sample carrying the DONOR's base
+    there has changed. That is the site a conversion can be built from."""
+    got = _polarised([])                       # no differences: the outgroup matches throughout
+
+    assert got[471]["polarity"] == "derived"
+    assert got[471]["anc_acc"] == got[471]["acc_base"]
+
+
+def test_a_site_where_the_reference_carries_the_derived_base_supports_nothing():
+    """The finding belongs to the reference, not to the sample.
+
+    Here the outgroup carries at the acceptor position exactly what the DONOR carries. So the
+    reference's acceptor copy is the one that changed, and a sample whose reads show the donor's
+    base is holding the ancestral state and has converted nothing. Read without an outgroup, this
+    is indistinguishable from a conversion, and it is the reference's history reported as the
+    sample's.
+    """
+    site = {s["acc_pos"]: s for s in pm.parse_snps(SNPS)[0]}[471]
+    got = _polarised([(471, site["acc_base"], site["don_base"])])
+
+    assert got[471]["polarity"] == "ancestral"
+
+
+def test_a_site_where_the_outgroup_carries_neither_base_says_neither():
+    site = {s["acc_pos"]: s for s in pm.parse_snps(SNPS)[0]}[471]
+    third = next(b for b in "ACGT" if b not in (site["acc_base"], site["don_base"]))
+
+    assert _polarised([(471, site["acc_base"], third)])[471]["polarity"] == "third"
+
+
+def test_a_position_the_outgroup_does_not_reach_is_not_a_position_it_agrees_with():
+    """Silence in a SNP file is not agreement.
+
+    An outgroup is a different genome: it has stretches this reference does not, and stretches of
+    this reference it lacks entirely. Treating "no row here" as "the same base here" hands the
+    reference's own allele the authority of the ancestor over exactly the regions where the two
+    genomes have diverged most, which in a paralog family is where the question is.
+    """
+    got = _polarised([], coords=_anc_coords(1, 400))      # the alignment stops before the pair
+
+    assert got[471]["polarity"] == ""
+    assert got[471]["anc_acc"] == ""
+
+
+def test_a_position_the_outgroup_has_deleted_has_no_ancestral_base():
+    got = _polarised([(471, "A", ".")])
+
+    assert got[471]["polarity"] == ""
+
+
+def test_a_donor_allele_that_is_itself_derived_is_flagged():
+    """The strongest a single site gets.
+
+    If the DONOR's base is an innovation of the donor copy, a sample cannot be carrying it by
+    retention: there is nothing to retain. It had to be copied from the donor.
+    """
+    site = {s["acc_pos"]: s for s in pm.parse_snps(SNPS)[0]}[471]
+    other = next(b for b in "ACGT" if b not in (site["acc_base"], site["don_base"]))
+
+    plain = _polarised([])
+    innovated = _polarised([(1371, site["don_base"], other)])
+
+    assert plain[471]["don_derived"] == 0
+    assert innovated[471]["don_derived"] == 1
+
+
+def test_a_deletion_marker_is_not_polarised_by_a_substitution_outgroup():
+    """`show-snps` of the outgroup speaks about bases. A site that is the absence of bases has no
+    ancestral base to compare with, and guessing one either way would be inventing the answer."""
+    sites, _ = pm.parse_snps(_snps_row(600, "A", ".", 1500))
+    diffs, intervals = pm.ancestral_bases(_anc_snps(), _anc_coords())
+
+    got = pm.polarise(sites, diffs, intervals)
+
+    assert got[0]["kind"] == "del"
+    assert got[0]["polarity"] == ""
+
+
+def test_a_deletion_run_is_not_handed_back_its_own_bases_as_the_ancestors():
+    """A multi-base deletion carries the WHOLE run in `acc_base`, and a per-position lookup that
+    finds no difference returns what it was given.
+
+    So the column came back reading `CAT`: a claim that the outgroup carries three specific bases
+    there, made on the strength of having checked one position, at a site that is not polarised
+    at all. Nothing downstream would have questioned it.
+    """
+    run = "".join(_snps_row(p, b, ".", 1500) for p, b in ((600, "C"), (601, "A"), (602, "T")))
+    sites, _ = pm.parse_snps(run)
+    diffs, intervals = pm.ancestral_bases(_anc_snps(), _anc_coords())
+
+    got = pm.polarise(sites, diffs, intervals)[0]
+
+    assert (got["kind"], got["acc_base"], got["length"]) == ("del", "CAT", 3)
+    assert got["anc_acc"] == "" and got["anc_don"] == ""
+    assert got["don_derived"] == 0
+
+
+@pytest.mark.parametrize("pos,covered", [(401, True), (1000, True), (400, False), (1001, False)])
+def test_the_outgroup_alignment_covers_its_own_first_and_last_base(pos, covered):
+    """Inclusive at both ends, and nothing outside.
+
+    Both errors are silent and opposite. Too tight and the sites at the edges of an alignment go
+    unpolarised, which is where a conversion tract runs off the aligned stretch. Too loose and a
+    position the outgroup never reached is read as agreement with the reference, which hands the
+    reference's own allele the authority of the ancestor.
+    """
+    intervals = pm.aligned_intervals(_anc_coords(401, 1000))
+
+    assert pm._covered(intervals, "chr", pos) is covered
+
+
+def test_a_nested_alignment_does_not_hide_the_long_one_containing_it():
+    """`--maxmatch` emits nested and overlapping alignments on purpose, and the lookup asks only
+    the last interval starting at or before the position.
+
+    So a position sitting inside a long alignment that also contains a short nested one was
+    answered by the short one and came back uncovered. Whole stretches of the outgroup went
+    unpolarised, and an unpolarised site is indistinguishable from one the outgroup genuinely
+    does not reach: the feature quietly did much less than it said, with nothing to show for it.
+    """
+    intervals = pm.aligned_intervals(_anc_coords(1, 1000) + _anc_coords(500, 600))
+
+    for pos in (300, 550, 800, 1000):
+        assert pm._covered(intervals, "chr", pos) is True, pos
+    assert pm._covered(intervals, "chr", 1001) is False
+
+
+def test_alignments_arriving_out_of_order_still_cover_what_they_cover():
+    """nucmer output is not sorted by the reference, and two alignments that meet or overlap are
+    one covered stretch however they arrived."""
+    intervals = pm.aligned_intervals(_anc_coords(2000, 3000) + _anc_coords(1, 1000)
+                                     + _anc_coords(900, 2100))
+
+    assert intervals["chr"] == [(1, 3000)]
+    assert pm._covered(intervals, "chr", 1500) is True
+    assert pm._covered(intervals, "chr", 3001) is False
+
+
+def test_two_alignments_that_touch_end_to_start_are_one_stretch():
+    """Adjacent is not a gap: 1-500 and 501-1000 leave nothing uncovered between them."""
+    intervals = pm.aligned_intervals(_anc_coords(1, 500) + _anc_coords(501, 1000))
+
+    assert intervals["chr"] == [(1, 1000)]
+
+
+def test_a_real_gap_between_alignments_stays_a_gap():
+    """The merge must not swallow one. A position the outgroup does not reach is the whole reason
+    the coverage is tracked at all."""
+    intervals = pm.aligned_intervals(_anc_coords(1, 500) + _anc_coords(600, 1000))
+
+    assert intervals["chr"] == [(1, 500), (600, 1000)]
+    assert pm._covered(intervals, "chr", 550) is False
+
+
+def test_a_position_before_every_alignment_is_not_covered_by_the_last_one():
+    """The lookup walks back from the first interval starting past the position, and there may be
+    none before it. Reaching back anyway lands on the LAST interval of the contig."""
+    intervals = pm.aligned_intervals(_anc_coords(1000, 2000))
+
+    assert pm._covered(intervals, "chr", 500) is False
+    assert pm._covered(intervals, "other", 1500) is False
+
+
+@pytest.mark.parametrize("junk", [
+    "",
+    "NUCMER\n",
+    "[S1]\t[E1]\t[S2]\t[E2]\t[LEN 1]\t[LEN 2]\t[%% IDY]\t[LEN R]\t[LEN Q]\t[COV R]\t[COV Q]\t[TAGS]\t\n",
+    "1\t2\t3\n",
+    "x\t2300\t1\t2300\t-\t-\t-\t-\t-\t-\t-\tchr\tanc\n",
+])
+def test_the_outgroup_alignment_survives_whatever_mummer_prints_around_it(junk):
+    """Same banners and headers as the self-alignment, and the same consequence for getting the
+    guard wrong: a line with one number in it reaches int() on the rest."""
+    intervals = pm.aligned_intervals(junk + _anc_coords(401, 1000))
+
+    assert pm._covered(intervals, "chr", 500) is True
+
+
+def test_the_outgroup_snps_survive_the_same():
+    diffs, _ = pm.ancestral_bases("NUCMER\n\nnot a row\n1\t2\t3\n" + _anc_snps((471, "A", "G")),
+                                  _anc_coords())
+
+    assert diffs == {("chr", 471): "G"}
+
+
+def test_the_outgroup_base_at_the_donor_position_is_recorded():
+    """Not only the polarity but the bases it was read from, because a reader checking a call
+    against the alignment needs to see what the outgroup actually had."""
+    site = {s["acc_pos"]: s for s in pm.parse_snps(SNPS)[0]}[471]
+
+    got = _polarised([(1371, site["don_base"], "T")])[471]
+
+    assert got["anc_acc"] == site["acc_base"]
+    assert got["anc_don"] == "T"
+
+
+def test_without_an_outgroup_nothing_is_polarised_and_the_columns_stay_empty():
+    """The default. Every column the outgroup fills is absent rather than guessed at."""
+    sites, _ = pm.parse_snps(SNPS)
+
+    assert all("polarity" not in s for s in sites)
+
+
 # ----------------------------------------------------------------- sites_within_pairs
 
 

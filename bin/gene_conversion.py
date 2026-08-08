@@ -44,6 +44,7 @@ import subprocess
 import sys
 from collections import defaultdict
 
+import gconv_annotate as ga
 import gconv_model as gm
 
 # CIGAR operations that consume the reference, the read, or both.
@@ -195,6 +196,139 @@ def pileup(per_read, positions):
         c["depth"] = informative + c["other"]
         c["donor_af"] = (c["donor"] / informative) if informative else None
     return counts
+
+
+def locus_copies(counts, positions, genome_depth, min_depth=5):
+    """How many copies of this locus the reads look like: (ratio, copies, expected tract AF).
+
+    A paralog family with more members than the reference pair puts the extra copies' reads here
+    too, and they carry the acceptor's alleles because they were never converted. A clonal
+    conversion of ONE copy then shows up in one copy's worth of the reads, not in all of them,
+    and the read fraction that would otherwise read as a minority event is exactly what a clonal
+    one looks like at that copy number.
+
+    Measured against the sample's own genome-wide depth rather than an absolute, because half the
+    reads of a shallow run and half the reads of a deep one are the same fraction and not the
+    same thing.
+
+    (None, None, None) without a genome depth to compare against. The number is not guessed at:
+    an assumed copy number of 1 is exactly the assumption that makes a clonal conversion in a
+    three-copy family look like contamination.
+    """
+    if not genome_depth or genome_depth <= 0:
+        return None, None, None
+    seen = [counts[p]["depth"] for p in positions if counts[p]["depth"] >= min_depth]
+    if not seen:
+        return None, None, None
+    ratio = _median(seen) / genome_depth
+    copies = max(1, int(round(ratio)))
+    return round(ratio, 2), copies, round(1.0 / copies, 3)
+
+
+def dilution_notes(tract_af, min_tract_af, cn_ratio, copies, expected_af, het_fraction):
+    """What else fits a tract carried by less than `min_tract_af` of the reads.
+
+    Copy number EXPLAINS a diluted fraction, it does not discriminate one: at a locus with five
+    copies, a clonal conversion of one and a contamination at 20% are the same fraction and no
+    amount of depth separates them. A mixed sample is weaker still, saying only that another
+    strain is present somewhere, not that it is present here. So neither moves the verdict, and
+    both are said, which is the difference between a bucket and a reading.
+
+    A function rather than the condition inline, because the only view of `tract_af` from outside
+    is a column rounded to three decimals, where a value on the floor and one just under it read
+    the same. That is the second threshold in this file to have hidden behind its own rounding.
+    """
+    if tract_af is None or tract_af >= min_tract_af:
+        return ""
+    notes = []
+    if copies and copies > 1:
+        notes.append(
+            f"the locus runs at {cn_ratio} times the genome's depth, so it looks like {copies} "
+            f"copies and a clonal conversion of one would reach about {expected_af:.0%} of the "
+            "reads")
+    if het_fraction is not None:
+        notes.append(
+            f"{het_fraction:.0%} of this sample's variant sites are heterozygous genome-wide, so "
+            "a diluted tract here may belong to another strain. That is context, not a reading "
+            "of this locus")
+    return "".join("; " + n for n in notes)
+
+
+def donor_side(args, loc, positions):
+    """What the DONOR copy carries: (depth per site, fraction of reads carrying the ACCEPTOR's).
+
+    Both keyed by the ACCEPTOR position, so a caller can line them up with everything else.
+
+    The depth is what catches a tract whose reads moved next door. The alleles are what say
+    whether this was a conversion at all. Gene conversion is NON-reciprocal by definition: the
+    donor hands over a copy of its sequence and keeps its own. If the donor has also taken on the
+    acceptor's bases over the same stretch, the two copies swapped, and a swap is an unequal
+    crossover, not a conversion.
+
+    The site pair is given to the reader the other way round on purpose. At the donor's own
+    position, the donor's base is the resident one and the acceptor's is the foreign one, so
+    `donor_af` there reads as "how much of the donor now looks like the acceptor".
+    """
+    don_pos = loc.get("donor_pos", {})
+    if not don_pos:
+        return {}, {}
+    dvals = sorted(don_pos.values())
+    proc = subprocess.run(
+        [args.samtools, "view", args.bam, f"{loc['donor']}:{dvals[0]}-{dvals[-1]}"],
+        capture_output=True, text=True)
+    if proc.returncode != 0:
+        return {}, {}
+
+    # A deletion marker cannot be read from the donor's side: the donor is the copy that HAS no
+    # base there, so there is nothing at that position for a read to carry either way.
+    sites = {}
+    for acc_pos, dp in don_pos.items():
+        acc_base, don_base = loc["sites"][acc_pos]
+        if don_base != GAP:
+            sites[dp] = (don_base, acc_base)
+    if not sites:
+        return {}, {}
+
+    reads = collect_read_alleles(proc.stdout.splitlines(), sites, args.min_bq)
+    counts = pileup(reads, sorted(sites))
+    depth = {ap: counts[dp]["depth"] for ap, dp in don_pos.items() if dp in counts}
+    swapped = {ap: counts[dp]["donor_af"] for ap, dp in don_pos.items()
+               if dp in counts and counts[dp]["donor_af"] is not None}
+    return depth, swapped
+
+
+def reciprocity(tract, positions, donor_swapped, min_sites=2):
+    """How much of the donor carries the acceptor's bases INSIDE the tract and outside it.
+
+    Both, because the fraction inside on its own says nothing. Reads from the unconverted
+    acceptor that the aligner placed at the donor carry the acceptor's bases at every site it
+    reaches, which is the same picture at a single site as a donor that genuinely swapped. What
+    tells them apart is the one thing this whole tool leans on: a real event is BOUNDED. An
+    exchange shows the acceptor's bases over the tract and the donor's own outside it; reads that
+    arrived from next door show the acceptor's everywhere.
+
+    (None, None) when too few sites on either side could be read. Silence is not evidence that
+    the donor stayed put, and it is not evidence that it moved.
+    """
+    inside = [donor_swapped[p] for p in tract if p in donor_swapped]
+    tract_set = set(tract)
+    outside = [donor_swapped[p] for p in positions
+               if p not in tract_set and p in donor_swapped]
+    if len(inside) < min_sites or len(outside) < min_sites:
+        return None, None
+    return sum(inside) / len(inside), sum(outside) / len(outside)
+
+
+def is_exchange(inside, outside, reciprocal_af):
+    """Whether the donor swapped with the acceptor over this stretch and only over it.
+
+    The second half is what keeps wholesale mismapping out. A donor locus whose reads came from
+    the acceptor carries the acceptor's bases outside the tract too, and calling that an exchange
+    both invents a finding and buries the conversion that is really there.
+    """
+    if inside is None or outside is None:
+        return False
+    return inside >= reciprocal_af and outside < reciprocal_af
 
 
 def worth_reporting(fit, report_bf, min_mismap):
@@ -384,7 +518,30 @@ def load_sites(path):
             # Optional: only the depletion check needs it, and a hand-made sites file may omit it.
             if "don_pos" in idx and f[idx["don_pos"]].strip().isdigit():
                 loc.setdefault("donor_pos", {})[int(f[idx["acc_pos"]])] = int(f[idx["don_pos"]])
+            # Which copy the difference is on, when an outgroup was given to say so.
+            if "polarity" in idx:
+                loc.setdefault("polarity", {})[int(f[idx["acc_pos"]])] = \
+                    f[idx["polarity"]].strip()
     return loci
+
+
+def polarity_counts(tract, polarity):
+    """How the sites under a tract are polarised: (derived, ancestral, unreadable).
+
+    `derived` sites are the ones that can support a conversion: the reference's acceptor carries
+    the ancestral base there, so a sample carrying the donor's base has changed. `ancestral` sites
+    say the opposite, that the REFERENCE carries the derived base and a sample carrying the
+    donor's has changed nothing.
+
+    A tract made mostly of the second kind is a real observation about the reference and not
+    about the sample, and without an outgroup the two are the same picture.
+    """
+    if not polarity:
+        return 0, 0, 0
+    kinds = [polarity.get(p, "") for p in tract]
+    derived = sum(1 for k in kinds if k == "derived")
+    ancestral = sum(1 for k in kinds if k == "ancestral")
+    return derived, ancestral, len(kinds) - derived - ancestral
 
 
 # One row per paralog pair analysed, whatever came of it. Feeds the cohort pass, which needs to
@@ -398,7 +555,10 @@ COLUMNS = ["sample", "pair_id", "contig", "donor", "verdict", "reason", "start",
            "post_conv", "log10_bf", "log10_bf_vs_null", "tract_af", "mismap_frac", "mut_rate",
            "start_ci", "end_ci",
            "n_sites", "n_sites_outside", "n_undetermined", "donor_af_in", "donor_af_outside",
-           "min_depth", "cis_reads", "breakpoint_reads", "donor_only_reads"]
+           "min_depth", "cis_reads", "breakpoint_reads", "donor_only_reads",
+           "n_derived", "n_ancestral", "n_unpolarised",
+           "donor_swap_af", "donor_swap_af_outside",
+           "locus_cn", "expected_af"] + ga.ANNOTATION_COLUMNS
 
 
 # Parameters that change the numbers in the output. Recorded in the file itself, because a
@@ -470,6 +630,21 @@ def parse_args(argv=None):
                    help="informative depth below which a site counts as undetermined in the "
                         "descriptive columns and in the depletion check")
     p.add_argument("--min-bq", type=int, default=13, help="base-quality floor")
+    p.add_argument("--genome-depth", type=float, default=None,
+                   help="the sample's genome-wide mean depth. With it, each locus reports how "
+                        "many copies its reads look like, and the read fraction a clonal "
+                        "conversion is expected to reach at that copy number")
+    p.add_argument("--het-fraction", type=float, default=None,
+                   help="fraction of the sample's variant sites that are heterozygous, as a "
+                        "genome-wide signal that the sample is mixed. Reported beside a diluted "
+                        "tract, never used to decide one")
+    p.add_argument("--reciprocal-af", type=float, default=0.5,
+                   help="fraction of the DONOR's reads carrying the acceptor's bases at which "
+                        "the event is an exchange between the copies rather than a conversion "
+                        "of one by the other (default: %(default)s)")
+    p.add_argument("--gff", help="GFF3 for the reference. With it, each tract reports the genes "
+                                 "it covers and what its copied bases do to their proteins")
+    p.add_argument("--reference", help="reference FASTA, needed with --gff to read the codons")
     p.add_argument("--samtools", default="samtools")
     a = p.parse_args(argv)
     # Check the ranges here rather than letting the model take log(0) on the first locus: by then
@@ -489,6 +664,10 @@ def parse_args(argv=None):
 def main(argv=None) -> int:
     a = parse_args(argv)
     loci = load_sites(a.sites)
+    # Read once for the whole sample. Absent, every annotation column comes out empty rather than
+    # guessed at, which is the default: a reference has a GFF or it does not.
+    features = ga.parse_cds(a.gff) if a.gff else []
+    seqs = ga.read_fasta(a.reference) if a.gff and a.reference else {}
 
     rows, locus_rows = [], []
     for pair_id, loc in sorted(loci.items(), key=lambda kv: int(kv[0])):
@@ -505,6 +684,13 @@ def main(argv=None) -> int:
         obs = collect_read_observations(proc.stdout.splitlines(), loc["sites"])
         per_read = allele_view(obs, loc["sites"], a.min_bq)
         counts = pileup(per_read, positions)
+
+        # The DONOR side of the same pair. Read before the tracts are judged, because what the
+        # donor carries decides what kind of event this is: a conversion leaves it alone, and a
+        # reciprocal exchange does not.
+        donor_counts, donor_swapped = donor_side(a, loc, positions)
+        cn_ratio, copies, expected_af = locus_copies(counts, positions, a.genome_depth,
+                                                     a.min_depth)
 
         # The model decides where the tracts are and whether they mean anything. It sees the
         # bases and their qualities, not the pileup summary, and it compares a tract against the
@@ -547,6 +733,32 @@ def main(argv=None) -> int:
             covers_locus = fit["map_i"] == 0 and fit["map_j"] == len(positions) - 1
             verdict, reason = gm.verdict(fit, covers_locus, a.min_bf, a.min_mismap,
                                          a.min_tract_af)
+            reason += dilution_notes(fit.get("tract_af"), a.min_tract_af, cn_ratio, copies,
+                                     expected_af, a.het_fraction)
+            # Which copy the change is on, where an outgroup was given to say so. The model has
+            # no view on this: it sees the acceptor carrying the donor's base and that is the
+            # same picture whether the sample changed or the reference did.
+            derived, ancestral, unread = polarity_counts(tract, loc.get("polarity"))
+            # Non-reciprocal is not a detail of the definition, it is the definition. If the donor
+            # has taken on the acceptor's bases over the same stretch, the two copies swapped, and
+            # a swap is an unequal crossover: one event, both copies changed, and the consequences
+            # for the family are not the consequences of a conversion.
+            swapped, swapped_out = reciprocity(tract, positions, donor_swapped)
+            if is_exchange(swapped, swapped_out, a.reciprocal_af):
+                verdict = "reciprocal_exchange"
+                reason = (
+                    f"the donor carries the acceptor's bases over the same stretch "
+                    f"({swapped:.0%} of its reads there against {swapped_out:.0%} outside it), so "
+                    "both copies changed and only over this stretch. That is an exchange between "
+                    "them rather than one copy being overwritten, and gene conversion is "
+                    "non-reciprocal by definition")
+            elif ancestral > derived:
+                verdict = "reference_derived"
+                reason = (
+                    f"{ancestral} of the {derived + ancestral} polarised site(s) here carry the "
+                    "ancestral base in the reads and a derived one in the reference, so it is the "
+                    "REFERENCE's copy that was converted or mutated and this sample retains what "
+                    "the outgroup has. Not a conversion in this sample")
             if fit["stride"] > 1:
                 reason += (f"; breakpoints resolved to every {fit['stride']} diagnostic sites "
                            "because the locus has too many to search exhaustively")
@@ -562,21 +774,21 @@ def main(argv=None) -> int:
                          "end_ci": "{}-{}".format(*fit["end_ci"]),
                          "don_start": min(dpos) if dpos else None,
                          "don_end": max(dpos) if dpos else None,
+                         "n_derived": derived, "n_ancestral": ancestral,
+                         "n_unpolarised": unread,
+                         "donor_swap_af": None if swapped is None else round(swapped, 3),
+                         "donor_swap_af_outside": (None if swapped_out is None
+                                                   else round(swapped_out, 3)),
+                         "locus_cn": cn_ratio, "expected_af": expected_af,
+                         # Only the diagnostic sites change: everywhere else the two copies are
+                         # identical, so a conversion there is invisible and inconsequential.
+                         # Deletion markers are left out, being a frameshift question rather than
+                         # a codon one, and half an answer there is worse than none.
+                         **ga.annotate_tract(
+                             features, seqs, loc["contig"], tract[0], tract[-1],
+                             {p: loc["sites"][p][1] for p in tract
+                              if loc["sites"][p][1] != GAP}),
                          **ev})
-
-        # Depth on the DONOR side of the same pair, to catch the tracts whose reads moved there.
-        don_pos = loc.get("donor_pos", {})
-        donor_counts = {}
-        if don_pos:
-            dvals = sorted(don_pos.values())
-            dproc = subprocess.run(
-                [a.samtools, "view", a.bam, f"{loc['donor']}:{dvals[0]}-{dvals[-1]}"],
-                capture_output=True, text=True)
-            if dproc.returncode == 0:
-                dsites = {dp: ("N", "N") for dp in dvals}     # only depth matters here
-                dreads = collect_read_alleles(dproc.stdout.splitlines(), dsites, a.min_bq)
-                dcounts = pileup(dreads, dvals)
-                donor_counts = {ap: dcounts[dp]["depth"] for ap, dp in don_pos.items()}
 
         for run in depleted_runs(positions, counts, donor_counts, a.min_depth,
                                  min_sites=a.min_sites, exclude=in_any):
@@ -591,6 +803,9 @@ def main(argv=None) -> int:
                 "n_sites": len(run), "start": min(run), "end": max(run),
                 "span_bp": max(run) - min(run) + 1, "n_sites_outside": len(positions) - len(run),
                 "n_undetermined": 0, "donor_af_in": None, "donor_af_outside": None,
+                "n_derived": 0, "n_ancestral": 0, "n_unpolarised": len(run),
+                "donor_swap_af": None, "donor_swap_af_outside": None, "locus_cn": cn_ratio, "expected_af": expected_af,
+                **ga.annotate_tract(features, seqs, loc["contig"], run[0], run[-1], {}),
                 "min_depth": min(counts[p]["depth"] for p in run),
                 "cis_reads": 0, "breakpoint_reads": 0, "donor_only_reads": 0})
 
