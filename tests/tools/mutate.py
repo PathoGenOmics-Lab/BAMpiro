@@ -69,6 +69,9 @@ EQUIVALENT = {
         "donor has no sites left to establish a baseline from and the run is dropped anyway",
     ('if per is not None and (c["per"] is None or per > c["per"]):', ">="):
         "replaces a candidate's evidence per marker with a value equal to it",
+    ('if not genome_depth or genome_depth <= 0:', "<"):
+        "the left arm already short-circuits on 0, which is falsy, so the comparison only ever "
+        "sees a negative depth and both forms reject one",
     ('carries = measured & (site_lr > 0)', ">="):
         "`measured` already requires |site_lr| above the calling threshold, so nothing inside "
         "the mask can be zero",

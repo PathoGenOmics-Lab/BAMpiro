@@ -198,6 +198,62 @@ def pileup(per_read, positions):
     return counts
 
 
+def locus_copies(counts, positions, genome_depth, min_depth=5):
+    """How many copies of this locus the reads look like: (ratio, copies, expected tract AF).
+
+    A paralog family with more members than the reference pair puts the extra copies' reads here
+    too, and they carry the acceptor's alleles because they were never converted. A clonal
+    conversion of ONE copy then shows up in one copy's worth of the reads, not in all of them,
+    and the read fraction that would otherwise read as a minority event is exactly what a clonal
+    one looks like at that copy number.
+
+    Measured against the sample's own genome-wide depth rather than an absolute, because half the
+    reads of a shallow run and half the reads of a deep one are the same fraction and not the
+    same thing.
+
+    (None, None, None) without a genome depth to compare against. The number is not guessed at:
+    an assumed copy number of 1 is exactly the assumption that makes a clonal conversion in a
+    three-copy family look like contamination.
+    """
+    if not genome_depth or genome_depth <= 0:
+        return None, None, None
+    seen = [counts[p]["depth"] for p in positions if counts[p]["depth"] >= min_depth]
+    if not seen:
+        return None, None, None
+    ratio = _median(seen) / genome_depth
+    copies = max(1, int(round(ratio)))
+    return round(ratio, 2), copies, round(1.0 / copies, 3)
+
+
+def dilution_notes(tract_af, min_tract_af, cn_ratio, copies, expected_af, het_fraction):
+    """What else fits a tract carried by less than `min_tract_af` of the reads.
+
+    Copy number EXPLAINS a diluted fraction, it does not discriminate one: at a locus with five
+    copies, a clonal conversion of one and a contamination at 20% are the same fraction and no
+    amount of depth separates them. A mixed sample is weaker still, saying only that another
+    strain is present somewhere, not that it is present here. So neither moves the verdict, and
+    both are said, which is the difference between a bucket and a reading.
+
+    A function rather than the condition inline, because the only view of `tract_af` from outside
+    is a column rounded to three decimals, where a value on the floor and one just under it read
+    the same. That is the second threshold in this file to have hidden behind its own rounding.
+    """
+    if tract_af is None or tract_af >= min_tract_af:
+        return ""
+    notes = []
+    if copies and copies > 1:
+        notes.append(
+            f"the locus runs at {cn_ratio} times the genome's depth, so it looks like {copies} "
+            f"copies and a clonal conversion of one would reach about {expected_af:.0%} of the "
+            "reads")
+    if het_fraction is not None:
+        notes.append(
+            f"{het_fraction:.0%} of this sample's variant sites are heterozygous genome-wide, so "
+            "a diluted tract here may belong to another strain. That is context, not a reading "
+            "of this locus")
+    return "".join("; " + n for n in notes)
+
+
 def donor_side(args, loc, positions):
     """What the DONOR copy carries: (depth per site, fraction of reads carrying the ACCEPTOR's).
 
@@ -480,7 +536,7 @@ COLUMNS = ["sample", "pair_id", "contig", "donor", "verdict", "reason", "start",
            "n_sites", "n_sites_outside", "n_undetermined", "donor_af_in", "donor_af_outside",
            "min_depth", "cis_reads", "breakpoint_reads", "donor_only_reads",
            "n_derived", "n_ancestral", "n_unpolarised",
-           "donor_swap_af"] + ga.ANNOTATION_COLUMNS
+           "donor_swap_af", "locus_cn", "expected_af"] + ga.ANNOTATION_COLUMNS
 
 
 # Parameters that change the numbers in the output. Recorded in the file itself, because a
@@ -552,6 +608,14 @@ def parse_args(argv=None):
                    help="informative depth below which a site counts as undetermined in the "
                         "descriptive columns and in the depletion check")
     p.add_argument("--min-bq", type=int, default=13, help="base-quality floor")
+    p.add_argument("--genome-depth", type=float, default=None,
+                   help="the sample's genome-wide mean depth. With it, each locus reports how "
+                        "many copies its reads look like, and the read fraction a clonal "
+                        "conversion is expected to reach at that copy number")
+    p.add_argument("--het-fraction", type=float, default=None,
+                   help="fraction of the sample's variant sites that are heterozygous, as a "
+                        "genome-wide signal that the sample is mixed. Reported beside a diluted "
+                        "tract, never used to decide one")
     p.add_argument("--reciprocal-af", type=float, default=0.5,
                    help="fraction of the DONOR's reads carrying the acceptor's bases at which "
                         "the event is an exchange between the copies rather than a conversion "
@@ -603,6 +667,8 @@ def main(argv=None) -> int:
         # donor carries decides what kind of event this is: a conversion leaves it alone, and a
         # reciprocal exchange does not.
         donor_counts, donor_swapped = donor_side(a, loc, positions)
+        cn_ratio, copies, expected_af = locus_copies(counts, positions, a.genome_depth,
+                                                     a.min_depth)
 
         # The model decides where the tracts are and whether they mean anything. It sees the
         # bases and their qualities, not the pileup summary, and it compares a tract against the
@@ -645,6 +711,8 @@ def main(argv=None) -> int:
             covers_locus = fit["map_i"] == 0 and fit["map_j"] == len(positions) - 1
             verdict, reason = gm.verdict(fit, covers_locus, a.min_bf, a.min_mismap,
                                          a.min_tract_af)
+            reason += dilution_notes(fit.get("tract_af"), a.min_tract_af, cn_ratio, copies,
+                                     expected_af, a.het_fraction)
             # Which copy the change is on, where an outgroup was given to say so. The model has
             # no view on this: it sees the acceptor carrying the donor's base and that is the
             # same picture whether the sample changed or the reference did.
@@ -686,6 +754,7 @@ def main(argv=None) -> int:
                          "n_derived": derived, "n_ancestral": ancestral,
                          "n_unpolarised": unread,
                          "donor_swap_af": None if swapped is None else round(swapped, 3),
+                         "locus_cn": cn_ratio, "expected_af": expected_af,
                          # Only the diagnostic sites change: everywhere else the two copies are
                          # identical, so a conversion there is invisible and inconsequential.
                          # Deletion markers are left out, being a frameshift question rather than
@@ -710,7 +779,7 @@ def main(argv=None) -> int:
                 "span_bp": max(run) - min(run) + 1, "n_sites_outside": len(positions) - len(run),
                 "n_undetermined": 0, "donor_af_in": None, "donor_af_outside": None,
                 "n_derived": 0, "n_ancestral": 0, "n_unpolarised": len(run),
-                "donor_swap_af": None,
+                "donor_swap_af": None, "locus_cn": cn_ratio, "expected_af": expected_af,
                 **ga.annotate_tract(features, seqs, loc["contig"], run[0], run[-1], {}),
                 "min_depth": min(counts[p]["depth"] for p in run),
                 "cis_reads": 0, "breakpoint_reads": 0, "donor_only_reads": 0})

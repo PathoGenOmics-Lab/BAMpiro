@@ -18,6 +18,7 @@ def gconvHeader() {
             'n_sites', 'n_sites_outside', 'n_undetermined', 'donor_af_in', 'donor_af_outside',
             'min_depth', 'cis_reads', 'breakpoint_reads', 'donor_only_reads',
             'n_derived', 'n_ancestral', 'n_unpolarised', 'donor_swap_af',
+            'locus_cn', 'expected_af',
             'genes', 'n_syn', 'n_nonsyn', 'aa_changes'].join('\\t')
 }
 
@@ -112,6 +113,11 @@ process FIND_GENE_CONVERSION {
     # Without a GFF the tract is coordinates and nothing else, which is a finding nobody can act
     # on. With one it names the genes it landed on and what its copied bases do to their proteins.
     GFF_ARG=""; case "${gff}" in ""|NO_FILE*) ;; *) GFF_ARG="--gff ${gff} --reference ${ref_fa}";; esac
+    # The sample's own genome-wide depth, so a locus can be compared with it. One extra pass
+    # over an already indexed BAM, and it is what turns "a diluted tract" into "a clonal
+    # conversion of one copy out of three".
+    GDEPTH=\$(samtools coverage ${bam} \\
+        | awk 'NR>1 && \$3>0 {len+=\$3; sum+=\$3*\$7} END {print (len>0) ? sum/len : 0}')
     python3 ${projectDir}/bin/gene_conversion.py \\
         --sites ${sites} \\
         --bam ${bam} \\
@@ -132,6 +138,7 @@ process FIND_GENE_CONVERSION {
         --min-depth ${params.gconv_min_depth} \\
         --min-bq ${params.gconv_min_bq} \\
         --reciprocal-af ${params.gconv_reciprocal_af} \\
+        --genome-depth "\$GDEPTH" \\
         \$GFF_ARG
     """
 

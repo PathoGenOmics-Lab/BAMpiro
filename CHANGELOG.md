@@ -8,6 +8,17 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Added
 
+- **Whether the donor kept its own bases.** Gene conversion is non-reciprocal by
+  definition, and until now that was only asserted in the definition. The donor's
+  reads are read as alleles over the same sites, and `donor_swap_af` says how much
+  of the donor carries the ACCEPTOR's bases. Past `--gconv_reciprocal_af` both
+  copies changed, which is an unequal crossover: the verdict is
+  `reciprocal_exchange`.
+- **How many copies are contributing reads at a locus.** `locus_cn` and
+  `expected_af` say how many times the genome's depth a locus runs at and what a
+  clonal conversion of one copy would reach there, so a fraction that reads as a
+  minority event can be recognised as one whole copy of several. It explains a
+  diluted fraction and does not discriminate one, so no verdict moves on it.
 - **Which copy the conversion is on** (`--gconv_outgroup`, off by default). A sample
   whose acceptor carries the donor's base has either changed or not, and the site
   alone cannot tell which: where the REFERENCE's acceptor carries a derived allele,

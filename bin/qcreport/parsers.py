@@ -394,6 +394,8 @@ def parse_gene_conversion(path):
                                "n_ancestral": ival(d.get("n_ancestral")),
                                "n_unpol": ival(d.get("n_unpolarised")),
                                "donor_swap": to_float(d.get("donor_swap_af")),
+                               "locus_cn": to_float(d.get("locus_cn")),
+                               "expected_af": to_float(d.get("expected_af")),
                                "genes": (d.get("genes") or "").strip(),
                                "n_syn": ival(d.get("n_syn")),
                                "n_nonsyn": ival(d.get("n_nonsyn")),

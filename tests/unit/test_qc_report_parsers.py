@@ -434,6 +434,7 @@ def test_parse_gene_conversion_reads_the_tracts_samples_and_verdict_counts(tmp_p
         "depth": 18, "cis_reads": 11, "bp_reads": 3, "donor_only": 0,
         # absent from a file written without an outgroup or a GFF, which is the default
         "n_derived": None, "n_ancestral": None, "n_unpol": None, "donor_swap": None,
+        "locus_cn": None, "expected_af": None,
         "genes": "", "n_syn": None, "n_nonsyn": None, "aa_changes": ""}
 
 

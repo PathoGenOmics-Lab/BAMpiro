@@ -190,6 +190,31 @@ named wrongly, with 27 rows collapsing to 19 events.
     With four samples, "in all of them" is four, which says nothing about the reference. The
     cohort columns are still filled in; only the demotion is withheld.
 
+## How many copies are contributing reads here
+
+A gene family with more members than the reference pair puts the extra copies' reads at this
+locus too, and they carry the acceptor's alleles because they were never converted. A clonal
+conversion of ONE copy then shows up in one copy's worth of the reads, which at four or five
+copies is below the floor that separates a real minority event from contamination.
+
+The pipeline measures the sample's own genome-wide depth and passes it in, so each locus reports
+`locus_cn`, how many times the genome's depth it runs at, and `expected_af`, the read fraction a
+clonal conversion of one copy would reach at that copy number. Compare it with `tract_af`.
+
+!!! warning "This explains a diluted fraction. It does not discriminate one"
+
+    At a locus with five copies, a clonal conversion of one copy and a contamination at 20% are
+    the same fraction, and no amount of depth separates them. So the verdict does not move: a
+    diluted tract stays `ambiguous` and the reason now says what the number would mean if it were
+    the first reading. That is the difference between a bucket and a reading, not a new call.
+
+A mixed sample is weaker still. `bin/gene_conversion.py --het-fraction` takes the share of a
+sample's variant sites that are heterozygous and prints it beside a diluted tract, never using it
+to decide one: a sample that is mixed genome-wide is a sample where another strain is present
+SOMEWHERE, which is not a statement about this locus. The pipeline does not pass it, because that
+number comes from the variant statistics and those run after this stage. It is there for running
+the script by hand over a cohort whose stats you already have.
+
 ## Was it a conversion at all
 
 Gene conversion is **non-reciprocal**: the donor hands over a copy of its sequence and keeps its
