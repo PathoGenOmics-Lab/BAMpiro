@@ -225,8 +225,15 @@ of the donor now carries the ACCEPTOR's bases. If that clears `--gconv_reciproca
 copies swapped: one event changed both, which is an unequal crossover, and what it does to the
 gene family is not what a conversion does. The verdict is `reciprocal_exchange`.
 
-The column is empty rather than zero where too few of the tract's sites could be read on the
-donor's side. Silence there is not evidence the donor stayed put.
+`donor_swap_af_outside` is the same fraction at the locus's OTHER diagnostic sites, and the
+verdict needs both: high inside, low outside. That second half is not a refinement, it is what
+makes the check mean anything. Reads from the unconverted acceptor that the aligner placed at the
+donor carry the acceptor's bases at every site they reach, which at the tract's sites alone is
+the same picture as a donor that genuinely swapped. A real event is bounded; reads that arrived
+from next door are not.
+
+Both columns are empty rather than zero where too few sites could be read on either side. Silence
+there is not evidence the donor stayed put, and not evidence it moved.
 
 !!! note "A deletion marker cannot be read from the donor's side"
 

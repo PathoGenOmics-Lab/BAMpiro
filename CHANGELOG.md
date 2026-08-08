@@ -13,7 +13,10 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
   reads are read as alleles over the same sites, and `donor_swap_af` says how much
   of the donor carries the ACCEPTOR's bases. Past `--gconv_reciprocal_af` both
   copies changed, which is an unequal crossover: the verdict is
-  `reciprocal_exchange`.
+  `reciprocal_exchange`. The swap has to be BOUNDED, high over the tract and low
+  outside it: reads from the unconverted acceptor that the aligner placed at the
+  donor carry the acceptor's bases everywhere, and reading the tract's sites
+  alone called a donor that had changed nothing an exchange.
 - **How many copies are contributing reads at a locus.** `locus_cn` and
   `expected_af` say how many times the genome's depth a locus runs at and what a
   clonal conversion of one copy would reach there, so a fraction that reads as a

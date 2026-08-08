@@ -1084,25 +1084,66 @@ def test_the_reference_sequence_is_not_read_without_a_gff_to_use_it_with(tmp_pat
                     "--reference", str(tmp_path / "does_not_exist.fa")]) == 0
 
 
-def test_reciprocity_is_the_share_of_the_donor_that_took_the_acceptors_bases():
-    assert gc.reciprocity([10, 20, 30], {10: 0.9, 20: 1.0, 30: 0.8}) == pytest.approx(0.9)
+def test_reciprocity_reports_the_donors_swap_inside_the_tract_and_outside_it():
+    """Both, because the fraction inside on its own says nothing at all."""
+    positions = [10, 20, 30, 40, 50, 60]
+    swap = {10: 0.9, 20: 1.0, 30: 0.8, 40: 0.1, 50: 0.0, 60: 0.2}
+
+    inside, outside = gc.reciprocity([10, 20, 30], positions, swap)
+
+    assert inside == pytest.approx(0.9)
+    assert outside == pytest.approx(0.1)
 
 
-def test_a_donor_too_little_read_to_speak_about_says_nothing():
-    """None, not zero. Silence on the donor's side is not evidence that it stayed put, and
-    reporting 0 for it would be exactly that: a value standing in for the absence of one."""
-    assert gc.reciprocity([10, 20, 30], {}) is None
-    assert gc.reciprocity([10, 20, 30], {10: 0.9}) is None
-    assert gc.reciprocity([10, 20, 30], {10: 0.9, 20: 0.9}) == pytest.approx(0.9)
+def test_a_donor_too_little_read_on_either_side_says_nothing():
+    """None, not zero, and on BOTH sides. Silence is not evidence the donor stayed put, and it is
+    not evidence it moved either."""
+    positions = [10, 20, 30, 40, 50, 60]
+
+    assert gc.reciprocity([10, 20, 30], positions, {}) == (None, None)
+    assert gc.reciprocity([10, 20, 30], positions, {10: 0.9}) == (None, None)
+    # enough inside, nothing outside to compare it with
+    assert gc.reciprocity([10, 20, 30], positions,
+                          {10: 0.9, 20: 0.9, 30: 0.9}) == (None, None)
 
 
-def test_only_the_tracts_own_sites_count_towards_it():
-    """A donor that swapped somewhere else in the locus says nothing about this stretch."""
-    assert gc.reciprocity([10, 20], {10: 0.0, 20: 0.0, 90: 1.0, 95: 1.0}) == pytest.approx(0.0)
+def test_only_the_tracts_own_sites_count_as_inside_it():
+    positions = [10, 20, 90, 95]
+    swap = {10: 0.0, 20: 0.0, 90: 1.0, 95: 1.0}
+
+    assert gc.reciprocity([10, 20], positions, swap) == (pytest.approx(0.0), pytest.approx(1.0))
 
 
-def _swap_case(tmp_path, samtools, donor_swapped, extra=()):
-    """One locus with a clean tract, and a donor copy that has or has not swapped with it."""
+@pytest.mark.parametrize("inside,outside,exchange", [
+    (1.0, 0.0, True),          # bounded: the donor swapped over this stretch and nowhere else
+    (1.0, 1.0, False),         # everywhere: these reads came from the acceptor, nothing swapped
+    (0.6, 0.6, False),
+    (0.49, 0.0, False),        # too little of the donor to call it swapped
+    (0.5, 0.0, True),          # exactly at the threshold, which is reaching it
+    (1.0, 0.5, False),         # outside AT the threshold is already too much to call it bounded
+    (1.0, 0.49, True),
+    (None, None, False),
+    (1.0, None, False),
+])
+def test_an_exchange_has_to_be_bounded_to_be_an_exchange(inside, outside, exchange):
+    """The half that keeps wholesale mismapping out, and it was missing.
+
+    Reads from the unconverted acceptor that the aligner placed at the donor carry the acceptor's
+    bases at EVERY site they reach. Measured on a donor that had changed nothing, with 60% of the
+    reads at its locus arriving from the acceptor: the verdict came out `reciprocal_exchange`,
+    which both invented an exchange and buried the real conversion at the acceptor. A real event
+    is bounded, and that is what separates them.
+    """
+    assert gc.is_exchange(inside, outside, reciprocal_af=0.5) is exchange
+
+
+def _swap_case(tmp_path, samtools, donor_swapped, mismapped=0, extra=()):
+    """One locus with a clean tract, and a donor copy that has or has not swapped with it.
+
+    `mismapped` adds reads from the UNCONVERTED acceptor at the donor's locus, which is what an
+    aligner does in a paralogous region. They carry the acceptor's bases everywhere, not over a
+    bounded stretch, which is the whole difference.
+    """
     positions = [100, 110, 120, 130, 140, 150, 160, 170]
     tract = {110, 120, 130}
     acc_seq = ["A"] * 90
@@ -1116,7 +1157,9 @@ def _swap_case(tmp_path, samtools, donor_swapped, extra=()):
         for p in tract:
             don_seq[p - 95] = "A"
     records += [_sam_line(f"d{i}", 1295, "90M", "".join(don_seq), qual="I" * 90)
-                for i in range(14)]
+                for i in range(14 - mismapped)]
+    records += [_sam_line(f"m{i}", 1295, "90M", "A" * 90, qual="I" * 90)
+                for i in range(mismapped)]
     bam = _bam(tmp_path, records, contig_length=3000)
     sites = _sites_tsv(tmp_path / f"s{donor_swapped}.sites", {0: positions})
     out = tmp_path / f"o{donor_swapped}.tsv"
@@ -1148,6 +1191,31 @@ def test_both_copies_carrying_the_others_bases_is_an_exchange_not_a_conversion(t
     assert row["verdict"] == "reciprocal_exchange"
     assert float(row["donor_swap_af"]) > 0.9
     assert "both copies changed" in row["reason"]
+
+
+def test_reads_arriving_from_the_acceptor_are_not_an_exchange(tmp_path, samtools):
+    """The failure this check was written without, measured end to end.
+
+    An aligner in a paralogous region puts reads from the unconverted acceptor at the donor's
+    locus, and they carry the acceptor's bases at every site they reach. Read as a fraction at
+    the tract's sites alone, a donor that had changed nothing came out as `reciprocal_exchange`
+    with 60% of its reads swapped, and the real conversion at the acceptor was lost with it: the
+    check both invented a finding and buried a true one.
+    """
+    row = _swap_case(tmp_path, samtools, donor_swapped=False, mismapped=9)
+
+    assert float(row["donor_swap_af"]) > 0.5, "the raw fraction inside the tract does look swapped"
+    assert row["donor_swap_af"] == row["donor_swap_af_outside"], "and outside it, identically"
+    assert row["verdict"] == "gene_conversion"
+
+
+def test_an_exchange_survives_some_mismapping_on_top_of_it(tmp_path, samtools):
+    """The other direction: requiring the outside to be quiet must not throw away a real exchange
+    that a few stray reads have muddied."""
+    row = _swap_case(tmp_path, samtools, donor_swapped=True, mismapped=4)
+
+    assert row["verdict"] == "reciprocal_exchange"
+    assert float(row["donor_swap_af"]) > float(row["donor_swap_af_outside"])
 
 
 @pytest.mark.parametrize("cap,exchange", [(1.0, True), (1.01, False)])

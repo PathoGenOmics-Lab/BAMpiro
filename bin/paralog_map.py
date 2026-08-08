@@ -222,11 +222,20 @@ def polarise(sites, diffs, intervals):
     innovation, a sample cannot be carrying it by retention. It had to be copied.
     """
     for s in sites:
+        # A deletion site is not polarised, so it is not looked up either. Its `acc_base` is the
+        # whole run of bases the donor lacks, and handing that to a per-position lookup gets it
+        # back unchanged: the column would then claim the outgroup carries all of them, on the
+        # strength of having checked one position.
+        if s["kind"] != "snp":
+            s["anc_acc"] = s["anc_don"] = ""
+            s["polarity"] = ""
+            s["don_derived"] = 0
+            continue
         anc_acc = ancestral_at(diffs, intervals, s["acceptor"], s["acc_pos"], s["acc_base"])
         anc_don = ancestral_at(diffs, intervals, s["donor"], s["don_pos"], s["don_base"])
         s["anc_acc"] = anc_acc or ""
         s["anc_don"] = anc_don or ""
-        if s["kind"] != "snp" or anc_acc is None:
+        if anc_acc is None:
             s["polarity"] = ""
         elif anc_acc == s["acc_base"]:
             s["polarity"] = "derived"
@@ -234,8 +243,7 @@ def polarise(sites, diffs, intervals):
             s["polarity"] = "ancestral"
         else:
             s["polarity"] = "third"
-        s["don_derived"] = int(anc_don is not None and s["kind"] == "snp"
-                               and anc_don != s["don_base"])
+        s["don_derived"] = int(anc_don is not None and anc_don != s["don_base"])
     return sites
 
 

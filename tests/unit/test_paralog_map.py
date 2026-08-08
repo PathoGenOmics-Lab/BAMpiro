@@ -394,6 +394,25 @@ def test_a_deletion_marker_is_not_polarised_by_a_substitution_outgroup():
     assert got[0]["polarity"] == ""
 
 
+def test_a_deletion_run_is_not_handed_back_its_own_bases_as_the_ancestors():
+    """A multi-base deletion carries the WHOLE run in `acc_base`, and a per-position lookup that
+    finds no difference returns what it was given.
+
+    So the column came back reading `CAT`: a claim that the outgroup carries three specific bases
+    there, made on the strength of having checked one position, at a site that is not polarised
+    at all. Nothing downstream would have questioned it.
+    """
+    run = "".join(_snps_row(p, b, ".", 1500) for p, b in ((600, "C"), (601, "A"), (602, "T")))
+    sites, _ = pm.parse_snps(run)
+    diffs, intervals = pm.ancestral_bases(_anc_snps(), _anc_coords())
+
+    got = pm.polarise(sites, diffs, intervals)[0]
+
+    assert (got["kind"], got["acc_base"], got["length"]) == ("del", "CAT", 3)
+    assert got["anc_acc"] == "" and got["anc_don"] == ""
+    assert got["don_derived"] == 0
+
+
 @pytest.mark.parametrize("pos,covered", [(401, True), (1000, True), (400, False), (1001, False)])
 def test_the_outgroup_alignment_covers_its_own_first_and_last_base(pos, covered):
     """Inclusive at both ends, and nothing outside.

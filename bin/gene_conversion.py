@@ -297,17 +297,38 @@ def donor_side(args, loc, positions):
     return depth, swapped
 
 
-def reciprocity(tract, donor_swapped, min_sites=2):
-    """How much of the donor carries the acceptor's bases over the same stretch, or None.
+def reciprocity(tract, positions, donor_swapped, min_sites=2):
+    """How much of the donor carries the acceptor's bases INSIDE the tract and outside it.
 
-    None when too few of the tract's sites could be read on the donor's side to say anything.
-    Silence there is not evidence that the donor stayed put, and reporting 0 for it would be
-    exactly that.
+    Both, because the fraction inside on its own says nothing. Reads from the unconverted
+    acceptor that the aligner placed at the donor carry the acceptor's bases at every site it
+    reaches, which is the same picture at a single site as a donor that genuinely swapped. What
+    tells them apart is the one thing this whole tool leans on: a real event is BOUNDED. An
+    exchange shows the acceptor's bases over the tract and the donor's own outside it; reads that
+    arrived from next door show the acceptor's everywhere.
+
+    (None, None) when too few sites on either side could be read. Silence is not evidence that
+    the donor stayed put, and it is not evidence that it moved.
     """
-    seen = [donor_swapped[p] for p in tract if p in donor_swapped]
-    if len(seen) < min_sites:
-        return None
-    return sum(seen) / len(seen)
+    inside = [donor_swapped[p] for p in tract if p in donor_swapped]
+    tract_set = set(tract)
+    outside = [donor_swapped[p] for p in positions
+               if p not in tract_set and p in donor_swapped]
+    if len(inside) < min_sites or len(outside) < min_sites:
+        return None, None
+    return sum(inside) / len(inside), sum(outside) / len(outside)
+
+
+def is_exchange(inside, outside, reciprocal_af):
+    """Whether the donor swapped with the acceptor over this stretch and only over it.
+
+    The second half is what keeps wholesale mismapping out. A donor locus whose reads came from
+    the acceptor carries the acceptor's bases outside the tract too, and calling that an exchange
+    both invents a finding and buries the conversion that is really there.
+    """
+    if inside is None or outside is None:
+        return False
+    return inside >= reciprocal_af and outside < reciprocal_af
 
 
 def worth_reporting(fit, report_bf, min_mismap):
@@ -536,7 +557,8 @@ COLUMNS = ["sample", "pair_id", "contig", "donor", "verdict", "reason", "start",
            "n_sites", "n_sites_outside", "n_undetermined", "donor_af_in", "donor_af_outside",
            "min_depth", "cis_reads", "breakpoint_reads", "donor_only_reads",
            "n_derived", "n_ancestral", "n_unpolarised",
-           "donor_swap_af", "locus_cn", "expected_af"] + ga.ANNOTATION_COLUMNS
+           "donor_swap_af", "donor_swap_af_outside",
+           "locus_cn", "expected_af"] + ga.ANNOTATION_COLUMNS
 
 
 # Parameters that change the numbers in the output. Recorded in the file itself, because a
@@ -721,13 +743,14 @@ def main(argv=None) -> int:
             # has taken on the acceptor's bases over the same stretch, the two copies swapped, and
             # a swap is an unequal crossover: one event, both copies changed, and the consequences
             # for the family are not the consequences of a conversion.
-            swapped = reciprocity(tract, donor_swapped)
-            if swapped is not None and swapped >= a.reciprocal_af:
+            swapped, swapped_out = reciprocity(tract, positions, donor_swapped)
+            if is_exchange(swapped, swapped_out, a.reciprocal_af):
                 verdict = "reciprocal_exchange"
                 reason = (
                     f"the donor carries the acceptor's bases over the same stretch "
-                    f"({swapped:.0%} of its reads), so both copies changed. That is an exchange "
-                    "between them rather than one copy being overwritten, and gene conversion is "
+                    f"({swapped:.0%} of its reads there against {swapped_out:.0%} outside it), so "
+                    "both copies changed and only over this stretch. That is an exchange between "
+                    "them rather than one copy being overwritten, and gene conversion is "
                     "non-reciprocal by definition")
             elif ancestral > derived:
                 verdict = "reference_derived"
@@ -754,6 +777,8 @@ def main(argv=None) -> int:
                          "n_derived": derived, "n_ancestral": ancestral,
                          "n_unpolarised": unread,
                          "donor_swap_af": None if swapped is None else round(swapped, 3),
+                         "donor_swap_af_outside": (None if swapped_out is None
+                                                   else round(swapped_out, 3)),
                          "locus_cn": cn_ratio, "expected_af": expected_af,
                          # Only the diagnostic sites change: everywhere else the two copies are
                          # identical, so a conversion there is invisible and inconsequential.
@@ -779,7 +804,7 @@ def main(argv=None) -> int:
                 "span_bp": max(run) - min(run) + 1, "n_sites_outside": len(positions) - len(run),
                 "n_undetermined": 0, "donor_af_in": None, "donor_af_outside": None,
                 "n_derived": 0, "n_ancestral": 0, "n_unpolarised": len(run),
-                "donor_swap_af": None, "locus_cn": cn_ratio, "expected_af": expected_af,
+                "donor_swap_af": None, "donor_swap_af_outside": None, "locus_cn": cn_ratio, "expected_af": expected_af,
                 **ga.annotate_tract(features, seqs, loc["contig"], run[0], run[-1], {}),
                 "min_depth": min(counts[p]["depth"] for p in run),
                 "cis_reads": 0, "breakpoint_reads": 0, "donor_only_reads": 0})

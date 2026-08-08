@@ -17,7 +17,7 @@ def gconvHeader() {
             'start_ci', 'end_ci',
             'n_sites', 'n_sites_outside', 'n_undetermined', 'donor_af_in', 'donor_af_outside',
             'min_depth', 'cis_reads', 'breakpoint_reads', 'donor_only_reads',
-            'n_derived', 'n_ancestral', 'n_unpolarised', 'donor_swap_af',
+            'n_derived', 'n_ancestral', 'n_unpolarised', 'donor_swap_af', 'donor_swap_af_outside',
             'locus_cn', 'expected_af',
             'genes', 'n_syn', 'n_nonsyn', 'aa_changes'].join('\\t')
 }
