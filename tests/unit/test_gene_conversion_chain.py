@@ -212,6 +212,38 @@ def test_the_donor_coordinates_reach_the_cohort_pass_and_are_used(tmp_path, samt
     assert called["is_representative"] == "1"
 
 
+def test_the_genes_a_tract_lands_on_reach_the_cohort_file(tmp_path, samtools):
+    """The annotation has to survive the chain, not merely work when called directly.
+
+    A tract reported as coordinates is a finding nobody can act on, and the columns that make it
+    one are written per sample and read back twice: once by the cohort pass and once by the
+    report. A GFF read into a shape the row builder does not use fails silently, with every
+    annotation column empty and no error anywhere.
+    """
+    gff = tmp_path / "ref.gff"
+    gff.write_text("##gff-version 3\n"
+                   f"{CONTIG}\t.\tCDS\t401\t1000\t.\t+\t0\tID=c1;gene=ppeA;locus_tag=Rv0001\n")
+    fasta = tmp_path / "ref.fa"
+    # The acceptor copy runs 401-1000, so the CDS covers it and every diagnostic site is in frame.
+    fasta.write_text(f">{CONTIG}\n" + "ACG" * 1000 + "\n")
+
+    pairs, sites = tmp_path / "pairs.tsv", tmp_path / "sites.tsv"
+    assert pm.main(["--delta", str(tmp_path / "x.delta"),
+                    "--out-pairs", str(pairs), "--out-sites", str(sites),
+                    "--show-coords", _tool(tmp_path, "coords.sh", _coords()),
+                    "--show-snps", _tool(tmp_path, "snps.sh", _snps())]) == 0
+
+    bam = _bam(tmp_path, _reads(True), "s1")
+    out = tmp_path / "s1.tracts.tsv"
+    assert gc.main(["--sites", str(sites), "--bam", bam, "--sample", "s1", "-o", str(out),
+                    "--samtools", samtools, "--min-sites", "2",
+                    "--gff", str(gff), "--reference", str(fasta)]) == 0
+
+    called = next(r for r in _rows(out) if r["verdict"] == "gene_conversion")
+    assert called["genes"] == "Rv0001", "the tract did not pick up the gene it sits in"
+    assert int(called["n_syn"]) + int(called["n_nonsyn"]) > 0, "no codon was scored"
+
+
 def test_the_settings_of_every_step_reach_the_cohort_file(tmp_path, samtools):
     _, _, cohort = _run_chain(tmp_path, samtools, [("s1", True), ("s2", False)])
     notes = [ln for ln in open(cohort).read().splitlines() if ln.startswith("#")]

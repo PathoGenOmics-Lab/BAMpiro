@@ -392,7 +392,11 @@ def parse_gene_conversion(path):
                                "donor_only": ival(d.get("donor_only_reads")),
                                "n_derived": ival(d.get("n_derived")),
                                "n_ancestral": ival(d.get("n_ancestral")),
-                               "n_unpol": ival(d.get("n_unpolarised"))})
+                               "n_unpol": ival(d.get("n_unpolarised")),
+                               "genes": (d.get("genes") or "").strip(),
+                               "n_syn": ival(d.get("n_syn")),
+                               "n_nonsyn": ival(d.get("n_nonsyn")),
+                               "aa_changes": (d.get("aa_changes") or "").strip()})
                 if s not in samples:
                     samples.append(s)
     except OSError:

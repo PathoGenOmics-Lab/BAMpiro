@@ -44,6 +44,7 @@ import subprocess
 import sys
 from collections import defaultdict
 
+import gconv_annotate as ga
 import gconv_model as gm
 
 # CIGAR operations that consume the reference, the read, or both.
@@ -422,7 +423,7 @@ COLUMNS = ["sample", "pair_id", "contig", "donor", "verdict", "reason", "start",
            "start_ci", "end_ci",
            "n_sites", "n_sites_outside", "n_undetermined", "donor_af_in", "donor_af_outside",
            "min_depth", "cis_reads", "breakpoint_reads", "donor_only_reads",
-           "n_derived", "n_ancestral", "n_unpolarised"]
+           "n_derived", "n_ancestral", "n_unpolarised"] + ga.ANNOTATION_COLUMNS
 
 
 # Parameters that change the numbers in the output. Recorded in the file itself, because a
@@ -494,6 +495,9 @@ def parse_args(argv=None):
                    help="informative depth below which a site counts as undetermined in the "
                         "descriptive columns and in the depletion check")
     p.add_argument("--min-bq", type=int, default=13, help="base-quality floor")
+    p.add_argument("--gff", help="GFF3 for the reference. With it, each tract reports the genes "
+                                 "it covers and what its copied bases do to their proteins")
+    p.add_argument("--reference", help="reference FASTA, needed with --gff to read the codons")
     p.add_argument("--samtools", default="samtools")
     a = p.parse_args(argv)
     # Check the ranges here rather than letting the model take log(0) on the first locus: by then
@@ -513,6 +517,10 @@ def parse_args(argv=None):
 def main(argv=None) -> int:
     a = parse_args(argv)
     loci = load_sites(a.sites)
+    # Read once for the whole sample. Absent, every annotation column comes out empty rather than
+    # guessed at, which is the default: a reference has a GFF or it does not.
+    features = ga.parse_cds(a.gff) if a.gff else []
+    seqs = ga.read_fasta(a.reference) if a.gff and a.reference else {}
 
     rows, locus_rows = [], []
     for pair_id, loc in sorted(loci.items(), key=lambda kv: int(kv[0])):
@@ -599,6 +607,14 @@ def main(argv=None) -> int:
                          "don_end": max(dpos) if dpos else None,
                          "n_derived": derived, "n_ancestral": ancestral,
                          "n_unpolarised": unread,
+                         # Only the diagnostic sites change: everywhere else the two copies are
+                         # identical, so a conversion there is invisible and inconsequential.
+                         # Deletion markers are left out, being a frameshift question rather than
+                         # a codon one, and half an answer there is worse than none.
+                         **ga.annotate_tract(
+                             features, seqs, loc["contig"], tract[0], tract[-1],
+                             {p: loc["sites"][p][1] for p in tract
+                              if loc["sites"][p][1] != GAP}),
                          **ev})
 
         # Depth on the DONOR side of the same pair, to catch the tracts whose reads moved there.
@@ -629,6 +645,7 @@ def main(argv=None) -> int:
                 "span_bp": max(run) - min(run) + 1, "n_sites_outside": len(positions) - len(run),
                 "n_undetermined": 0, "donor_af_in": None, "donor_af_outside": None,
                 "n_derived": 0, "n_ancestral": 0, "n_unpolarised": len(run),
+                **ga.annotate_tract(features, seqs, loc["contig"], run[0], run[-1], {}),
                 "min_depth": min(counts[p]["depth"] for p in run),
                 "cis_reads": 0, "breakpoint_reads": 0, "donor_only_reads": 0})
 

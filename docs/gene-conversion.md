@@ -190,6 +190,58 @@ named wrongly, with 27 rows collapsing to 19 events.
     With four samples, "in all of them" is four, which says nothing about the reference. The
     cohort columns are still filled in; only the demotion is withheld.
 
+## Which copy changed
+
+A sample whose acceptor carries the donor's base at a diagnostic site has either changed or not,
+and the site alone cannot tell which. The reference is one genome among many. Where ITS acceptor
+copy carries a derived allele, a sample carrying the donor's base is holding the **ancestral**
+state and has converted nothing: the finding belongs to the reference, and reported as a
+conversion it is the reference's history attributed to the sample.
+
+Point `--gconv_outgroup` at a genome outside the clade being studied (for MTBC, the inferred
+ancestor) and each diagnostic site is labelled:
+
+| `polarity` | What it means |
+| :--- | :--- |
+| `derived` | The reference's acceptor is ancestral, so a sample carrying the donor's base has changed. This is the site a conversion can be built from |
+| `ancestral` | The reference's acceptor is derived and the ancestral allele is the donor's. A sample carrying the donor's base has retained it |
+| `third` | The outgroup carries neither base. Something happened here, but not this |
+| *(empty)* | The outgroup does not reach the position, or has deleted it |
+
+A tract whose polarised sites mostly say `ancestral` is reported as `reference_derived` rather
+than as a conversion. The per-tract counts are in `n_derived`, `n_ancestral` and `n_unpolarised`.
+
+!!! tip "`don_derived` is the strongest a single site gets"
+
+    Where the DONOR's allele is itself an innovation, a sample cannot be carrying it by
+    retention: there is nothing to retain. It had to be copied.
+
+!!! warning "Silence in the outgroup alignment is not agreement"
+
+    A position the outgroup does not reach is left unpolarised rather than assumed identical.
+    Treating "no difference reported here" as "the same base here" would hand the reference's own
+    allele the authority of the ancestor over exactly the regions where the two genomes have
+    diverged most, which in a paralog family is where the question is.
+
+## What a tract does to the genes it lands on
+
+With a GFF for the reference, each tract reports the genes it covers and the consequence of its
+copied bases: `genes`, `n_syn`, `n_nonsyn`, and `aa_changes` as `Rv0001:K2Q` entries. The GFF
+comes from the samplesheet's `refGff` column, so this needs no new input.
+
+Only the diagnostic sites change. Everywhere else the two copies are identical, so a conversion
+there is invisible and also inconsequential, and the consequence of a tract is the consequence of
+substituting the donor's base at each diagnostic site under it. Each is scored alone against the
+reference codon rather than compounded with its neighbours: two changes in one codon are rare at
+the density paralogs differ, and reporting a joint effect would claim a phase for the conversion
+that the breakpoints do not resolve.
+
+!!! note "Deletion markers are not scored"
+
+    What a deletion between the copies does to a protein is a frameshift question, not a codon
+    one, and half an answer there is worse than none. Deletion sites still count towards the
+    tract and towards the genes it covers.
+
 ## Verdicts
 
 | Verdict | Meaning |
@@ -199,6 +251,7 @@ named wrongly, with 27 rows collapsing to 19 events.
 | `ambiguous` | Reported, but not called. The `reason` column says what came closest |
 | `coverage_shift` | The acceptor lost its reads to the donor over a run of sites: it falls well below its own level elsewhere AND the donor rises above its own. Consistent with a conversion longer than the library insert, and equally with a deletion. See below |
 | `reference_artifact` | Present in nearly every sample of the cohort. Only a cohort can say this |
+| `reference_derived` | An outgroup says the REFERENCE carries the derived base over this stretch and the reads carry the ancestral one. The sample changed nothing. Only an outgroup can say this |
 
 A tract covering **every** diagnostic site of the locus is a special case that needs no special
 handling: "the whole locus was converted" and "every read here came from the donor" predict
@@ -267,6 +320,7 @@ the donor/acceptor graph of your reference.
 | :--- | :--- | :--- |
 | `--gconv_min_identity` | `90.0` | Ignore paralog pairs below this % identity |
 | `--gconv_min_paralog_length` | `200` | Ignore paralog pairs shorter than this |
+| `--gconv_outgroup` | *(empty)* | FASTA of a genome outside the clade. Without it, nothing says WHICH copy changed |
 | `--gconv_min_bf` | `3.0` | log10 Bayes factor before a tract is called a conversion |
 | `--gconv_report_bf` | `1.0` | log10 Bayes factor below which a tract is not written out |
 | `--gconv_prior` | `0.01` | Prior that a given paralog pair carries a tract |

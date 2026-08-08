@@ -8,6 +8,17 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Added
 
+- **Which copy the conversion is on** (`--gconv_outgroup`, off by default). A sample
+  whose acceptor carries the donor's base has either changed or not, and the site
+  alone cannot tell which: where the REFERENCE's acceptor carries a derived allele,
+  a sample carrying the donor's base is holding the ancestral state and has
+  converted nothing. An outgroup aligned against the reference labels every
+  diagnostic site, and a tract whose sites mostly say ancestral is reported as
+  `reference_derived` instead of as a conversion.
+- **What a tract does to the genes it lands on.** With the reference's GFF, each
+  tract reports the genes it covers, how many of its copied bases are synonymous and
+  how many are not, and the amino-acid changes as `Rv0001:K2Q`. Deletion markers are
+  left out, being a frameshift question rather than a codon one.
 - **Gene conversion detection** (`--find_gene_conversion`, off by default). Finds
   tracts where one paralog has been copied onto another, which on a reference that
   never saw the event reads as a run of variants that are exactly the donor's

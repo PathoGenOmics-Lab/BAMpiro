@@ -32,8 +32,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 TARGETS = ["bin/gconv_model.py", "bin/gconv_cohort.py", "bin/gene_conversion.py",
-           "bin/paralog_map.py"]
+           "bin/paralog_map.py", "bin/gconv_annotate.py"]
 TESTS = ["tests/unit/test_gconv_model.py", "tests/unit/test_gconv_cohort.py",
+         "tests/unit/test_gconv_annotate.py",
          "tests/unit/test_gene_conversion.py", "tests/unit/test_paralog_map.py",
          "tests/unit/test_gconv_properties.py", "tests/unit/test_gene_conversion_chain.py"]
 
@@ -170,6 +171,14 @@ def run(only):
         work = Path(tempfile.mkdtemp(prefix="bampiro-mutants-"))
         root = checkout(work)
         path = root / target
+        if not path.exists():
+            # The checkout is `git ls-files`, so a target missing here is a target git does not
+            # know about yet. Worth saying, because the alternative is a stack trace from a
+            # temporary directory that no longer exists by the time anyone reads it.
+            print(f"{target}: not tracked by git, so it is not in the checkout. Skipped",
+                  flush=True)
+            shutil.rmtree(work, ignore_errors=True)
+            continue
         original = path.read_text()
         backup = original
         muts = decisions(path)

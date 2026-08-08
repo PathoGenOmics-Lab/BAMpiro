@@ -416,6 +416,7 @@ function renderGconv(){
                'n_sites','n_sites_outside','n_undetermined','donor_af_in','donor_af_outside',
                'min_depth','cis_reads','breakpoint_reads','donor_only_reads',
                'n_derived','n_ancestral','n_unpolarised',
+               'genes','n_syn','n_nonsyn','aa_changes',
                'event_id','event_samples','event_frac','cohort_verdict','cohort_mismap','cohort_bf_median',
                'donor_rank','n_donors','donor_margin','donor_call','is_representative'];
       var lines=[hdr.join('\t')];
@@ -424,6 +425,7 @@ function renderGconv(){
         t.post,t.bf,t.bf_null,t.tract_af,t.mismap,t.mut_rate,t.start_ci,t.end_ci,
         t.n_sites,t.n_out,t.n_undet,t.af_in,t.af_out,t.depth,t.cis_reads,t.bp_reads,t.donor_only,
         t.n_derived,t.n_ancestral,t.n_unpol,
+        t.genes,t.n_syn,t.n_nonsyn,t.aa_changes,
         t.event,t.n_ev,t.ev_frac,t.verdict,t.co_mismap,t.co_bf,
         t.don_rank,t.n_don,t.don_margin,t.don_call,t.rep].map(function(x){return x==null?'':x;}).join('\t'));});
       dl(lines.join('\n')+'\n','gene_conversion.tsv','text/tab-separated-values');};

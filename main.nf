@@ -269,7 +269,9 @@ Run Pathotypr    : ${params.run_pathotypr}
 
     // 12. Gene conversion (opt-in). Reads the PRE-FILTER bam and the reference self-alignment,
     // because the masking the rest of the pipeline applies removes exactly this signal.
-    def gconv = GENE_CONVERSION(refs.delta, bams.dedup_bam, tsv_name)
+    def gconv = GENE_CONVERSION(refs.delta, bams.dedup_bam,
+                                Channel.fromList(refGffMap.collect { k, v -> tuple(k, v) }),
+                                tsv_name)
 
     // 7. Consensus Generation (Optional)
     def consensus = MAKE_CONSENSUS(bams.variant_base, bams.dedup_bam,
