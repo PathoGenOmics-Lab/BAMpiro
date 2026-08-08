@@ -882,6 +882,122 @@ def test_a_run_at_the_end_still_has_to_be_long_enough():
     assert gc.depleted_runs(positions, counts, donor, min_depth=5, min_sites=3) == []
 
 
+# --------------------------------------------------------------------------- #
+# Non-reciprocal is the definition, not a detail of it                         #
+# --------------------------------------------------------------------------- #
+
+
+def test_the_polarity_counts_tell_the_kinds_apart():
+    """Three counts, three meanings, and a tract is judged on which of them is larger.
+
+    `derived` is the only kind that can support a conversion; `ancestral` argues the opposite;
+    everything else is a site the outgroup could not settle. Counting any two of them together
+    makes the comparison between them meaningless.
+    """
+    polarity = {10: "derived", 20: "derived", 30: "ancestral", 40: "third", 50: ""}
+
+    assert gc.polarity_counts([10, 20, 30, 40, 50], polarity) == (2, 1, 2)
+
+
+def test_without_an_outgroup_the_counts_are_all_zero():
+    assert gc.polarity_counts([10, 20], {}) == (0, 0, 0)
+    assert gc.polarity_counts([10, 20], None) == (0, 0, 0)
+
+
+def test_the_reference_sequence_is_not_read_without_a_gff_to_use_it_with(tmp_path, samtools):
+    """Nothing to place a codon in means nothing to read a codon from.
+
+    Asserted by RUNNING it rather than by inspecting the parsed arguments, which was the first
+    version of this test and exercised nothing at all: the reference here does not exist, so a
+    run that opens it fails and a run that ignores it does not.
+    """
+    positions = [100, 110, 120]
+    bam = _bam(tmp_path, [_sam_line("r", 95, "30M", "A" * 30, qual="I" * 30)])
+    sites = _sites_tsv(tmp_path / "sites.tsv", {0: positions})
+    out = tmp_path / "tracts.tsv"
+
+    assert gc.main(["--sites", sites, "--bam", bam, "--sample", "S1", "-o", str(out),
+                    "--samtools", samtools, "--min-sites", "2",
+                    "--reference", str(tmp_path / "does_not_exist.fa")]) == 0
+
+
+def test_reciprocity_is_the_share_of_the_donor_that_took_the_acceptors_bases():
+    assert gc.reciprocity([10, 20, 30], {10: 0.9, 20: 1.0, 30: 0.8}) == pytest.approx(0.9)
+
+
+def test_a_donor_too_little_read_to_speak_about_says_nothing():
+    """None, not zero. Silence on the donor's side is not evidence that it stayed put, and
+    reporting 0 for it would be exactly that: a value standing in for the absence of one."""
+    assert gc.reciprocity([10, 20, 30], {}) is None
+    assert gc.reciprocity([10, 20, 30], {10: 0.9}) is None
+    assert gc.reciprocity([10, 20, 30], {10: 0.9, 20: 0.9}) == pytest.approx(0.9)
+
+
+def test_only_the_tracts_own_sites_count_towards_it():
+    """A donor that swapped somewhere else in the locus says nothing about this stretch."""
+    assert gc.reciprocity([10, 20], {10: 0.0, 20: 0.0, 90: 1.0, 95: 1.0}) == pytest.approx(0.0)
+
+
+def _swap_case(tmp_path, samtools, donor_swapped, extra=()):
+    """One locus with a clean tract, and a donor copy that has or has not swapped with it."""
+    positions = [100, 110, 120, 130, 140, 150, 160, 170]
+    tract = {110, 120, 130}
+    acc_seq = ["A"] * 90
+    for p in tract:
+        acc_seq[p - 95] = "G"                       # the acceptor carries the donor's base
+    records = [_sam_line(f"a{i}", 95, "90M", "".join(acc_seq), qual="I" * 90) for i in range(14)]
+    # The donor copy sits 1200 along. Its own base is G everywhere; when it has swapped, it
+    # carries the acceptor's A over the same three sites.
+    don_seq = ["G"] * 90
+    if donor_swapped:
+        for p in tract:
+            don_seq[p - 95] = "A"
+    records += [_sam_line(f"d{i}", 1295, "90M", "".join(don_seq), qual="I" * 90)
+                for i in range(14)]
+    bam = _bam(tmp_path, records, contig_length=3000)
+    sites = _sites_tsv(tmp_path / f"s{donor_swapped}.sites", {0: positions})
+    out = tmp_path / f"o{donor_swapped}.tsv"
+
+    assert gc.main(["--sites", sites, "--bam", bam, "--sample", "S1", "-o", str(out),
+                    "--samtools", samtools, "--min-sites", "2", "--report-bf", "-99",
+                    *extra]) == 0
+    return _only_row(out)
+
+
+def test_a_donor_that_kept_its_own_bases_leaves_the_conversion_a_conversion(tmp_path, samtools):
+    row = _swap_case(tmp_path, samtools, donor_swapped=False)
+
+    assert row["verdict"] == "gene_conversion"
+    assert float(row["donor_swap_af"]) < 0.1
+
+
+def test_both_copies_carrying_the_others_bases_is_an_exchange_not_a_conversion(tmp_path,
+                                                                              samtools):
+    """The one thing that separates conversion from unequal crossover, and it was asserted in the
+    docstring and never measured.
+
+    A conversion is non-reciprocal: the donor hands over a copy of its sequence and keeps its
+    own. If the donor has also taken on the acceptor's bases over the same stretch, one event
+    changed both copies, and what it did to the family is not what a conversion does.
+    """
+    row = _swap_case(tmp_path, samtools, donor_swapped=True)
+
+    assert row["verdict"] == "reciprocal_exchange"
+    assert float(row["donor_swap_af"]) > 0.9
+    assert "both copies changed" in row["reason"]
+
+
+@pytest.mark.parametrize("cap,exchange", [(1.0, True), (1.01, False)])
+def test_the_fraction_at_which_it_becomes_an_exchange_is_a_setting(tmp_path, samtools, cap,
+                                                                   exchange):
+    """`--reciprocal-af` is the share the donor must reach, so reaching it is enough. The donor
+    here has swapped at every read, which is a fraction of exactly 1."""
+    row = _swap_case(tmp_path, samtools, donor_swapped=True,
+                     extra=["--reciprocal-af", str(cap)])
+
+    assert (row["verdict"] == "reciprocal_exchange") is exchange
+
+
 # Every constant in `depleted_runs` is a threshold, and each one reads perfectly well when it is
 # a step out. The cases below sit exactly ON each of them, in the direction that has to pass.
 #

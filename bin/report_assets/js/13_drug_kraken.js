@@ -254,6 +254,8 @@ var GCONV_V=[{k:'gene_conversion',lab:'gene conversion',c:'#2ea36b',r:0,
               tip:'the acceptor lost its reads to the donor over a run of sites. Consistent with a conversion longer than the library insert, and equally with a deletion. Not a conversion call'},
              {k:'reference_artifact',lab:'reference artifact',c:'#7a8794',r:4,
               tip:'present in nearly every sample of the cohort. The reference being wrong here, or the aligner doing this to everybody, explains that more simply than the same conversion arising in every isolate. In a CLONAL cohort it may instead be shared ancestry, which recurrence alone cannot distinguish. Only a cohort can make this call at all'},
+             {k:'reciprocal_exchange',lab:'reciprocal exchange',c:'#c77d3a',r:6,
+              tip:'the donor carries the ACCEPTOR\'s bases over the same stretch, so both copies changed. That is an exchange between them rather than one being overwritten, and gene conversion is non-reciprocal by definition'},
              {k:'reference_derived',lab:'reference derived',c:'#4a90b8',r:5,
               tip:'an outgroup says the REFERENCE carries the derived base over this stretch and the reads carry the ancestral one. The sample changed nothing; the finding belongs to the reference. Without an outgroup this is the same picture as a conversion'}];
 // The settings that produced these verdicts, shown beside them. A panel that displays a verdict
@@ -415,7 +417,7 @@ function renderGconv(){
                'post_conv','log10_bf','log10_bf_vs_null','tract_af','mismap_frac','mut_rate','start_ci','end_ci',
                'n_sites','n_sites_outside','n_undetermined','donor_af_in','donor_af_outside',
                'min_depth','cis_reads','breakpoint_reads','donor_only_reads',
-               'n_derived','n_ancestral','n_unpolarised',
+               'n_derived','n_ancestral','n_unpolarised','donor_swap_af',
                'genes','n_syn','n_nonsyn','aa_changes',
                'event_id','event_samples','event_frac','cohort_verdict','cohort_mismap','cohort_bf_median',
                'donor_rank','n_donors','donor_margin','donor_call','is_representative'];
@@ -424,7 +426,7 @@ function renderGconv(){
         t.don_start,t.don_end,
         t.post,t.bf,t.bf_null,t.tract_af,t.mismap,t.mut_rate,t.start_ci,t.end_ci,
         t.n_sites,t.n_out,t.n_undet,t.af_in,t.af_out,t.depth,t.cis_reads,t.bp_reads,t.donor_only,
-        t.n_derived,t.n_ancestral,t.n_unpol,
+        t.n_derived,t.n_ancestral,t.n_unpol,t.donor_swap,
         t.genes,t.n_syn,t.n_nonsyn,t.aa_changes,
         t.event,t.n_ev,t.ev_frac,t.verdict,t.co_mismap,t.co_bf,
         t.don_rank,t.n_don,t.don_margin,t.don_call,t.rep].map(function(x){return x==null?'':x;}).join('\t'));});
@@ -436,7 +438,7 @@ function renderGconv(){
                                        :(rows.length+' candidate tract(s)');
       cap.innerHTML=evtxt+' in '+Object.keys(nsamp).length+' sample(s) of the cohort in view &#183; <b'+
         (ncall?' class="sc-sig"':'')+'>'+ncall+' called gene conversion</b>, '+(counts.ambiguous||0)+' ambiguous, '+(counts.mismapping||0)+
-        ' mismapping, '+(counts.coverage_shift||0)+' coverage shift, '+(counts.reference_artifact||0)+' reference artifact, '+(counts.reference_derived||0)+' reference derived &#183; <b>'+nbp+'</b> supported by a read crossing a breakpoint in cis. <span class="krk-mut">These loci are repeats, so they are excluded from variant calling and the consensus by design: a tract will not appear in the SNP matrix, and that is expected. Breakpoints are located to diagnostic-site resolution, not to the base, and each paralog pair is judged independently, so one tract can be reported against more than one donor. Candidates to inspect, not confirmed events.</span>'+gconvSettings();}
+        ' mismapping, '+(counts.coverage_shift||0)+' coverage shift, '+(counts.reference_artifact||0)+' reference artifact, '+(counts.reference_derived||0)+' reference derived, '+(counts.reciprocal_exchange||0)+' reciprocal exchange &#183; <b>'+nbp+'</b> supported by a read crossing a breakpoint in cis. <span class="krk-mut">These loci are repeats, so they are excluded from variant calling and the consensus by design: a tract will not appear in the SNP matrix, and that is expected. Breakpoints are located to diagnostic-site resolution, not to the base, and each paralog pair is judged independently, so one tract can be reported against more than one donor. Candidates to inspect, not confirmed events.</span>'+gconvSettings();}
   }
   draw();
 }

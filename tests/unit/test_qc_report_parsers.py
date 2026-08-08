@@ -418,7 +418,7 @@ def test_parse_gene_conversion_reads_the_tracts_samples_and_verdict_counts(tmp_p
     assert g["samples"] == ["S1", "S2"]
     assert g["counts"] == {"gene_conversion": 1, "mismapping": 1, "ambiguous": 1,
                            "coverage_shift": 0, "reference_artifact": 0,
-                           "reference_derived": 0}
+                           "reference_derived": 0, "reciprocal_exchange": 0}
     assert g["tracts"][0] == {
         "s": "S1", "pair": "7", "contig": "PPE34", "donor": "PPE12", "verdict": "gene_conversion",
         "reason": "log10 Bayes factor 18.4 over the best alternative",
@@ -433,7 +433,7 @@ def test_parse_gene_conversion_reads_the_tracts_samples_and_verdict_counts(tmp_p
         "af_in": pytest.approx(0.97), "af_out": pytest.approx(0.01),
         "depth": 18, "cis_reads": 11, "bp_reads": 3, "donor_only": 0,
         # absent from a file written without an outgroup or a GFF, which is the default
-        "n_derived": None, "n_ancestral": None, "n_unpol": None,
+        "n_derived": None, "n_ancestral": None, "n_unpol": None, "donor_swap": None,
         "genes": "", "n_syn": None, "n_nonsyn": None, "aa_changes": ""}
 
 
@@ -494,7 +494,8 @@ def test_parse_gene_conversion_counts_an_unrecognised_verdict_without_losing_the
     counts = qc_parsers.parse_gene_conversion(write(tmp_path / "gconv.tsv", GCONV_HEADER + row))["counts"]
     assert counts == {"gene_conversion": 0, "mismapping": 0, "ambiguous": 0,
                       "coverage_shift": 0, "reference_artifact": 0,
-                      "reference_derived": 0, "something_else": 1}
+                      "reference_derived": 0, "reciprocal_exchange": 0,
+                      "something_else": 1}
 
 
 def test_parse_gene_conversion_reads_a_float_formatted_count(tmp_path):

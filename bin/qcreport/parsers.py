@@ -310,7 +310,7 @@ def parse_dr(path):
 
 
 _GCONV_VERDICTS = ("gene_conversion", "mismapping", "ambiguous", "coverage_shift",
-                   "reference_artifact", "reference_derived")
+                   "reference_artifact", "reference_derived", "reciprocal_exchange")
 
 
 def parse_gene_conversion(path):
@@ -393,6 +393,7 @@ def parse_gene_conversion(path):
                                "n_derived": ival(d.get("n_derived")),
                                "n_ancestral": ival(d.get("n_ancestral")),
                                "n_unpol": ival(d.get("n_unpolarised")),
+                               "donor_swap": to_float(d.get("donor_swap_af")),
                                "genes": (d.get("genes") or "").strip(),
                                "n_syn": ival(d.get("n_syn")),
                                "n_nonsyn": ival(d.get("n_nonsyn")),

@@ -190,6 +190,24 @@ named wrongly, with 27 rows collapsing to 19 events.
     With four samples, "in all of them" is four, which says nothing about the reference. The
     cohort columns are still filled in; only the demotion is withheld.
 
+## Was it a conversion at all
+
+Gene conversion is **non-reciprocal**: the donor hands over a copy of its sequence and keeps its
+own. That is the definition, and until now it was only ever asserted in it.
+
+The donor's own reads are read over the same diagnostic sites, and `donor_swap_af` says how much
+of the donor now carries the ACCEPTOR's bases. If that clears `--gconv_reciprocal_af`, the two
+copies swapped: one event changed both, which is an unequal crossover, and what it does to the
+gene family is not what a conversion does. The verdict is `reciprocal_exchange`.
+
+The column is empty rather than zero where too few of the tract's sites could be read on the
+donor's side. Silence there is not evidence the donor stayed put.
+
+!!! note "A deletion marker cannot be read from the donor's side"
+
+    The donor is the copy that has no base there, so there is nothing at that position for a read
+    to carry either way. Those sites are left out of the fraction.
+
 ## Which copy changed
 
 A sample whose acceptor carries the donor's base at a diagnostic site has either changed or not,
@@ -252,6 +270,7 @@ that the breakpoints do not resolve.
 | `coverage_shift` | The acceptor lost its reads to the donor over a run of sites: it falls well below its own level elsewhere AND the donor rises above its own. Consistent with a conversion longer than the library insert, and equally with a deletion. See below |
 | `reference_artifact` | Present in nearly every sample of the cohort. Only a cohort can say this |
 | `reference_derived` | An outgroup says the REFERENCE carries the derived base over this stretch and the reads carry the ancestral one. The sample changed nothing. Only an outgroup can say this |
+| `reciprocal_exchange` | The donor carries the ACCEPTOR's bases over the same stretch, so both copies changed. That is an exchange, and gene conversion is non-reciprocal |
 
 A tract covering **every** diagnostic site of the locus is a special case that needs no special
 handling: "the whole locus was converted" and "every read here came from the donor" predict
@@ -334,6 +353,7 @@ the donor/acceptor graph of your reference.
 | `--gconv_min_sites` | `3` | Diagnostic sites a pair needs before it is analysed at all |
 | `--gconv_min_depth` | `5` | Depth below which a site is undetermined in the summaries |
 | `--gconv_min_bq` | `13` | Base-quality floor when reading an allele off a read |
+| `--gconv_reciprocal_af` | `0.5` | Share of the DONOR's reads carrying the acceptor's bases at which the event is an exchange rather than a conversion |
 | `--gconv_ubiquitous` | `0.9` | Fraction of the cohort at which an event is a reference artifact |
 | `--gconv_corroborated_bf` | `2.0` | Bayes factor a sub-threshold tract needs before another sample's outright call can vouch for it |
 | `--gconv_cohort_min_samples` | `5` | Cohort size below which recurrence says too little to act on |
