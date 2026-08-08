@@ -156,8 +156,23 @@ def aligned_intervals(text):
             continue
         s, e = int(f[0]), int(f[1])
         out.setdefault(f[11], []).append((min(s, e), max(s, e)))
-    for contig in out:
-        out[contig].sort()
+
+    # Merged, and that is not tidying. An outgroup is aligned with the same `--maxmatch` that
+    # produces the paralog map, so it emits nested and overlapping alignments on purpose. The
+    # lookup below finds the last interval starting at or before a position and asks only that
+    # one, so a position inside a long alignment that also contains a short nested one was
+    # answered by the short one and came back uncovered. Whole stretches of the outgroup then
+    # went unpolarised, and an unpolarised site is indistinguishable from one the outgroup
+    # genuinely does not reach.
+    for contig, spans in out.items():
+        spans.sort()
+        merged = []
+        for start, end in spans:
+            if merged and start <= merged[-1][1] + 1:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append((start, end))
+        out[contig] = merged
     return out
 
 

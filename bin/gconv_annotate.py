@@ -119,13 +119,21 @@ def codon_change(seq, feature, pos, alt):
     index = offset % 3                                # which base of its codon this position is
 
     if feature["strand"] == "+":
-        first = pos - index
+        first, last = pos - index, pos - index + 2
         codon = seq[first - 1:first + 2]
         alt_base = alt
     else:
         first = pos + index                           # the codon's first base, in genome order
+        last = first - 2
         codon = seq[first - 3:first].translate(COMPLEMENT)[::-1]
         alt_base = alt.translate(COMPLEMENT)
+    # The whole codon has to be inside the feature, not merely the position asked about. A CDS
+    # whose length after its phase is not a multiple of three ends in one or two leftover bases
+    # that belong to no codon of it, and reading three from there builds a codon out of the next
+    # gene's sequence. Found by translating the feature twice and comparing, which is the only
+    # way it shows: the invented change is a perfectly ordinary amino acid at a plausible codon.
+    if not (feature["start"] <= min(first, last) and max(first, last) <= feature["end"]):
+        return None
     if len(codon) != 3:
         return None
 

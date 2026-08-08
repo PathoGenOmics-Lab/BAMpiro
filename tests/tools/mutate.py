@@ -72,6 +72,10 @@ EQUIVALENT = {
     ('if not genome_depth or genome_depth <= 0:', "<"):
         "the left arm already short-circuits on 0, which is falsy, so the comparison only ever "
         "sees a negative depth and both forms reject one",
+    ('if not (feature["start"] <= pos <= feature["end"]) or len(alt) != 1:', "and"):
+        "a substitution of any length other than one produces a mutated codon of a length other "
+        "than three, which the codon table then declines. Checked over every strand, phase and "
+        "position with alts of length 0, 1, 2 and 4: the two forms never differ",
     ('carries = measured & (site_lr > 0)', ">="):
         "`measured` already requires |site_lr| above the calling threshold, so nothing inside "
         "the mask can be zero",

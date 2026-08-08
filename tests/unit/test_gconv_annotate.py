@@ -9,6 +9,8 @@ against a table written out independently rather than trusted because it has 64 
 
 from __future__ import annotations
 
+import random
+
 import pytest
 
 from conftest import load_script
@@ -279,3 +281,72 @@ def test_a_feature_on_another_contig_is_not_reported():
     features = [dict(_cds(11, 25), contig="other")]
 
     assert ga.annotate_tract(features, {CONTIG: SEQ}, CONTIG, 11, 25, {14: "C"})["genes"] == ""
+
+
+# --------------------------------------------------------------------------- against an oracle
+
+
+def _translate(dna, table):
+    return "".join(table.get(dna[i:i + 3].upper(), "?") for i in range(0, len(dna) - 2, 3))
+
+
+def _protein_change(seq, feature, pos, alt, table):
+    """What the substitution does, worked out by translating the WHOLE feature twice.
+
+    Deliberately a different algorithm from the one under test, which locates a single codon by
+    arithmetic. This one extracts the coding sequence, reverse-complements it when the strand
+    says so, drops the phase, throws away the trailing bases that make up no codon, and
+    translates. Then it does it again with the base substituted and compares the two proteins.
+
+    Returns (codon number, ref aa, alt aa), or None when the protein does not change, which
+    covers both a synonymous substitution and a position that is not in any complete codon.
+    """
+    start, end, phase = feature["start"], feature["end"], feature["phase"]
+
+    def protein(genome):
+        sub = genome[start - 1:end]
+        if feature["strand"] == "-":
+            sub = sub.translate(ga.COMPLEMENT)[::-1]
+        sub = sub[phase:]
+        return _translate(sub[:len(sub) - len(sub) % 3], table)
+
+    before = protein(seq)
+    after = protein(seq[:pos - 1] + alt + seq[pos:])
+    diff = [(i + 1, a, b) for i, (a, b) in enumerate(zip(before, after)) if a != b]
+    return diff[0] if len(diff) == 1 else None
+
+
+@pytest.mark.parametrize("seed", range(40))
+def test_a_codon_is_placed_where_translating_the_whole_gene_puts_it(seed):
+    """The strongest check available here, and it found what nothing else did.
+
+    Codon arithmetic fails by returning a plausible amino acid at a plausible codon, so a test
+    that asserts on hand-computed values only ever covers the cases someone thought to compute.
+    Translating the feature twice and diffing the proteins is a different route to the same
+    answer, and disagreements are exactly the cases nobody would have written down.
+
+    What it found: `codon_change` checked that the POSITION was inside the feature and that the
+    codon had three bases, but never that those three bases were inside the feature. A CDS whose
+    length after its phase is not a multiple of three ends in leftover bases belonging to no
+    codon of it, and a substitution there was reported as an amino-acid change built out of the
+    NEXT gene's sequence.
+    """
+    rng = random.Random(9000 + seed)
+    table = {c: a for c, a in ga.CODONS.items()}
+    for _ in range(60):
+        length = rng.randint(30, 120)
+        seq = "".join(rng.choice("ACGT") for _ in range(length))
+        start = rng.randint(1, length - 12)
+        end = rng.randint(start + 8, min(length, start + 60))
+        feature = _cds(start, end, strand=rng.choice("+-"), phase=rng.randint(0, 2))
+        pos, alt = rng.randint(start, end), rng.choice("ACGT")
+
+        got = ga.codon_change(seq, feature, pos, alt)
+        want = _protein_change(seq, feature, pos, alt, table)
+
+        if want is None:
+            assert got is None or got[1] == got[2], (
+                f"seed {seed}: the protein does not change, but the tool reports {got} "
+                f"for {feature} at {pos}->{alt}")
+        else:
+            assert got == want, f"seed {seed}: tool {got}, translating the gene gives {want}"

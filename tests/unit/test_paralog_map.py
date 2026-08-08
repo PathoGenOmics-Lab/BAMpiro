@@ -427,6 +427,49 @@ def test_the_outgroup_alignment_covers_its_own_first_and_last_base(pos, covered)
     assert pm._covered(intervals, "chr", pos) is covered
 
 
+def test_a_nested_alignment_does_not_hide_the_long_one_containing_it():
+    """`--maxmatch` emits nested and overlapping alignments on purpose, and the lookup asks only
+    the last interval starting at or before the position.
+
+    So a position sitting inside a long alignment that also contains a short nested one was
+    answered by the short one and came back uncovered. Whole stretches of the outgroup went
+    unpolarised, and an unpolarised site is indistinguishable from one the outgroup genuinely
+    does not reach: the feature quietly did much less than it said, with nothing to show for it.
+    """
+    intervals = pm.aligned_intervals(_anc_coords(1, 1000) + _anc_coords(500, 600))
+
+    for pos in (300, 550, 800, 1000):
+        assert pm._covered(intervals, "chr", pos) is True, pos
+    assert pm._covered(intervals, "chr", 1001) is False
+
+
+def test_alignments_arriving_out_of_order_still_cover_what_they_cover():
+    """nucmer output is not sorted by the reference, and two alignments that meet or overlap are
+    one covered stretch however they arrived."""
+    intervals = pm.aligned_intervals(_anc_coords(2000, 3000) + _anc_coords(1, 1000)
+                                     + _anc_coords(900, 2100))
+
+    assert intervals["chr"] == [(1, 3000)]
+    assert pm._covered(intervals, "chr", 1500) is True
+    assert pm._covered(intervals, "chr", 3001) is False
+
+
+def test_two_alignments_that_touch_end_to_start_are_one_stretch():
+    """Adjacent is not a gap: 1-500 and 501-1000 leave nothing uncovered between them."""
+    intervals = pm.aligned_intervals(_anc_coords(1, 500) + _anc_coords(501, 1000))
+
+    assert intervals["chr"] == [(1, 1000)]
+
+
+def test_a_real_gap_between_alignments_stays_a_gap():
+    """The merge must not swallow one. A position the outgroup does not reach is the whole reason
+    the coverage is tracked at all."""
+    intervals = pm.aligned_intervals(_anc_coords(1, 500) + _anc_coords(600, 1000))
+
+    assert intervals["chr"] == [(1, 500), (600, 1000)]
+    assert pm._covered(intervals, "chr", 550) is False
+
+
 def test_a_position_before_every_alignment_is_not_covered_by_the_last_one():
     """The lookup walks back from the first interval starting past the position, and there may be
     none before it. Reaching back anyway lands on the LAST interval of the contig."""

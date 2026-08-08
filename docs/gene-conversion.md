@@ -266,6 +266,13 @@ than as a conversion. The per-tract counts are in `n_derived`, `n_ancestral` and
     Where the DONOR's allele is itself an innovation, a sample cannot be carrying it by
     retention: there is nothing to retain. It had to be copied.
 
+!!! note "The outgroup alignment is merged before it is used"
+
+    `nucmer --maxmatch` emits nested and overlapping alignments deliberately, and a containment
+    test that consults only the last alignment starting before a position answers it with the
+    short nested one. Positions inside a long alignment then came back uncovered and went
+    unpolarised, which is indistinguishable from the outgroup not reaching them.
+
 !!! warning "Silence in the outgroup alignment is not agreement"
 
     A position the outgroup does not reach is left unpolarised rather than assumed identical.
