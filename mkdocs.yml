@@ -12,8 +12,8 @@ docs_dir: docs
 
 theme:
   name: material
-  logo: assets/bampiro2.png
-  favicon: assets/bampiro2.png
+  logo: assets/bampiro.svg
+  favicon: assets/bampiro.svg
   icon:
     repo: fontawesome/brands/github
   palette:
