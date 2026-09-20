@@ -6,6 +6,15 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ## [Unreleased] - targeting 1.1.0
 
+### Changed
+
+- **Garnatxa submits four times faster.** `submitRateLimit` goes from 50 to 200 jobs a minute,
+  because it binds whenever the tasks are shorter than the interval between submissions. A
+  185-sample cohort instantiates about 4,300 tasks, 740 of them `ANNOTATE_LEGACY_VCF` at two or
+  three seconds each, so at the old rate those alone spent a quarter of an hour doing nothing but
+  calling sbatch. It is a courtesy limit toward the scheduler rather than a correctness one, and
+  the comment says to lower it again if submissions start being refused.
+
 ### Fixed
 
 - **The dedup pipe asked for 160 percent of its own memory, and the resulting OOM was invisible.**
