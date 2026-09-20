@@ -27,11 +27,11 @@ The pipeline pulls `paururo/bampiro` automatically; it contains every tool it ne
 image **by digest**, not by a tag:
 
 ```groovy
-container = "docker://paururo/bampiro@sha256:78355aa4909dad87c44e2157ccb8032c86d24da3a8e10f37b5075a2b9ba57626"
+container = "docker://paururo/bampiro@sha256:bef43753dd0e7a6cd5478b0a4a7af4a77c6944ccec9a04176a52a2b4298ee1ca"
 ```
 
 A tag can be repointed at a rebuilt image, so two runs a month apart could silently use
-different tool versions; a digest cannot. That digest is the 1.1.0-rc1 image. Override it with
+different tool versions; a digest cannot. That digest is the 1.1.0-rc2 image. Override it with
 `--container`; either way the value actually used is recorded in the report's provenance
 footer.
 
@@ -133,7 +133,7 @@ sets both the database and its bind.
 
 ## Container contents (software versions)
 
-The container (`paururo/bampiro`, the 1.1.0-rc1 image pinned above) bundles the following tools:
+The container (`paururo/bampiro`, the 1.1.0-rc2 image pinned above) bundles the following tools:
 
 | Tool | Version | Purpose |
 | :--- | :--- | :--- |

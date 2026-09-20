@@ -29,7 +29,7 @@ You only need two things on your machine - the container carries every bioinform
 !!! note "The container does the heavy lifting"
 
     On the first run, BAMpiro automatically pulls its image with every tool built in.
-    The image is pinned **by digest** (`docker://paururo/bampiro@sha256:78355aa…`), not by
+    The image is pinned **by digest** (`docker://paururo/bampiro@sha256:bef4375…`), not by
     a tag, so the run you do today and the one you repeat next year use the same binaries.
     That download is a few GB and happens once - later runs reuse the cached image. Full
     requirements and the bundled software versions are in

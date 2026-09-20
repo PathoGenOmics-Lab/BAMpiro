@@ -47,7 +47,7 @@ A `-profile` tells Nextflow *where* and *how* to run each task. Nothing site-spe
     ```text
     Profile(s)       : slurm
     Executor         : slurm
-    Container        : docker://paururo/bampiro@sha256:78355aa…
+    Container        : docker://paururo/bampiro@sha256:bef4375…
     Kraken2          : disabled
     ```
 
