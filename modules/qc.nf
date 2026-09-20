@@ -329,6 +329,19 @@ process DUMP_VERSIONS {
       ver snpEff    ''                   snpEff    -version
       ver python    'Python '            python3   --version
       ver multiqc   'multiqc, version '  multiqc   --version
+      ver pathotypr 'pathotypr '         pathotypr --version
+
+      # The marker catalogue is provenance too, and it is the half that cannot be recovered from
+      # the results. Catalogue v1.0.0 assigned each variant a single drug inherited from its gene;
+      # v1.0.2 grades per variant-drug pair and disagrees with it on 15,969 rows, so two runs with
+      # identical calls can mean different things. The checksum covers the case of a catalogue
+      # supplied with --pathotypr_dr_markers, which carries no version string at all.
+      if [ -s "!{params.pathotypr_dr_markers}" ]; then
+          echo "pathotypr markers: $(cat "$(dirname "!{params.pathotypr_dr_markers}")/VERSION" 2>/dev/null || echo 'not recorded')"
+          echo "pathotypr dr_markers sha256: $(sha256sum "!{params.pathotypr_dr_markers}" | cut -d' ' -f1)"
+      else
+          echo "pathotypr markers: NA"
+      fi
     } > software_versions.txt
 
     # MultiQC custom-content section (files ending in _mqc.yml are auto-detected)

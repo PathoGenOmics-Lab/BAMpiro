@@ -6,6 +6,62 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ## [Unreleased] - targeting 1.1.0
 
+### Changed
+
+- **Drug-resistance catalogue upgraded to Zenodo v1.0.2, which corrects v1.0.0.** The WHO
+  catalogue grades every variant-drug pair separately; v1.0.0 instead gave each variant a
+  single drug inherited from its gene and took the grade from whichever catalogue row it
+  found first. Amikacin therefore did not occur anywhere in v1.0.0 and could never be
+  reported, the *rrs* aminoglycoside determinants were attributed to streptomycin, and the
+  *inhA* promoter variants to isoniazid alone. Beyond the 89 relabelled rows, 15,969 rows
+  carried the wrong grade: the upgrade moves 9,439 into grades 1-2 and none out of them,
+  growing the reportable marker set by 59 percent.
+
+  Detection is unchanged, and so are MDR and pre-XDR assignment. Results reporting
+  amikacin, kanamycin, capreomycin, ethionamide, linezolid, streptomycin or delamanid from
+  an image built before this change should be regenerated. An image ships v1.0.0 if
+  `pipeline_info/software_versions.txt` records the `dr_markers` SHA-256
+  `9769864774a11ed325d05b0543932782f6cd8c6ee444998c616e44c5763576c2`.
+
+  v1.0.2 publishes two coordinate frames; the bundled one is the MTBC-ancestor frame, which
+  is the frame of the reference bundled beside it. All 102,216 of its REF alleles match that
+  reference and the H37Rv file mismatches 609 of them at identical coordinates, so the wrong
+  choice would have dropped those markers with no error. The lineage markers and the
+  pre-trained model are byte-identical to v1.0.0.
+
+### Added
+
+- **Every run records which resistance catalogue produced its calls.** `DUMP_VERSIONS` now
+  emits the pathotypr binary version, the catalogue version and the SHA-256 of the marker
+  file actually read. Which catalogue a set of calls came from was not recoverable from the
+  calls themselves, and two catalogues that disagree on 15,969 rows can produce reports that
+  look identical.
+
+- **A composite drug label now counts towards every drug it names.** Catalogue v1.0.2 writes
+  a variant graded for several drugs as `AMI_KAN_CAP` or `INH_ETH`. The resistance matrix
+  used to give such a label a column of its own, leaving the columns of the drugs it covers
+  empty, so a sample whose only isoniazid evidence was an *inhA* promoter variant read as
+  clean under INH. The calls table and the TSV still carry the label as the catalogue wrote it.
+
+### Fixed
+
+- **A detected variant with no WHO grade no longer looks like a clean drug.** Both an
+  ungraded call and a genuine no-call rendered as an empty cell in the resistance matrix.
+  v1.0.0 contained 6,056 ungraded rows, ten of which are grade 1-2 under v1.0.2. Ungraded
+  calls now carry a mark and a legend entry of their own; only a no-call is blank.
+
+- **The container build verifies its Zenodo assets by checksum.** The comment claimed it
+  failed loudly on a truncated download, but the only guard was `test -s`, which a partial
+  9 MB file passes. `sha256sum --strict` is used rather than plain `-c`, because without
+  `--strict` a malformed digest line is skipped with a warning and the build still succeeds,
+  which was confirmed by building with one.
+
+- **The pathotypr binary is pinned alongside its data.** It was installed unpinned while its
+  marker files were pinned to a Zenodo record, so a rebuild paired whichever binary bioconda
+  served that day with a fixed catalogue. The image published before this change carries
+  binary 1.0.2 against catalogue v1.0.0, which is exactly the skew v1.0.2 renumbered the data
+  files to prevent.
+
 ### Added
 
 - **Whether the donor kept its own bases.** Gene conversion is non-reciprocal by

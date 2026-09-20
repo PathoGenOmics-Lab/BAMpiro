@@ -210,6 +210,22 @@ describe("panel colouring and labels", () => {
     assert.equal(fn.drStatus([]).t, "");
   });
 
+  it("separates a detected-but-ungraded call from a clean drug", () => {
+    // A catalogue grade that is not a WHO number parses to null. Both of these used to render as
+    // an empty cell, which is also what "no mutation detected" renders as, so a real variant the
+    // catalogue does not grade was indistinguishable from nothing at all.
+    assert.equal(fn.drStatus([null]).t, "!");
+    assert.notEqual(fn.drStatus([null]).t, fn.drStatus([]).t);
+    assert.notEqual(fn.drStatus([null]).c, fn.drStatus([]).c);
+  });
+
+  it("keeps a graded call ahead of an ungraded one in the same cell", () => {
+    // Worst-grade-wins: one variant with no grade must not mask a resistance call beside it.
+    assert.equal(fn.drStatus([1, null]).t, "R");
+    assert.equal(fn.drStatus([3, null]).t, "?");
+    assert.equal(fn.drStatus([null, 5]).t, "!");   // ungraded outranks "not associated"
+  });
+
   it("colours WHO grades 1 and 2 as resistant", () => {
     assert.equal(fn.drGColor(1), fn.drGColor(2));
     assert.notEqual(fn.drGColor(1), fn.drGColor(3));

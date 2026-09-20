@@ -1,6 +1,10 @@
 function drGColor(gn){ return (gn===1||gn===2)?'#dc2626':(gn===3?'#d97706':((gn===4||gn===5)?'#94a3b8':'#b8c2cf')); }
 function drGInk(gn){ return (gn===1||gn===2||gn===3)?'#fff':'#1f2a37'; }   // dark ink on the pale grey (4-5 / unknown) badges so the label stays legible
-function drStatus(gns){ var r=false,u=false,n=false; for(var i=0;i<gns.length;i++){var g=gns[i]; if(g===1||g===2)r=true; else if(g===3)u=true; else if(g===4||g===5)n=true;} return r?{t:'R',c:'#dc2626'}:(u?{t:'?',c:'#d97706'}:(n?{t:'&#183;',c:'#94a3b8'}:{t:'',c:'var(--track)'})); }
+// The last branch used to be reached two ways: no mutation at all, and a mutation whose grade is
+// not a WHO number. Both rendered as an empty cell, so a detected variant the catalogue does not
+// grade looked exactly like a clean drug. Catalogue v1.0.0 had 6,056 such rows and ten of them are
+// WHO grade 1-2 in v1.0.2. An ungraded call now gets a mark of its own; only a genuine no-call is blank.
+function drStatus(gns){ var r=false,u=false,x=false,n=false; for(var i=0;i<gns.length;i++){var g=gns[i]; if(g===1||g===2)r=true; else if(g===3)u=true; else if(g===4||g===5)n=true; else x=true;} return r?{t:'R',c:'#dc2626'}:(u?{t:'?',c:'#d97706'}:(x?{t:'!',c:'#7c6f9f'}:(n?{t:'&#183;',c:'#94a3b8'}:{t:'',c:'var(--track)'}))); }
 // ---- Kraken2 taxonomic composition (contamination / host check on the reads before mapping) ----
 function renderKraken(){
   var host=el('kraken_body'), sec=el('kraken'); if(!host)return;
@@ -53,7 +57,10 @@ function renderDrug(){
   if(sec)sec.style.display='';
   var samples=D.samples, drugs=D.drugs, calls=D.calls;
   var cell={}, cmut={};
-  calls.forEach(function(c){ (cell[c.s]=cell[c.s]||{}); (cell[c.s][c.drug]=cell[c.s][c.drug]||[]).push(c.gn); (cmut[c.s]=cmut[c.s]||{}); (cmut[c.s][c.drug]=cmut[c.s][c.drug]||[]).push(c); });
+  // c.dr is the drugs the label NAMES: one for RIF, three for AMI_KAN_CAP. A composite has to
+  // land in the column of every drug it covers, or the cell for that drug reads as clean.
+  calls.forEach(function(c){ var ds=(c.dr&&c.dr.length)?c.dr:[c.drug]; for(var i=0;i<ds.length;i++){ var d=ds[i];
+    (cell[c.s]=cell[c.s]||{}); (cell[c.s][d]=cell[c.s][d]||[]).push(c.gn); (cmut[c.s]=cmut[c.s]||{}); (cmut[c.s][d]=cmut[c.s][d]||[]).push(c); } });
   var mx='<div class="dr-mxwrap"><table class="drmx"><thead><tr><th class="dr-corner">sample \\ drug</th>'+
     drugs.map(function(dr){return '<th class="dr-hcell" title="'+esc(dr)+'"><span class="dr-h">'+esc(dr)+'</span></th>';}).join('')+'</tr></thead><tbody>'+
     samples.map(function(s){ return '<tr><th class="dr-row" title="'+esc(s)+'">'+esc(s)+'</th>'+drugs.map(function(dr){
@@ -68,7 +75,8 @@ function renderDrug(){
       '<span title="WHO groups 1-2: associated with resistance"><i style="background:#dc2626"></i>1&#8211;2 associated with R</span>'+
       '<span title="WHO group 3: uncertain significance"><i style="background:#d97706"></i>3 uncertain</span>'+
       '<span title="WHO groups 4-5: not associated with resistance"><i style="background:#94a3b8"></i>4&#8211;5 not associated</span>'+
-      '<span class="c">Cell = worst grade per drug (R / ? / &#183;). A genomic screen (pathotypr, WHO catalogue, H37Rv numbering), not a clinical DST result.</span></div>'+
+      '<span title="detected, but the catalogue carries no WHO grade for it"><i style="background:#7c6f9f"></i>! ungraded</span>'+
+      '<span class="c">Cell = worst grade per drug (R / ? / ! / &#183;); blank means no mutation detected. A genomic screen (pathotypr, WHO catalogue, H37Rv numbering), not a clinical DST result.</span></div>'+
     mx+
     '<div class="dr-controls"><input id="drq" class="dyn-search" type="search" placeholder="filter by sample / drug / gene / mutation..." value="'+esc(drState.q)+'"><button class="dyn-btn" id="drdl" title="Download every resistance call as a TSV">'+icon('download')+'download calls (TSV)</button><span class="dyn-count" id="drcount"></span></div>'+
     '<div class="epitbl-wrap"><table class="epitbl" id="drtable"></table></div>';

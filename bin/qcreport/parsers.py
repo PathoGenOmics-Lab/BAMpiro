@@ -261,8 +261,38 @@ def parse_pnps(path):
     return rows[:300]
 
 
-_DR_DRUG_ORDER = ["RIF", "INH", "EMB", "PZA", "STR", "STM", "FQ", "LFX", "MFX", "OFX", "KAN", "AMK",
-                  "CAP", "ETH", "PTO", "LZD", "BDQ", "CFZ", "BDQ_CFZ", "DLM", "PAS", "CS"]
+# Roughly clinical order: first line, then the injectables and the rest. AMI is the catalogue's
+# spelling of amikacin; AMK is kept beside it because other panels use that one. No composite label
+# appears here, because `_dr_components` splits every composite into the drugs it names before the
+# matrix is built.
+_DR_DRUG_ORDER = ["RIF", "INH", "EMB", "PZA", "STR", "STM", "FQ", "LFX", "MFX", "OFX", "AMI", "AMK",
+                  "KAN", "CAP", "ETH", "PTO", "LZD", "BDQ", "CFZ", "DLM", "PAS", "CS", "OTHER"]
+
+# The single-drug codes the WHO catalogue uses, which is what makes a composite recognisable.
+_DR_KNOWN = {"RIF", "INH", "EMB", "PZA", "STR", "STM", "FQ", "LFX", "MFX", "OFX", "AMI", "AMK",
+             "KAN", "CAP", "ETH", "PTO", "LZD", "BDQ", "CFZ", "DLM", "PAS", "CS"}
+
+
+def _dr_components(label):
+    """The drugs a label names. `AMI_KAN_CAP` is three drugs, `RIF` is one.
+
+    The WHO catalogue grades every variant-drug pair separately, so one variant can be an
+    established marker for several drugs at once. Catalogue v1.0.2 writes that as an
+    underscore-joined label, and a variant graded 1 for amikacin and kanamycin arrives as
+    `AMI_KAN`. Left whole it would get a column of its own and contribute nothing to either drug,
+    so a sample whose only isoniazid evidence is an inhA promoter variant, now labelled `INH_ETH`,
+    would read as clean in the INH column. The calls table and the TSV keep the label as written;
+    only the matrix expands it.
+
+    Split only when EVERY part is a drug code we recognise. A label from somebody else's panel
+    that happens to contain an underscore is left alone rather than chopped into nonsense.
+    """
+    if not label:
+        return []
+    if label in _DR_KNOWN or "_" not in label:
+        return [label]
+    parts = label.split("_")
+    return parts if all(p in _DR_KNOWN for p in parts) else [label]
 
 
 def parse_dr(path):
@@ -293,7 +323,9 @@ def parse_dr(path):
                     dp = int(float(dp)) if dp not in (None, "", "NA", ".") else None
                 except ValueError:
                     dp = None
-                calls.append({"s": s, "drug": (d.get("drug") or "").strip(), "gene": (d.get("gene") or "").strip(),
+                drug = (d.get("drug") or "").strip()
+                calls.append({"s": s, "drug": drug, "dr": _dr_components(drug),
+                              "gene": (d.get("gene") or "").strip(),
                               "mutation": (d.get("mutation") or "").strip(), "grade": grade,
                               "gn": (int(mg.group(1)) if mg else None),
                               "marker": (d.get("marker_name") or d.get("marker") or "").strip(),
@@ -304,7 +336,7 @@ def parse_dr(path):
         return None
     if not calls:
         return None
-    drugs = sorted({c["drug"] for c in calls if c["drug"]},
+    drugs = sorted({d for c in calls for d in c["dr"] if d},
                    key=lambda x: (_DR_DRUG_ORDER.index(x) if x in _DR_DRUG_ORDER else 99, x))
     return {"samples": samples, "drugs": drugs, "calls": calls}
 

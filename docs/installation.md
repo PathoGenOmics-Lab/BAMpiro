@@ -149,15 +149,16 @@ The container (`paururo/bampiro`, the 1.1.0-rc1 image pinned above) bundles the 
 | **FastP** | `1.0.1` | Fast all-in-one read pre-processing |
 | **Kraken2** | `2.17.1` | Taxonomic classification |
 | **Genmap** | *(bioconda)* | Genome mappability (length-aware read filter) |
-| **Pathotypr** | *(bioconda)* | Alignment-free MTBC lineage + WHO drug-resistance typing |
+| **Pathotypr** | `1.0.2` | Alignment-free MTBC lineage + WHO drug-resistance typing |
 | **MultiQC** | `1.33` | Aggregate results reporting |
 | **MUMmer4** | `4.0.1` | `nucmer` / `show-coords` self-alignment for repeat masking |
 | **Biopython** | `1.86` | Biological computation library |
 | **Pandas** | `2.3.3` | Data analysis library |
 
 The image also bundles, under `/opt/pathotypr/`, Pathotypr's marker panels +
-pre-trained RF model (Zenodo v1.0.0, DOI
-[10.5281/zenodo.19210044](https://doi.org/10.5281/zenodo.19210044)) and the
+pre-trained RF model (Zenodo v1.0.2, DOI
+[10.5281/zenodo.21915539](https://doi.org/10.5281/zenodo.21915539), MTBC-ancestor
+coordinate frame) and the
 MTBC-ancestor reference, plus the pre-downloaded **H37Rv snpEff database**
 (`Mycobacterium_tuberculosis_h37rv`) - so [lineage/DR typing](pathotypr.md) and
 [dual amino-acid annotation](pathotypr.md#dual-amino-acid-numbering-h37rv--mycobrowser)

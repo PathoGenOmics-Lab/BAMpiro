@@ -14,7 +14,8 @@ include { getSavePath; getSampleDir } from './utils'
       - WHO drug-resistance markers          -> emit: dr_mutations (${prefix}_<s>_mutations.tsv:
         pos/ref/alt/ref_count/alt_count/alt_fraction/lineage_path[=drug;resistance;marker;grade;gene;mutation];
         aggregated by collect_dr.py for the report's Drug-resistance panel)
-    pathotypr v1.0.0 CLI verified: split-fastq -i -r -m -o --paired --nested-classification --threads.
+    pathotypr v1.0.2 CLI verified against the built image: split-fastq -i --reference --markers
+    --output-prefix --paired --nested-classification --min-alt-percent --threads.
 ==================================================================== */
 
 process RUN_PATHOTYPR_PE {

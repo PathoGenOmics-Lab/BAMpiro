@@ -335,9 +335,60 @@ def test_parse_dr_reads_the_calls_samples_and_drug_order(tmp_path):
     # drugs follow the curated first/second-line order, not alphabetical order
     assert dr["drugs"] == ["RIF", "INH", "EMB"]
     assert len(dr["calls"]) == 3
-    assert dr["calls"][0] == {"s": "S1", "drug": "INH", "gene": "katG", "mutation": "S315T",
-                              "grade": "1) Assoc w R", "gn": 1, "marker": "katG_S315T",
-                              "af": pytest.approx(0.98), "dp": 40}
+    assert dr["calls"][0] == {"s": "S1", "drug": "INH", "dr": ["INH"], "gene": "katG",
+                              "mutation": "S315T", "grade": "1) Assoc w R", "gn": 1,
+                              "marker": "katG_S315T", "af": pytest.approx(0.98), "dp": 40}
+
+
+# --------------------------------------------------------------------------- composite drug labels
+#
+# Catalogue v1.0.2 grades a variant per drug, so one marker can be established for several at once
+# and arrives under a joined label. Left whole it takes a column of its own and leaves the columns
+# of the drugs it actually names empty, which reads as "no mutation detected" for those drugs.
+
+DR_COMPOSITE = (
+    "sample\tdrug\tgene\tmutation\tgrade\tmarker_name\taf\tdp\n"
+    "S1\tINH_ETH\tinhA\tc.-777C>T\t2) Assoc w R - Interim\tinhA_c.-777C>T\t0.91\t30\n"
+    "S1\tAMI_KAN_CAP\trrs\tn.1401A>G\t1) Assoc w R\trrs_n.1401A>G\t0.99\t50\n"
+    "S2\tBDQ_CFZ\tmmpL5\tLoF\t2) Assoc w R - Interim\tmmpL5_LoF\t0.88\t25\n"
+)
+
+
+def test_a_composite_label_lands_in_every_drug_it_names(tmp_path):
+    dr = qc_parsers.parse_dr(write(tmp_path / "dr.tsv", DR_COMPOSITE))
+
+    assert dr["drugs"] == ["INH", "AMI", "KAN", "CAP", "ETH", "BDQ", "CFZ"]
+    assert [c["dr"] for c in dr["calls"]] == [["INH", "ETH"], ["AMI", "KAN", "CAP"], ["BDQ", "CFZ"]]
+
+
+def test_the_label_itself_survives_for_the_calls_table(tmp_path):
+    """The matrix expands a composite; the table and the TSV must still say what the file said,
+    because `INH_ETH` is the catalogue's own statement about that variant."""
+    calls = qc_parsers.parse_dr(write(tmp_path / "dr.tsv", DR_COMPOSITE))["calls"]
+
+    assert [c["drug"] for c in calls] == ["INH_ETH", "AMI_KAN_CAP", "BDQ_CFZ"]
+
+
+def test_amikacin_gets_a_column_of_its_own(tmp_path):
+    """v1.0.0 never used the AMI label at all, so no report built against it could show one. The
+    ordering list spelled it AMK, which the catalogue does not use, so even the placeholder missed."""
+    dr = qc_parsers.parse_dr(write(tmp_path / "dr.tsv", DR_COMPOSITE))
+
+    assert "AMI" in dr["drugs"]
+    assert dr["drugs"].index("AMI") < dr["drugs"].index("KAN")   # curated order, not alphabetical
+
+
+@pytest.mark.parametrize("label, expected", [
+    ("RIF", ["RIF"]),
+    ("INH_ETH", ["INH", "ETH"]),
+    ("AMI_KAN_CAP", ["AMI", "KAN", "CAP"]),
+    ("OTHER", ["OTHER"]),                    # a real label, and not a composite despite being plural
+    ("SOME_PANEL_CODE", ["SOME_PANEL_CODE"]),  # somebody else's naming, left alone rather than chopped
+    ("RIF_ZZZ", ["RIF_ZZZ"]),                # one unknown part is enough to leave the whole label be
+    ("", []),
+])
+def test_components_of(label, expected):
+    assert qc_parsers._dr_components(label) == expected
 
 
 def test_parse_dr_extracts_the_leading_who_grade_number(tmp_path):
