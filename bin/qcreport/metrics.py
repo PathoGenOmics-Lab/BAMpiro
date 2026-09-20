@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 
-from .parsers import parse_gene_locus, to_float
+from .parsers import clean_str, parse_gene_locus, to_float
 
 DEF = dict(depth_min=10.0, breadth_min=90.0, missing_max=10.0, dup_max=40.0,
            iupac_max=2.0, mapping_min=80.0, titv_min=0.0, snp_z=3.0,
@@ -255,7 +255,7 @@ def discover_extra_metrics(summ):
     return extras
 
 
-def flag_sample(m, thr, snp_med, snp_sig, ancient=False, anc_thr=None, dmg=None):
+def flag_sample(m, thr, snp_med, snp_sig, ancient=False, anc_thr=None, dmg=None, ref_lineage=None):
     flags = []
     at = anc_thr if (ancient and anc_thr) else thr   # ancient samples judged against the aDNA threshold view
     g = lambda k: to_float(m.get(k))
@@ -296,6 +296,16 @@ def flag_sample(m, thr, snp_med, snp_sig, ancient=False, anc_thr=None, dmg=None)
     if tot > 0 and sum(1 for c in counts.values()
                        if (c / tot) * 100.0 >= thr["mixed_min_frac"] and c >= 3) > 1:
         flags.append("MIXED")
+    # The sample's own lineage against the one the rest of its reference's samples agree on.
+    # Lineage here is k-mer typing, which does not use the reference, so the two are independent
+    # and a disagreement means the sample was mapped against a genome it does not belong to.
+    # Every metric downstream then measures that distance instead of the sample: on one cohort 22
+    # samples annotated as one lineage were really another, carried 2,000 SNPs where their line
+    # mates carried 5, and produced 97% of the gene-conversion calls in the run. Nothing failed;
+    # the numbers were simply about the wrong comparison.
+    mine = clean_str(m.get("lineage"))
+    if ref_lineage and mine and mine.split(";")[0] != ref_lineage.split(";")[0]:
+        flags.append("LINEAGE_MISMATCH")
     # aDNA authentication: an ANCIENT sample whose terminal 5' C>T is below the floor -> possible modern contaminant
     if ancient and anc_thr is not None and dmg and dmg.get("ct1") is not None \
             and dmg["ct1"] < anc_thr["damage_min_ct"]:

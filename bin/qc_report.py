@@ -219,11 +219,22 @@ def build_payload(args, thr, anc_thr):
     if dose_map:
         extra_metrics = extra_metrics + [{"key": "dose", "label": "Dose", "kind": "float", "dir": "neu"}]
     extra_keys = [e["key"] for e in extra_metrics]
+    # The lineage the samples sharing a reference agree on. A reference is chosen per sample, so a
+    # sample whose reads type as something else was routed to the wrong one; the majority is what
+    # "should have been here" without needing to know the reference's own lineage.
+    by_ref = {}
+    for sid, m in summ.items():
+        ref, lin = clean_str(m.get("reference")), clean_str(m.get("lineage"))
+        if ref and lin and lin.lower() not in ("unclassified", "nan"):
+            by_ref.setdefault(ref, []).append(lin.split(";")[0])
+    ref_major = {r: max(set(v), key=v.count) for r, v in by_ref.items() if len(v) >= 3}
+
     jsamples, counts = [], {"PASS": 0, "WARN": 0, "FAIL": 0}
     for sid, m in summ.items():
         anc = is_ancient(m)
         dmg = dmg_by_sample.get(sid)
-        verdict, flags = flag_sample(m, thr, snp_med, snp_sig, ancient=anc, anc_thr=anc_thr, dmg=dmg)
+        verdict, flags = flag_sample(m, thr, snp_med, snp_sig, ancient=anc, anc_thr=anc_thr, dmg=dmg,
+                                     ref_lineage=ref_major.get(clean_str(m.get('reference'))))
         counts[verdict] += 1
         jsamples.append({"s": sid, "v": verdict, "f": flags,
                          "lineage": clean_str(m.get("lineage")),

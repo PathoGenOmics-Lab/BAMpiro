@@ -6,6 +6,29 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ## [Unreleased] - targeting 1.1.0
 
+### Added
+
+- **Two guards against a sample mapped to a genome it does not belong to.** In a 185-sample
+  cohort, 22 samples annotated as one lineage were really another, were routed to that lineage's
+  reference, carried about 2,000 SNPs where their line mates carried 5, and produced 507 of the
+  run's 522 gene-conversion tracts. Tracts per sample against genome-wide SNP count correlated at
+  r = 0.98. Nothing failed: the reference was a valid genome, the reads mapped to it, and every
+  metric was computed correctly about the wrong comparison.
+
+  `LINEAGE_MISMATCH` flags a sample whose k-mer lineage call disagrees with the rest of the
+  samples sharing its reference. K-mer typing does not use the reference, so the two are
+  independent evidence, and the majority stands in for what should have been there without
+  needing to know the reference's own lineage.
+
+  `divergent_sample` is a cohort verdict that refuses to read a sample's tracts as conversion when
+  it calls them in too many loci at once, since conversion is local and a diverged genotype
+  carries the donor base at every paralogous locus by inheritance. The threshold is
+  `--max-locus-frac`, default 0.1: on the cohort that surfaced this the mislabelled samples called
+  tracts in 20 to 39 percent of their loci and every correctly mapped sample in at most 8 percent.
+  It is counted in loci rather than rows, because one tract is emitted once per candidate donor,
+  and it takes precedence over the corroboration rule, which diverged samples would otherwise
+  satisfy by sharing their artefacts with each other at identical coordinates.
+
 ### Fixed
 
 - **A GFF attribute spelled `nan` was read as a gene name.** A GFF built from a table writes

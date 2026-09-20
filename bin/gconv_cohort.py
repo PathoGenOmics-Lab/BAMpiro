@@ -200,8 +200,42 @@ def locus_background(locus_rows):
     return out
 
 
+def divergent_samples(tract_rows, max_locus_frac, min_loci=20, min_sample_loci=5):
+    """Samples calling tracts in so many loci at once that the reference is the problem.
+
+    Gene conversion is a local event. A sample converting a quarter of every paralogous locus it
+    has is not converting: it is a different genotype from the one the reads were mapped to, and
+    at every paralogous locus it carries the donor's base by inheritance, which is exactly the
+    pattern the model scores as a tract.
+
+    This is not hypothetical. In a 185-sample cohort, 22 samples labelled as one lineage were
+    really another, were therefore mapped against a reference 2,000 SNPs away, and produced 507 of
+    the 522 tracts. Tracts per sample against genome-wide SNP count correlated at r = 0.98. The
+    separation is not subtle: those samples called tracts in 20 to 39 percent of their loci and
+    every other sample in at most 8 percent.
+
+    Counted in LOCI and not in tracts, because one locus scored against several donors yields
+    several rows and would otherwise inflate a clean sample towards the threshold.
+    """
+    by_sample, loci = {}, set()
+    for r in tract_rows:
+        pair = r.get("pair_id")
+        if pair in (None, ""):
+            continue
+        loci.add(pair)
+        if (r.get("verdict") or "").strip() == "gene_conversion":
+            by_sample.setdefault(r.get("sample"), set()).add(pair)
+    # A fraction of a handful of loci says nothing: one tract out of three is 33% and means only
+    # that the reference has three paralogous loci. Both floors are absolute for that reason, and
+    # a cohort below them is left alone rather than judged on a ratio it cannot support.
+    if len(loci) < min_loci:
+        return {}
+    return {s: len(p) / len(loci) for s, p in by_sample.items()
+            if len(p) >= min_sample_loci and len(p) / len(loci) > max_locus_frac}
+
+
 def cohort_verdict(row, event, background, n_samples, min_bf, corroborated_bf,
-                   ubiquitous, min_samples):
+                   ubiquitous, min_samples, divergent=None):
     """Revise a per-sample verdict in the light of the rest of the cohort.
 
     Only two revisions are made, in opposite directions, and both need the cohort to be possible.
@@ -209,6 +243,19 @@ def cohort_verdict(row, event, background, n_samples, min_bf, corroborated_bf,
     """
     verdict = (row.get("verdict") or "").strip()
     bf = num(row, "log10_bf")
+
+    # Before anything else: if the SAMPLE is diverged from the reference, none of its tracts mean
+    # what they say, however good each one looks on its own. This one comes first because the
+    # corroboration rule below would otherwise let these samples vouch for each other: they share
+    # a genotype, so they share their artefacts at identical coordinates, which reads as exactly
+    # the independent recurrence that rule is looking for.
+    frac_div = (divergent or {}).get(row.get("sample"))
+    if frac_div is not None:
+        return "divergent_sample", (
+            f"this sample calls tracts in {frac_div:.0%} of its paralogous loci. Conversion is "
+            "local; a sample converting that many loci at once is a different genotype from the "
+            "reference it was mapped to, and carries the donor base at each of them by "
+            "inheritance. Check the sample's lineage against the reference before reading this")
     # None means the cohort size is unknown, which is not the same as small. A fraction cannot be
     # formed at all, so the recurrence rule below is skipped rather than fed a stand-in.
     frac = event["n_samples"] / n_samples if n_samples else 0.0
@@ -240,7 +287,8 @@ def cohort_verdict(row, event, background, n_samples, min_bf, corroborated_bf,
 
 
 def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
-             ubiquitous=0.9, min_samples=5, slack=0, donor_margin=1.0, cohort_size=None):
+             ubiquitous=0.9, min_samples=5, slack=0, donor_margin=1.0, cohort_size=None,
+             max_locus_frac=0.1):
     """Add the cohort columns to every tract row, revising the verdict where the cohort speaks.
 
     `cohort_size` is how many samples were RUN. It matters because the ubiquity rule is a
@@ -289,6 +337,8 @@ def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
     for idxs in by_event_sample.values():
         donors.update(rank_donors(tract_rows, idxs, donor_margin))
 
+    divergent = divergent_samples(tract_rows, max_locus_frac)
+
     out = []
     for i, r in enumerate(tract_rows):
         eid = event_of.get(i)
@@ -297,7 +347,7 @@ def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
         info = {"n_samples": len(e["samples"]),
                 "n_called": len(e["called"] - {r.get("sample")})}
         verdict, reason = cohort_verdict(r, info, background, n_samples, min_bf,
-                                         corroborated_bf, ubiquitous, min_samples)
+                                         corroborated_bf, ubiquitous, min_samples, divergent)
         bg = background.get(r.get("pair_id"), {})
         row = dict(r)
         row.update({
@@ -328,6 +378,12 @@ def parse_args(argv=None):
     p.add_argument("--corroborated-bf", type=float, default=2.0,
                    help="Bayes factor a sub-threshold tract needs before another sample's "
                         "outright call is allowed to corroborate it")
+    p.add_argument("--max-locus-frac", type=float, default=0.1,
+                   help="A sample calling tracts in more than this FRACTION of its paralogous "
+                        "loci is diverged from the reference rather than converting, and all of "
+                        "its tracts are marked divergent_sample. Measured on a real cohort the "
+                        "two groups do not overlap: mislabelled samples called tracts in 20-39%% "
+                        "of their loci and every correctly mapped sample in at most 8%%.")
     p.add_argument("--ubiquitous", type=float, default=0.9,
                    help="fraction of the cohort at which an event is called a reference artifact")
     p.add_argument("--min-samples", type=int, default=5,
@@ -354,7 +410,7 @@ def main(argv=None) -> int:
     columns = (list(tracts[0].keys()) if tracts else list(TRACT_COLUMNS)) + COHORT_COLUMNS
     rows, n_samples = annotate(tracts, loci, a.min_bf, a.corroborated_bf,
                                a.ubiquitous, a.min_samples, a.slack, a.donor_margin,
-                               a.cohort_size)
+                               a.cohort_size, max_locus_frac=a.max_locus_frac)
 
     if n_samples is None and tracts:
         sys.stderr.write(
