@@ -174,6 +174,7 @@ Two documented, ready-to-use **organism** configs live in
 | | `--report_dup_max` | `40` | Gate: max duplication %. |
 | | `--report_iupac_max` | `2` | Gate: max IUPAC (ambiguous) %. |
 | | `--report_mapping_min` | `80` | Gate: min mapped %. |
+| **Cluster** | `--extra_binds` | *(empty)* | Extra host paths a container must be able to see, comma separated and no spaces. Only the site profiles bind anything, so only they use it. An unbound path does not fail at submission: it fails inside the task, as a file that is plainly there on the login node and absent to the tool that opens it. |
 | **QC & Filter** | `--kraken2_db` | *(none)* | Path to a Kraken2 database directory. **No default**: without one the contamination screen is skipped and the report's taxonomy panel hides itself. `-profile garnatxa` sets the shared database on that cluster. |
 | | `--kraken_memory_mapping` | `true` | Read the Kraken2 DB via mmap so parallel tasks share it in RAM (large peak-memory saving; slightly slower per task on a cold page cache). |
 | | `--fastp_min_length` | `35` | Discard reads shorter than this length. |
