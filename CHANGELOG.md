@@ -8,6 +8,15 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Changed
 
+- **Every task on Garnatxa goes to the same QoS by default, and the queue is a parameter.** Two
+  of the three steps that asked for a longer QoS were measured at about twenty seconds each, so
+  they never needed it; the third only did because Kraken was reading a 133 GB database. `--qos`
+  and `--qos_heavy` now set the queue for the ordinary and the long steps, both defaulting to
+  `short`, and the long steps' walltime comes down from two hours to one. Declared in the root
+  config rather than in the profile, because `main.nf` validates command-line parameters against
+  that block and one declared only in a profile is rejected.
+
+
 - **Kraken filtering compresses with threads and asks for what it uses.** The step ended with two
   sequential `gzip` calls, which are single-threaded: on a 1.5 million pair sample that is 72
   seconds spent compressing 480 MB per mate while eleven of the twelve reserved cores sit idle.
