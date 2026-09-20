@@ -6,6 +6,21 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ## [Unreleased] - targeting 1.1.0
 
+### Fixed
+
+- **The dedup pipe asked for 160 percent of its own memory, and the resulting OOM was invisible.**
+  `samtools sort -m` is per thread and `MERGE_AND_MARKDUP` keeps two sorts alive at once, a name
+  sort feeding fixmate and a coordinate sort feeding markdup. Each was sized at 80 percent of the
+  task's allocation, so together they asked for 13.1 GB of an 8 GB request. A single sequencing
+  run produces a BAM too small to fill those buffers, which is why it stayed hidden until the
+  first merged sample, whose four input BAMs gave a 2.8 GB stream.
+
+  The second half was worse. The kernel kills one stage of a pipe, its stdout closes mid-BGZF
+  block, and the next stage reports a short read and exits 1, so an out-of-memory is
+  indistinguishable from a corrupt file and `errorStrategy` retried nothing. The pipe's
+  PIPESTATUS is now inspected and a signal death re-raised as 137, which the existing policy
+  already retries with double the memory. A genuine non-zero exit still fails fast.
+
 ### Changed
 
 - **Kraken's memory is a parameter and scales with the attempt.** It was the one fixed `memory`
