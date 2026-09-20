@@ -141,7 +141,7 @@ Two documented, ready-to-use **organism** configs live in
 | **Input/Output** | `--tsv` | *(required, no default)* | Path to the input sample sheet (TSV). Omitting it stops the run at once with a message naming the expected columns. |
 | | `--outdir` | `results_bampiro` | Directory where results will be saved. |
 | | `--threads` | `8` | CPUs for the **BWA-MEM2 mapping** steps only; every other process has its own fixed `cpus` (see [Resource requirements](installation.md#resource-requirements)). |
-| | `--container` | `docker://paururo/bampiro@sha256:c3bc851…` | Container image, **pinned by digest** (the 1.0.1 image) so two runs months apart cannot pick up a rebuilt tag. Override it to use your own copy; the resolved value is recorded in the report's provenance footer. See [the container](installation.md#the-container). |
+| | `--container` | `docker://paururo/bampiro@sha256:78355aa…` | Container image, **pinned by digest** (the 1.1.0-rc1 image) so two runs months apart cannot pick up a rebuilt tag. Override it to use your own copy; the resolved value is recorded in the report's provenance footer. See [the container](installation.md#the-container). |
 | | `--nested_output` | `true` | Nest per-sample folders (e.g. `MP00091` → `MP/00/09/1`). |
 | | `--publish_mode` | `copy` | `copy` duplicates outputs into `outdir`; `link` hardlinks them to the work dir. |
 | | `--output_cram` | `false` | Publish the alignment as CRAM (~40-50% smaller) instead of BAM. |
