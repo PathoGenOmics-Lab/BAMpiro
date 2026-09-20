@@ -124,13 +124,34 @@ process MERGE_AND_MARKDUP {
     # uncompressed BAM (-l 0) so we don't (de)compress throwaway intermediates or round-trip
     # them through disk. fixmate -m keeps the MC/ms tags the length-aware read filter needs.
 
-    # samtools sort per-thread memory: 80% of the allocation split across threads
-    mem_per_thread=$(python3 -c "print(int(!{task.memory.toMega()} * 0.8 / !{task.cpus}))")M
+    # samtools sort's -m is PER THREAD, and there are TWO sorts alive at once in the pipe below.
+    # Sizing each at 80% of the allocation therefore asks for 160% of it: at 8 GB over 4 threads
+    # that was 1638M x 4 x 2 = 13.1 GB. It never showed on a single run, whose BAM is too small to
+    # fill the buffers, and it killed the first merged sample whose stream reached 2.8 GB. Each
+    # sort now gets 35%, leaving the rest for fixmate, markdup and samtools' own overhead.
+    mem_per_thread=$(python3 -c "print(max(64, int(!{task.memory.toMega()} * 0.35 / !{task.cpus})))")M
 
+    # Run the pipe WITHOUT -e so PIPESTATUS survives, then re-raise the right code by hand.
+    # An OOM kill inside a pipe does not look like one from outside: the kernel kills the sort,
+    # its stdout closes mid-BGZF-block, and the next stage reports a short read and exits 1.
+    # Nextflow's errorStrategy retries on 137 and gives up on 1, so the run died on what was
+    # really an out-of-memory. Surfacing the signal makes the retry fire with double the memory.
+    set +e
     samtools sort -n -@ !{task.cpus} -m $mem_per_thread -l 0 "$MERGED" \
       | samtools fixmate -m - - \
       | samtools sort -@ !{task.cpus} -m $mem_per_thread -l 0 - \
       | samtools markdup -r -@ !{task.cpus} - !{sampleId}.!{refId}.final.bam
+    status=("${PIPESTATUS[@]}")
+    set -e
+    for s in "${status[@]}"; do
+        if [ "$s" -ge 128 ]; then
+            echo "a stage of the dedup pipe was killed by signal $((s - 128)); exiting $s so the retry sees it" >&2
+            exit "$s"
+        fi
+    done
+    for s in "${status[@]}"; do
+        [ "$s" -eq 0 ] || exit "$s"
+    done
 
     # 3. Final Indexing and Stats
     samtools index !{sampleId}.!{refId}.final.bam
