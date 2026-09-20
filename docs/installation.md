@@ -103,6 +103,25 @@ and with no spaces: `-profile local,docker`, `-profile slurm,generic`.
     (`nextflow run PathoGenOmics-Lab/BAMpiro -profile garnatxa`), so there is nothing to
     write or copy first.
 
+    Submit the driver rather than running it on the login node, which is what that cluster's
+    own documentation asks for:
+
+    ```bash
+    sbatch conf/garnatxa.sbatch samples.tsv results
+    ```
+
+    `conf/garnatxa.sbatch` asks for one core and 4 GB for Nextflow itself, which submits every
+    task as its own job and waits. Its `--time` is set explicitly and deliberately: **every QoS
+    on Garnatxa defaults to six hours**, and a driver killed at its limit orphans whatever it
+    was waiting on.
+
+    !!! tip "The Kraken2 database is already set there"
+
+        `-profile garnatxa` points `--kraken2_db` at the shared copy under
+        `/storage/shared_datasets`, so it needs no flag. What it does need is a `taxId` column
+        in the samplesheet, or there is nothing to filter against. Kraken2 asks for about 80 GB,
+        which is the memory ceiling of the whole run.
+
 ## Kraken2 is opt-in
 
 `--kraken2_db` has no default: without one the contamination screen is skipped and the
