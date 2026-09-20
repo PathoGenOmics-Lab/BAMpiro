@@ -6,6 +6,27 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ## [Unreleased] - targeting 1.1.0
 
+### Changed
+
+- **Kraken filtering compresses with threads and asks for what it uses.** The step ended with two
+  sequential `gzip` calls, which are single-threaded: on a 1.5 million pair sample that is 72
+  seconds spent compressing 480 MB per mate while eleven of the twelve reserved cores sit idle.
+  `bgzip -@` does the same work in 2.8 seconds. BGZF is valid gzip, the decompressed bytes are
+  identical and the file is slightly smaller, and fastp reads it whole, which is the check that
+  matters because BGZF is a multi-member gzip and a reader that stops at the first member would
+  truncate silently. All of it measured against the pinned container.
+
+  The reservation is sized from the same measurements: three tasks averaged 102 percent CPU over
+  ten minutes on a 12-CPU request and peaked at 39.7 GB against an 80 GB one, so they now ask for
+  8 CPUs and 56 GB. A smaller reservation is scheduled sooner, which is most of what a run waits
+  for on a shared queue.
+
+- **Tasks on Garnatxa declare a walltime.** No process set `time`, so every job inherited the QoS
+  default of six hours, and SLURM's backfill scheduler can only place a job in a gap longer than
+  the walltime it asked for. A 200 ms collection step therefore queued behind everything rather
+  than filling the next gap. The default is now 30 minutes and the long steps get two hours, both
+  scaled by `task.attempt` so a timeout is retried with more rather than failing the run.
+
 ### Fixed
 
 - **Lineage and drug-resistance typing ran on a fraction of each library.** FastP is run with

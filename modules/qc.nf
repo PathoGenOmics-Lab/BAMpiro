@@ -58,8 +58,16 @@ process VALIDATE_RAW_READS_SE {
 
 process KRAKEN_FILTER_PE {
     tag "Kraken PE: ${sampleId}"
-    cpus 12
-    memory '80 GB'
+    // Sized from a measured run rather than from caution. Three of these tasks averaged 102% CPU
+    // over ten minutes on a 12-CPU reservation: kraken2 threads well but spends that time faulting
+    // the database in, and the two steps after it were single-threaded until bgzip. 8 is what bgzip
+    // actually scales to here, and a smaller reservation is scheduled sooner on a shared queue,
+    // which is most of what a run waits for.
+    cpus 8
+    // Peak RSS was 34.7-39.7 GB against this 80 GB request. The headroom stays generous because
+    // peak_vmem reaches 76.8 GB with --memory-mapping; those are file-backed pages the kernel can
+    // reclaim, so the ceiling that matters is the resident one.
+    memory '56 GB'
     
     // Use getSampleDir for nested output support
     publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
@@ -100,9 +108,13 @@ process KRAKEN_FILTER_PE {
       -s !{r1} -s2 !{r2} -t !{taxId} --include-children --fastq-output \
       -o ${prefix}_R1.kraken.fq -o2 ${prefix}_R2.kraken.fq
 
-    # Compress outputs
-    gzip -f ${prefix}_R1.kraken.fq
-    gzip -f ${prefix}_R2.kraken.fq
+    # Compress outputs. bgzip, not gzip, and with the task's own threads: gzip is single-threaded,
+    # so on a 1.5M-pair sample it spent 72 s compressing 480 MB per mate while the other eleven
+    # reserved cores sat idle. bgzip -@ 8 does the same work in 2.8 s. BGZF is valid gzip, every
+    # downstream reader is unaffected, and the output is byte-for-byte identical after decompression
+    # and slightly smaller. Measured against this container, not assumed.
+    bgzip -@ !{task.cpus} -f ${prefix}_R1.kraken.fq
+    bgzip -@ !{task.cpus} -f ${prefix}_R2.kraken.fq
     '''
 
     stub:
@@ -115,8 +127,8 @@ process KRAKEN_FILTER_PE {
 
 process KRAKEN_FILTER_SE {
     tag "Kraken SE: ${sampleId}"
-    cpus 12
-    memory '80 GB'
+    cpus 8              // as KRAKEN_FILTER_PE above
+    memory '56 GB'
     
     // Use getSampleDir for nested output support
     publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
@@ -152,7 +164,8 @@ process KRAKEN_FILTER_SE {
       -s !{r1} -t !{taxId} --include-children --fastq-output \
       -o ${prefix}.kraken.fq
 
-    gzip -f ${prefix}.kraken.fq
+    # bgzip for the reason given in KRAKEN_FILTER_PE above.
+    bgzip -@ !{task.cpus} -f ${prefix}.kraken.fq
     '''
 
     stub:
