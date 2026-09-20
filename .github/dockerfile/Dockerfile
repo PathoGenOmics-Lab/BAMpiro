@@ -51,6 +51,12 @@ RUN micromamba create -n bampiro-env -c conda-forge -c bioconda -y \
     'bwa-mem2' \
     'samtools' \
     'freebayes' \
+    # freebayes-parallel ships inside the freebayes package but its dependencies do not:
+    # it pipes `parallel` into vcffirstheader, vcfstreamsort and vcfuniq, and none of the
+    # four were in the image. --freebayes_parallel is documented and off by default, so
+    # turning it on failed inside the container with a command not found.
+    'parallel' \
+    'vcflib' \
     'bcftools' \
     'genmap' \
     'mummer4' \
