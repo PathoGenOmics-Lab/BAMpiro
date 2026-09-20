@@ -8,6 +8,16 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Changed
 
+- **Kraken's memory is a parameter and scales with the attempt.** It was the one fixed `memory`
+  directive left in the pipeline, at 56 GB, and on a 185-sample cohort that put 61 of these jobs
+  behind SLURM's `QOSMaxMemoryPerUser` while the cluster itself had room. The right number is a
+  property of the database, not of the pipeline: with `--memory-mapping` the resident set is the
+  part of the index actually probed, measured at 34.7-39.7 GB against a 133 GB standard database
+  and well under 20 GB against the capped 16 GB one. `--kraken_memory` now sets it, defaulting to
+  24 GB, and it doubles on each retry like every other memory directive here, so an underestimate
+  costs one retry rather than the run.
+
+
 - **Every task on Garnatxa goes to the same QoS by default, and the queue is a parameter.** Two
   of the three steps that asked for a longer QoS were measured at about twenty seconds each, so
   they never needed it; the third only did because Kraken was reading a 133 GB database. `--qos`

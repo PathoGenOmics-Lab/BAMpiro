@@ -64,10 +64,13 @@ process KRAKEN_FILTER_PE {
     // actually scales to here, and a smaller reservation is scheduled sooner on a shared queue,
     // which is most of what a run waits for.
     cpus 8
-    // Peak RSS was 34.7-39.7 GB against this 80 GB request. The headroom stays generous because
-    // peak_vmem reaches 76.8 GB with --memory-mapping; those are file-backed pages the kernel can
-    // reclaim, so the ceiling that matters is the resident one.
-    memory '56 GB'
+    // Sized from params.kraken_memory, because the right number is a property of the DATABASE and
+    // not of this pipeline: with --memory-mapping the resident set is the part of the index
+    // actually probed, measured at 34.7-39.7 GB against a 133 GB standard database and well under
+    // 20 GB against the capped 16 GB one. A fixed 56 GB here is what put 61 of these behind
+    // QOSMaxMemoryPerUser on a real cohort. Scales with the attempt, like every other memory
+    // directive in this pipeline, so an underestimate costs a retry and not the run.
+    memory { (params.kraken_memory as nextflow.util.MemoryUnit) * task.attempt }
     
     // Use getSampleDir for nested output support
     publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
@@ -128,7 +131,7 @@ process KRAKEN_FILTER_PE {
 process KRAKEN_FILTER_SE {
     tag "Kraken SE: ${sampleId}"
     cpus 8              // as KRAKEN_FILTER_PE above
-    memory '56 GB'
+    memory { (params.kraken_memory as nextflow.util.MemoryUnit) * task.attempt }
     
     // Use getSampleDir for nested output support
     publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
