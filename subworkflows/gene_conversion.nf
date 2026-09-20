@@ -40,7 +40,12 @@ workflow GENE_CONVERSION {
                   .map { rId, fa -> tuple(rId, fa, file(params.gconv_outgroup)) }).delta
             : ref_delta.map { rId, d -> tuple(rId, no_outgroup) }
 
-        def maps = PARALOG_MAP(ref_delta.join(anc_delta))
+        // The reference FASTA travels with the delta, because the delta only names where it
+        // used to be. See the note on PARALOG_MAP's input.
+        def ref_fa_by_id = dedup_bam
+            .map { sId, rId, bam, bai, fa, excl -> tuple(rId, fa) }
+            .unique { it[0] }
+        def maps = PARALOG_MAP(ref_delta.join(anc_delta).join(ref_fa_by_id))
 
         // Fan the per-reference site list out to every sample mapped against that reference.
         def no_gff = file("${projectDir}/assets/NO_FILE_GCONV_GFF")

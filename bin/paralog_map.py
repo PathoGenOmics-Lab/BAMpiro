@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import argparse
 import bisect
+import os
+import pathlib
 import subprocess
 import sys
 
@@ -35,6 +37,28 @@ SNPS_FIELDS = 14
 # Coordinate bucket for the site-to-pair lookup. Paralogous alignments run to a few kb, so at
 # this size a pair lands in one or two buckets and a site only ever looks at its neighbours.
 BIN_SIZE = 100_000
+
+
+def rehomed_delta(delta, ref_fasta, query_fasta=None, out=None):
+    """A copy of `delta` whose header names files that exist here.
+
+    nucmer writes the ABSOLUTE paths of its two inputs into the first line of the delta, and
+    `show-snps` opens them to report the bases around each difference. Those paths are the ones
+    the alignment ran under. Under a scheduler that gives each task its own scratch directory,
+    that path belonged to a different task on possibly a different node and is gone by the time
+    this runs, so show-snps fails with "Could not open file" on a delta that is otherwise intact.
+
+    Rewriting one line is the whole fix. Everything after it is offsets, which do not care where
+    the sequence is read from.
+    """
+    lines = pathlib.Path(delta).read_text().splitlines()
+    if not lines:
+        return delta
+    q = query_fasta or ref_fasta
+    lines[0] = f"{os.path.abspath(ref_fasta)} {os.path.abspath(q)}"
+    out = out or (delta + ".rehomed")
+    pathlib.Path(out).write_text("\n".join(lines) + "\n")
+    return out
 
 
 def _run(cmd):
@@ -350,6 +374,13 @@ def parse_args(argv=None):
                         "`nucmer reference.fasta outgroup.fasta`. With it, each diagnostic site "
                         "says which copy the difference is on, so a sample carrying the donor's "
                         "base can be told from a reference that carries a derived one")
+    p.add_argument("--reference",
+                   help="the FASTA the delta was built from. nucmer records the absolute path of "
+                        "its inputs in the delta header and show-snps opens them, so under a "
+                        "scheduler that scratches each task that path is gone and the delta is "
+                        "unreadable. With this, the header is rewritten to a file that is here")
+    p.add_argument("--outgroup",
+                   help="the outgroup FASTA, for the same reason, when --ancestor-delta is given")
     p.add_argument("--show-coords", default="show-coords")
     p.add_argument("--show-snps", default="show-snps")
     return p.parse_args(argv)
@@ -358,17 +389,21 @@ def parse_args(argv=None):
 def main(argv=None) -> int:
     a = parse_args(argv)
 
-    pairs = parse_coords(_run([a.show_coords, "-r", "-c", "-l", "-T", a.delta]),
+    delta = rehomed_delta(a.delta, a.reference) if a.reference else a.delta
+    pairs = parse_coords(_run([a.show_coords, "-r", "-c", "-l", "-T", delta]),
                          min_identity=a.min_identity, min_length=a.min_length)
     # -C is deliberately absent: it drops SNPs from alignments with an ambiguous mapping, and in a
     # SELF-alignment every position is ambiguous by definition, so -C returns an empty file.
-    all_sites, indels = parse_snps(_run([a.show_snps, "-l", "-r", "-T", "-H", a.delta]))
+    all_sites, indels = parse_snps(_run([a.show_snps, "-l", "-r", "-T", "-H", delta]))
     sites = sites_within_pairs(all_sites, pairs)
 
     if a.ancestor_delta:
+        anc = (rehomed_delta(a.ancestor_delta, a.reference, a.outgroup,
+                             out=a.ancestor_delta + ".rehomed")
+               if a.reference else a.ancestor_delta)
         diffs, intervals = ancestral_bases(
-            _run([a.show_snps, "-l", "-r", "-T", "-H", a.ancestor_delta]),
-            _run([a.show_coords, "-r", "-c", "-l", "-T", a.ancestor_delta]))
+            _run([a.show_snps, "-l", "-r", "-T", "-H", anc]),
+            _run([a.show_coords, "-r", "-c", "-l", "-T", anc]))
         polarise(sites, diffs, intervals)
 
     counts = {}

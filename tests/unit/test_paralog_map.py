@@ -13,6 +13,7 @@ The genome behind the fixtures: one 2300 bp contig `chr` with a 600 bp paralog p
 from __future__ import annotations
 
 import os
+import pathlib
 import subprocess
 
 import pytest
@@ -290,6 +291,57 @@ def test_parse_snps_ignores_banner_header_and_short_lines(junk):
 
     assert len(sites) == 4
     assert indels == 0
+
+
+# --------------------------------------------------------- the delta names where it was built
+
+
+def test_the_delta_header_is_rewritten_to_files_that_are_here(tmp_path):
+    """nucmer records the ABSOLUTE paths of its inputs in the delta's first line, and show-snps
+    opens them to read the bases around each difference.
+
+    Under a scheduler that gives each task its own scratch directory, that path belonged to a
+    different task on possibly a different node and is gone by the time this runs. The delta is
+    intact and unreadable, and MUMmer says so with `Could not open file`, which reads like a
+    missing delta rather than a stale header. Measured on a real cluster run, not imagined.
+    """
+    delta = tmp_path / "self_aln.delta"
+    delta.write_text("/scratch/gone/reference.fa /scratch/gone/reference.fa\n"
+                     "NUCMER\n"
+                     ">chr chr 2300 2300\n"
+                     "1 100 1 100 0 0 0\n0\n")
+    here = tmp_path / "reference.fa"
+    here.write_text(">chr\nACGT\n")
+
+    out = pm.rehomed_delta(str(delta), str(here))
+
+    lines = pathlib.Path(out).read_text().splitlines()
+    assert lines[0] == f"{here} {here}", "the header still names the directory that is gone"
+    assert lines[1:] == ["NUCMER", ">chr chr 2300 2300", "1 100 1 100 0 0 0", "0"], \
+        "everything after the header is offsets and must survive untouched"
+
+
+def test_a_two_sequence_delta_keeps_its_two_sequences(tmp_path):
+    """The outgroup alignment has a different file on each side, and collapsing them to one would
+    make show-snps read the reference where it should read the outgroup."""
+    delta = tmp_path / "anc.delta"
+    delta.write_text("/gone/ref.fa /gone/outgroup.fa\nNUCMER\n")
+    ref, out_fa = tmp_path / "reference.fa", tmp_path / "outgroup.fa"
+    ref.write_text(">chr\nACGT\n")
+    out_fa.write_text(">anc\nACGT\n")
+
+    got = pm.rehomed_delta(str(delta), str(ref), str(out_fa), out=str(tmp_path / "r.delta"))
+
+    assert pathlib.Path(got).read_text().splitlines()[0] == f"{ref} {out_fa}"
+
+
+def test_an_empty_delta_is_handed_back_rather_than_corrupted(tmp_path):
+    """PREPARE_REFERENCE emits an empty delta in its stub, and a reference with no repeats at all
+    produces one legitimately."""
+    delta = tmp_path / "empty.delta"
+    delta.write_text("")
+
+    assert pm.rehomed_delta(str(delta), str(tmp_path / "reference.fa")) == str(delta)
 
 
 # ------------------------------------------------------------------- polarising
