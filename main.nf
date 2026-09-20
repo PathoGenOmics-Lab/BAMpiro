@@ -259,7 +259,7 @@ Run Pathotypr    : ${params.run_pathotypr}
     def reads = READ_QC(pe_reads_ch, se_reads_ch, KRAKEN_ENABLED)
 
     // 4. Pathotypr (Optional lineage + drug-resistance typing; k-mer, reference-agnostic)
-    def typing = LINEAGE_TYPING(reads.pe_reads, reads.se_reads)
+    def typing = LINEAGE_TYPING(reads.pe_reads, reads.pe_orphans, reads.se_reads)
 
     // 5. Mapping (BWA), per-sample merge, and the optional length-aware read filter
     def bams = MAP_READS(reads.pe_reads, reads.pe_orphans, reads.se_reads, refs.bundle, expectedMap)

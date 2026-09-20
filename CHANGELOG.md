@@ -6,6 +6,29 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ## [Unreleased] - targeting 1.1.0
 
+### Fixed
+
+- **Lineage and drug-resistance typing ran on a fraction of each library.** FastP is run with
+  `--merge`, so a pair whose mates overlap leaves as a single merged fragment in the orphan
+  stream rather than as r1/r2. `MAP_READS` has taken all three read streams from the start;
+  `LINEAGE_TYPING` took two, so pathotypr typed only whatever happened to stay unmerged. How
+  much that is depends on the insert size, not on the pipeline: 8-19 percent in the cohort that
+  surfaced it, and on a purpose-built fully overlapping library r1 and r2 reached the typer
+  holding zero reads each while the merged stream held 3,000.
+
+  Nothing failed and no count read zero anywhere: a sample typed on nothing reports
+  `Unclassified`, which is also what a genuinely unclassifiable sample reports. Any lineage
+  call or resistance panel from an earlier run was computed on a subset of the evidence and is
+  worth regenerating.
+
+  The three streams are now concatenated and typed as one sample. They cannot be passed as
+  three `-i` arguments, because `--paired` requires an even number of files and without it the
+  names collapse to one duplicate sample. Both risks of concatenating were measured against the
+  pinned binary rather than assumed: pathotypr reads multi-member gzip (r1 alone falls below
+  `--min-depth` and yields no call, while the concatenation yields the same counts as
+  `--paired`, which it could not if it read only the first member), and `--paired` only groups
+  files, so the same pair passed as one concatenated file gives identical ref and alt counts.
+
 ### Changed
 
 - **Drug-resistance catalogue upgraded to Zenodo v1.0.2, which corrects v1.0.0.** The WHO
