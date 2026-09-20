@@ -6,6 +6,19 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ## [Unreleased] - targeting 1.1.0
 
+### Fixed
+
+- **A GFF attribute spelled `nan` was read as a gene name.** A GFF built from a table writes
+  pandas' NaN as four ordinary characters, and the attribute cascade in `gconv_annotate` only
+  asked whether a key was PRESENT. On a real MTBC reference 3,001 CDS lines carry `Name=nan`
+  beside a perfectly good `ID=Rv0001_1-1524`, and none of them carry `locus_tag` at all, so
+  `Name` won: every tract in a 185-sample cohort came out labelled `nan`, with amino-acid changes
+  reported as `nan:P1443A`. Nothing downstream could tell it from a gene really called that.
+
+  `_attr` now treats a placeholder value as an absent one, so the cascade falls through to the
+  ID. `nan`, `NaN`, `NA`, `None`, `null`, `n/a`, `.`, `-` and the empty string are all compared
+  case-insensitively, and a real symbol such as `dnaN` still wins over the ID.
+
 ### Changed
 
 - **Garnatxa submits four times faster.** `submitRateLimit` goes from 50 to 200 jobs a minute,

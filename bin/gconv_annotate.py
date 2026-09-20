@@ -34,9 +34,22 @@ CODONS = {a + b + c: aa for (a, b, c), aa in
 COMPLEMENT = str.maketrans("ACGTNacgtn", "TGCANtgcan")
 
 
+# Values that mean "there is nothing here", written into the file as though they were data.
+# A GFF built from a table dumps pandas' NaN as the four characters `nan`, and a cascade that
+# only checks for an ABSENT attribute takes that as a name: 3,001 of one real reference's CDS
+# lines carry `Name=nan`, which beat the perfectly good `ID=Rv0001_1-1524` sitting beside it and
+# labelled every tract in the cohort `nan`. Compared case-insensitively, because `NaN` and `NA`
+# are just as common as `nan`.
+_ABSENT = {"", ".", "-", "na", "nan", "none", "null", "n/a", "unknown", "hypothetical protein"}
+
+
 def _attr(field, key):
+    """The value of a GFF attribute, or None when it is absent OR a placeholder for absent."""
     m = re.search(rf"(?:^|;)\s*{re.escape(key)}=([^;]*)", field)
-    return m.group(1).strip() if m else None
+    if not m:
+        return None
+    v = m.group(1).strip()
+    return None if v.lower() in _ABSENT else v
 
 
 def parse_cds(path):
