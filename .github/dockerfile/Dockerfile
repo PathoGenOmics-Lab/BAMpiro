@@ -1,5 +1,8 @@
-# Use minimal Debian image (amd64 architecture enforced)
-FROM --platform=linux/amd64 debian:bullseye-slim
+# Use minimal Debian image (amd64 architecture enforced).
+# bookworm, not bullseye: bullseye left LTS on 2026-08-31 and its security pool is being pruned
+# while the package index still advertises what was in it, so apt resolves versions whose .deb
+# files 404. The build failed on that, not on anything in this file.
+FROM --platform=linux/amd64 debian:bookworm-slim
 
 LABEL maintainer="paula.ruiz.rodriguez@csic.es"
 LABEL description="Self-contained Docker image for the BAMpiro Nextflow pipeline (Short-Reads)"
@@ -25,8 +28,12 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # 2. Install Micromamba (Faster alternative to Conda)
-RUN wget -qO- https://micromamba.snakepit.net/api/micromamba/linux-64/latest \
-    | tar -xvj -C /usr/local/bin --strip-components=1 bin/micromamba
+# From the project's own release channel rather than micromamba.snakepit.net, whose certificate
+# expired on 2026-09-15: that host is an alias not covered by the *.mamba.pm wildcard it is served,
+# so the download fails TLS verification. This removes a third-party CDN from the build entirely.
+RUN wget -qO /usr/local/bin/micromamba \
+      https://github.com/mamba-org/micromamba-releases/releases/latest/download/micromamba-linux-64 \
+    && chmod +x /usr/local/bin/micromamba
 
 ENV MAMBA_ROOT_PREFIX=/opt/conda
 
