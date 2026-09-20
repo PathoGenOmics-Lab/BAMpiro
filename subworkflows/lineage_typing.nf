@@ -26,17 +26,17 @@ workflow LINEAGE_TYPING {
 
         def run_pe = RUN_PATHOTYPR_PE(
             patho_pe_ch,
-            file(params.pathotypr_ref),
-            file(params.pathotypr_markers),
-            file(params.pathotypr_dr_markers),
+            params.pathotypr_ref,
+            params.pathotypr_markers,
+            params.pathotypr_dr_markers,
             params.pathotypr_bin
         )
 
         def run_se = RUN_PATHOTYPR_SE(
             patho_se_ch,
-            file(params.pathotypr_ref),
-            file(params.pathotypr_markers),
-            file(params.pathotypr_dr_markers),
+            params.pathotypr_ref,
+            params.pathotypr_markers,
+            params.pathotypr_dr_markers,
             params.pathotypr_bin
         )
 

@@ -25,9 +25,18 @@ process RUN_PATHOTYPR_PE {
 
     input:
     tuple val(refId), val(sampleId), val(runId), path(r1), path(r2)
-    path ref_fasta_pathotypr
-    path lineage_markers
-    path dr_markers
+    // val, not path, and that is the whole point. These three live INSIDE the image, bundled
+    // from Zenodo at build time. Declaring them as `path` tells Nextflow to stage them FROM THE
+    // HOST, so it adds a bind for their parent and Singularity refuses:
+    //
+    //   mount source /opt/pathotypr doesn't exist
+    //
+    // As values they are interpolated into the script unchanged and resolved inside the
+    // container, where they do exist. An override pointing at your own markers has to live under
+    // a path the profile binds, since nothing auto-mounts a value.
+    val ref_fasta_pathotypr
+    val lineage_markers
+    val dr_markers
     val pathotypr_bin
 
     output:
@@ -68,9 +77,18 @@ process RUN_PATHOTYPR_SE {
 
     input:
     tuple val(refId), val(sampleId), val(runId), path(r1)
-    path ref_fasta_pathotypr
-    path lineage_markers
-    path dr_markers
+    // val, not path, and that is the whole point. These three live INSIDE the image, bundled
+    // from Zenodo at build time. Declaring them as `path` tells Nextflow to stage them FROM THE
+    // HOST, so it adds a bind for their parent and Singularity refuses:
+    //
+    //   mount source /opt/pathotypr doesn't exist
+    //
+    // As values they are interpolated into the script unchanged and resolved inside the
+    // container, where they do exist. An override pointing at your own markers has to live under
+    // a path the profile binds, since nothing auto-mounts a value.
+    val ref_fasta_pathotypr
+    val lineage_markers
+    val dr_markers
     val pathotypr_bin
 
     output:
