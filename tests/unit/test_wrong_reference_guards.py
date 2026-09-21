@@ -132,3 +132,36 @@ def test_a_few_tracts_in_a_big_locus_set_are_not_divergence():
 
 def test_the_floors_do_not_rescue_a_really_divergent_sample():
     assert set(gc.divergent_samples(rows({"s": 30}, n_loci=100), 0.1)) == {"s"}
+
+
+# --------------------------------------------------------------------------- the wiring
+#
+# The flag above shipped working and never fired. flag_sample was right; qc_report fed it a
+# majority computed from summ[sid]["reference"], a key the summary has never had, so the majority
+# was always empty. On the cohort it was written for it flagged nothing while 18 samples sat on
+# the wrong reference. Every test above passes ref_lineage in by hand, which is exactly why none
+# of them saw it. These read the reference the way qc_report does.
+
+import qc_report as qr                                   # noqa: E402
+
+
+def test_the_reference_comes_from_the_samplesheet(tmp_path):
+    ss = tmp_path / "ss.tsv"
+    ss.write_text("sampleId\trunId\tr1\tr2\trefId\n"
+                  "S1\tR1\ta\tb\tREF_A\n"
+                  "S1\tR2\tc\td\tREF_A\n"
+                  "S2\tR1\te\tf\tREF_B\n")
+
+    assert qr.sample_references(str(ss)) == {"S1": "REF_A", "S2": "REF_B"}
+
+
+def test_no_samplesheet_is_no_reference_rather_than_an_error():
+    assert qr.sample_references(None) == {}
+
+
+def test_the_summary_has_no_reference_column_to_rely_on():
+    """The regression itself: if a future summary gains a 'reference' column this is harmless, but
+    the flag must not DEPEND on it, because today it does not exist."""
+    src = (REPO_ROOT / "bin" / "qc_report.py").read_text()
+    assert 'm.get("reference")' not in src, "the majority is being read from the summary again"
+    assert "sample_references(" in src

@@ -222,9 +222,15 @@ def build_payload(args, thr, anc_thr):
     # The lineage the samples sharing a reference agree on. A reference is chosen per sample, so a
     # sample whose reads type as something else was routed to the wrong one; the majority is what
     # "should have been here" without needing to know the reference's own lineage.
+    # The reference comes from the SAMPLESHEET, because the summary does not carry one. It used to
+    # be read from summ[sid]["reference"], a key that never exists, so the majority below was
+    # always empty and LINEAGE_MISMATCH could never fire: on the cohort it was written for it
+    # flagged nothing, while 18 samples sat on the wrong reference. The unit test passed the
+    # majority in directly and never exercised this lookup.
+    ref_of = sample_references(args.metadata)
     by_ref = {}
     for sid, m in summ.items():
-        ref, lin = clean_str(m.get("reference")), clean_str(m.get("lineage"))
+        ref, lin = ref_of.get(sid), clean_str(m.get("lineage"))
         if ref and lin and lin.lower() not in ("unclassified", "nan"):
             by_ref.setdefault(ref, []).append(lin.split(";")[0])
     ref_major = {r: max(set(v), key=v.count) for r, v in by_ref.items() if len(v) >= 3}
@@ -234,7 +240,7 @@ def build_payload(args, thr, anc_thr):
         anc = is_ancient(m)
         dmg = dmg_by_sample.get(sid)
         verdict, flags = flag_sample(m, thr, snp_med, snp_sig, ancient=anc, anc_thr=anc_thr, dmg=dmg,
-                                     ref_lineage=ref_major.get(clean_str(m.get('reference'))))
+                                     ref_lineage=ref_major.get(ref_of.get(sid)))
         counts[verdict] += 1
         jsamples.append({"s": sid, "v": verdict, "f": flags,
                          "lineage": clean_str(m.get("lineage")),
@@ -308,6 +314,29 @@ def write_flags(path, jsamples):
             fh.write("\t".join([s["s"], s["v"], g("mean_depth"), g("breadth_pct"), g("mapped_pct"),
                                 g("missing_pct"), g("iupac_pct"), g("snps"), g("ti_tv"),
                                 ",".join(s["f"]) or "."]) + "\n")
+
+
+def sample_references(path):
+    """{sampleId: refId} from the samplesheet. Empty when there is no samplesheet or no refId column.
+
+    Read here rather than through parse_sample_meta, which drops refId on purpose because it is a
+    pipeline column and not an annotation to display. A sample merged from several runs appears
+    once per run with the same refId, so the first row per sample is enough.
+    """
+    import csv
+    out = {}
+    if not path:
+        return out
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for r in csv.DictReader((l for l in fh if not l.startswith("#")), delimiter="\t"):
+                sid = (r.get("sampleId") or r.get("sample") or "").strip()
+                ref = (r.get("refId") or "").strip()
+                if sid and ref:
+                    out.setdefault(sid, ref)
+    except OSError:
+        return {}
+    return out
 
 
 def main():
