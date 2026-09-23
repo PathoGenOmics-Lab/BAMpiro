@@ -125,6 +125,7 @@ process QC_REPORT {
     path(gene_conversion)   // cohort gene-conversion tracts TSV (COLLECT_GENE_CONVERSION) -> Gene conversion panel (may be empty)
     path(kraken_reports)    // per-sample Kraken2 .report files -> Taxonomic composition panel (may be empty)
     path(depth_profiles, stageAs: 'depth/*')   // per-sample DEPTH_PROFILE tables -> deletions + SNPs per callable kb (may be empty)
+    path(snp_distances)     // SNP_DISTANCES pairs TSV -> relatedness page + GROUP_MISMATCH flag (may be NO_FILE)
     val(provenance)         // pre-quoted provenance tokens (container=..., reference=...)
     val(basename)
 
@@ -152,12 +153,14 @@ process QC_REPORT {
     GC_ARG="";  case "${gene_conversion}" in ""|NO_FILE*) ;; *) [ -s "${gene_conversion}" ] && GC_ARG="--gene-conversion ${gene_conversion}";; esac
     KRK_ARG=""; [ -n "${kraken_reports}" ] && KRK_ARG="--kraken ${kraken_reports}"
     DEL_ARG=""; [ -n "${depth_profiles}" ] && DEL_ARG="--depth-profiles ${depth_profiles} --out-deletions ${basename}_deletions.tsv"
+    DIST_ARG=""; case "${snp_distances}" in ""|NO_FILE*) ;; *) [ -s "${snp_distances}" ] && DIST_ARG="--snp-distances ${snp_distances}";; esac
     python3 ${projectDir}/bin/qc_report.py \\
         --summary ${summary} \\
         ${cons_arg} \\
         --gene-burden ${gene_burden} \\
         --gff ${gff} \\
-        \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$PL_ARG \$DR_ARG \$GC_ARG \$KRK_ARG \$DEL_ARG \\
+        \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$PL_ARG \$DR_ARG \$GC_ARG \$KRK_ARG \$DEL_ARG \$DIST_ARG \\
+        --cluster-snps ${params.snp_cluster_threshold} \\
         --deletion-min-len ${params.deletion_min_len} \\
         --deletion-min-depth ${params.report_depth_min} \\
         --aa2-label "${params.canonical_label}" \\
@@ -215,6 +218,41 @@ process DEPTH_PROFILE {
     """
     printf '# sample=${sampleId}\\ncontig\\tstart\\tend\\tmean_dp\\tzero_frac\\tcallable_frac\\n' > ${sampleId}.${refId}.depth_windows.tsv
     printf '# sample=${sampleId}\\ncontig\\tstart\\tend\\tlength\\n' > ${sampleId}.${refId}.zero_depth.tsv
+    """
+}
+
+process SNP_DISTANCES {
+    // Pairwise SNP distances between the consensus sequences: two samples differ where both called
+    // a base and the bases differ, so a gap, a masked position or a mixed site never counts. Taken
+    // from the consensus because it already carries every masking decision a tree built on it sees.
+    tag "SNP distances"
+    publishDir "${params.outdir}", mode: params.publish_mode
+    cpus 1
+    memory { 4.GB * task.attempt }
+
+    input:
+    path(manifest)                      // sample<TAB>reference<TAB>consensus file name
+    path(fastas, stageAs: 'cons/*')     // the masked consensus FASTAs
+    val(basename)
+
+    output:
+    path("${basename}_snp_distances.tsv"),       emit: square
+    path("${basename}_snp_distances_pairs.tsv"), emit: pairs
+
+    script:
+    """
+    set -euo pipefail
+    python3 ${projectDir}/bin/snp_distances.py \\
+        --manifest ${manifest} \\
+        --dir cons \\
+        -o ${basename}_snp_distances.tsv \\
+        --pairs ${basename}_snp_distances_pairs.tsv
+    """
+
+    stub:
+    """
+    printf 'sample\\n' > ${basename}_snp_distances.tsv
+    printf 'sample_a\\tsample_b\\treference\\tsnps\\tcompared\\tvariable_sites\\n' > ${basename}_snp_distances_pairs.tsv
     """
 }
 

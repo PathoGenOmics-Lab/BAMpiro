@@ -8,6 +8,18 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Added
 
+- **How close the samples are to each other.** A new step, `SNP_DISTANCES`, counts the SNPs
+  between every two consensus sequences over the positions both called, so a no-call, a masked
+  position or a mixed site is never a difference: the distances a tree built on the same
+  sequences sees. They are written as `<samplesheet>_snp_distances.tsv` and, one row per pair
+  with how many positions each comparison rests on, `_pairs.tsv`. The report gains a
+  *Relatedness* page: a heatmap in the order that keeps every single-linkage cluster together,
+  the clusters at a threshold that can be moved live (`--snp_cluster_threshold`, 12 by default,
+  the usual *M. tuberculosis* cut), and the samples far from the rest of their samplesheet group.
+  Those are flagged `GROUP_MISMATCH` (WARN) when their group is otherwise tight: on the cohort
+  that motivated it, the 20 samples it finds are the ones typed as another lineage than their
+  line, which sat 47 to 72 SNPs from each other and 2,000 from their line mates.
+
 - **Deletions, and SNPs per callable kb along the genome.** Each sample's all-positions VCF is
   reduced to its depth per window, the stretches no read covers and a per-gene table
   (`DEPTH_PROFILE`, published under `stats/`). The report compares those stretches across the

@@ -15,6 +15,8 @@ results_bampiro/
 ├── samples_legio_summary.tsv             # Cohort metrics table (feeds the report)
 ├── samples_legio_snp_matrix.tsv          # Master SNP matrix (site × sample AF & depth)
 ├── samples_legio_deletions.tsv           # Stretches some samples have no reads for (see below)
+├── samples_legio_snp_distances.tsv       # SNPs between every two consensus sequences (square matrix)
+├── samples_legio_snp_distances_pairs.tsv # The same, one row per pair, with how much each rests on
 ├── samples_legio_gene_burden.tsv         # Per-gene functional burden (cohort)
 ├── samples_legio_dr.tsv                  # 💊 Drug-resistance calls (pathotypr; only if --run_pathotypr)
 │
@@ -95,6 +97,21 @@ genotype's dosage passed off as a fraction.
 Rows are keyed on contig and position, so two references that share a contig name cannot be told
 apart; the matrix step warns when it sees one.
 
+## SNP distances
+
+`<samplesheet>_snp_distances.tsv` is the square matrix of SNPs between every two consensus
+sequences, `NA` between samples mapped against different references, which share no coordinates.
+Two samples differ at a position only where both called a base (`A`, `C`, `G` or `T`) and the
+bases differ: a no-call, a masked position or an ambiguity code at a mixed site is never a
+difference, whichever sample it is in. These are the distances a tree built on the same
+consensus sequences sees.
+
+`<samplesheet>_snp_distances_pairs.tsv` has one row per pair with `compared`, the number of the
+reference's variable positions both samples called. A thinly called sample is close to everyone
+because it called little that could differ; the report leaves pairs that compared under half of
+the variable positions out of its clusters. Off with `--make_snp_distances false`, and absent
+without consensus sequences.
+
 ## Deletions
 
 `<samplesheet>_deletions.tsv` lists the stretches of the reference that some samples have no reads
@@ -159,6 +176,7 @@ live-adjustable inside the HTML report.
 | `HIGH_IUPAC` | ambiguous/IUPAC % above | `--report_iupac_max` | :octicons-alert-fill-16:{ .amber } WARN |
 | `TITV_LOW` | Ti/Tv below | `--report_titv_min` | :octicons-alert-fill-16:{ .amber } WARN |
 | `LINEAGE_MISMATCH` | typed as a different lineage from the other samples mapped to its reference (it was probably mapped to the wrong genome) | - | :octicons-alert-fill-16:{ .amber } WARN |
+| `GROUP_MISMATCH` | further than the cluster threshold from every other sample of its samplesheet group (patient, line, series), in a group whose members are otherwise within it of each other: swapped, mislabelled, contaminated or reinfected | `--snp_cluster_threshold` | :octicons-alert-fill-16:{ .amber } WARN |
 
 **FAIL** = a candidate for the report's exclusion list (FAIL samples start in it);
 **WARN** = review, usually keep. See [Downstream](downstream.md) for applying the list.

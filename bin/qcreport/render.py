@@ -47,7 +47,8 @@ CSS = "".join(_asset(m) for m in _CSS_MODULES)
 _JS_MODULES = [
     "js/01_prelude.js", "js/02_qcspace.js", "js/03_state.js", "js/04_helpers.js",
     "js/05_insights_qc.js", "js/06_insights_genome.js", "js/07_render_core.js", "js/07b_summary.js",
-    "js/08_curation.js", "js/09_genome_genes.js", "js/09b_coverage.js", "js/10_dynamics.js",
+    "js/08_curation.js", "js/09_genome_genes.js", "js/09b_coverage.js", "js/09c_relatedness.js",
+    "js/10_dynamics.js",
     "js/11_epistasis.js",
     "js/12_snpmatrix.js", "js/13_drug_kraken.js", "js/14_boot.js",
 ]
@@ -109,6 +110,22 @@ SECTION_INFO = {
               "in a stretch the sample has no reads for while other samples read it; 'SNPs / kb' divides "
               "the SNPs of a bin by the positions deep enough to call, so a half-read bin does not look "
               "half as variable.",
+    "reldist": "Pairwise SNP distances between the consensus sequences, counted over the positions both "
+               "samples called: a gap, a masked position or a mixed site is never a difference, as in a "
+               "tree built on the same sequences. Samples are ordered so that every single-linkage "
+               "cluster sits together at any threshold. A pair that both called under half of the "
+               "reference's variable positions is blank: a thinly called sample looks close to everyone.",
+    "relclus": "Samples joined by a chain of pairs each within the threshold (single linkage). The "
+               "threshold is a convention of the organism and the question: about 12 SNPs is the usual "
+               "cut for recent Mycobacterium tuberculosis transmission, other organisms need their own. "
+               "A cluster spanning several samplesheet groups points at transmission between them, or at "
+               "a sample in the wrong group.",
+    "relgroup": "Samples the samplesheet puts in a group (patient, line, series) that sit further than the "
+                "threshold from every other member of it. Only groups whose members are normally within "
+                "the threshold of each other, and with three or more of them, are checked. Flagged "
+                "GROUP_MISMATCH (WARN): a swap, a mislabel, a contaminated or mixed culture, or a "
+                "reinfection. The nearest sample of another group helps tell them apart: a swap sits "
+                "next to one, a contaminant next to nobody.",
     "deletions": "Stretches of the reference a sample has no reads for, compared with the other samples on "
                  "the same reference. Lacked by one sample it is a private deletion; by several, a shared "
                  "one (often a lineage's); by all, a repeat or a part of the reference these genomes do not "

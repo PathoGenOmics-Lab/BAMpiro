@@ -189,6 +189,23 @@ function findGconv(){
   return {k:'gconv',eyebrow:'Gene conversion',tone:'',head:head,body:body.join(' '),link:{href:'#gconv',t:'Inspect the tracts'},
     note:'Candidates to check in the reads, not confirmed events.'};
 }
+// Relatedness: the clusters at the pipeline's threshold, and the samples outside their own group.
+function relSummary(){var S=R.relatedness;if(!(S&&S.refs))return null;
+  var thr=S.threshold,minC=100*(S.min_compared!=null?S.min_compared:0.5),nCl=0,big=0,inCl=0;
+  Object.keys(S.refs).forEach(function(k){relClusters(S.refs[k],thr,minC).forEach(function(c){if(c.length>1){nCl++;inCl+=c.length;if(c.length>big)big=c.length;}});});
+  return {thr:thr,nCl:nCl,big:big,inCl:inCl,out:R.samples.filter(function(s){return s.grpd;})};}
+function findRelatedness(){
+  var g=relSummary(); if(!g)return null;
+  var head='<b>'+g.nCl+'</b> '+_plural(g.nCl,'cluster')+' of samples within '+g.thr+' SNPs of each other';
+  var body=[];
+  if(g.nCl)body.push(g.inCl+' samples sit in one, the largest holding '+g.big+'.');
+  if(g.out.length)body.push('<b class="tone-warn">'+g.out.length+'</b> '+_plural(g.out.length,'sample sits','samples sit')+' far from the rest of '+_plural(g.out.length,'its group','their groups')+' ('+
+    _list(g.out.map(function(s){return esc(s.s);}),4)+'): swapped, mislabelled, contaminated or reinfected.');
+  return {k:'rel',eyebrow:'Relatedness',tone:g.out.length?'warn':'',head:head,body:body.join(' '),
+    link:{href:'#p-related',t:'See the distances'},
+    note:'SNPs between consensus sequences; the threshold is a convention of the organism.',
+    short:g.out.length?(g.out.length+' '+_plural(g.out.length,'sample sits','samples sit')+' outside '+_plural(g.out.length,'its group','their groups')+'.'):''};
+}
 function findCoverage(){
   var S=R.samples; if(!S.length)return null;
   function med(k){return _median(S.map(function(s){return s.m[k];}));}
@@ -198,7 +215,7 @@ function findCoverage(){
   var body=(rd?'Depth ranges from '+fmt(rd[0],'float')+'&#215; to '+fmt(rd[1],'float')+'&#215;. ':'')+(c!=null?'The median consensus has '+c.toFixed(1)+'% of the genome as confident bases.':'');
   return {k:'cov',eyebrow:'Coverage',tone:'',head:head,body:body,link:{href:'#dist',t:'See the distributions'}};
 }
-function findings(){return [findQC(),findIdentity(),findResistance(),findDynamics(),findLineage(),findGconv(),findCoverage()].filter(function(f){return f;});}
+function findings(){return [findQC(),findIdentity(),findRelatedness(),findResistance(),findDynamics(),findLineage(),findGconv(),findCoverage()].filter(function(f){return f;});}
 function findingCard(f){
   var nums=(f.nums&&f.nums.length)?'<div class="f-nums">'+f.nums.map(function(x){return '<div class="f-num'+(x.t&&x.n?' '+x.t:'')+'"><b>'+x.n+'</b><span>'+esc(x.l)+'</span></div>';}).join('')+'</div>':'';
   return '<article class="finding'+(f.tone?' f-'+f.tone:'')+'" data-k="'+f.k+'"><div class="f-eyebrow">'+esc(f.eyebrow)+'</div>'+
@@ -223,5 +240,6 @@ function renderNavBadges(){
   set('bdg-qc',c.FAIL?String(c.FAIL):(c.WARN?String(c.WARN):''),c.FAIL?'bad':'warn',c.FAIL?c.FAIL+' samples to exclude':(c.WARN?c.WARN+' samples to review':''));
   var d=drSummary(); set('bdg-drug',d&&d.nCarriers?String(d.nCarriers):'','bad',d&&d.nCarriers?d.nCarriers+' samples with resistance mutations beyond their lineage':'');
   var g=gconvSummary(); set('bdg-gconv',g&&g.nPassEvents?String(g.nPassEvents):'','neu',g?g.nPassEvents+' gene-conversion events in samples the QC does not fail':'');
+  var rl=relSummary(); set('bdg-related',rl&&rl.out.length?String(rl.out.length):'','warn',rl&&rl.out.length?rl.out.length+' samples far from the rest of their group':'');
   var y=dynSummary(); set('bdg-variants',y&&y.sweep.length?String(y.sweep.length):'','neu',y?y.sweep.length+' alleles sweeping toward fixation':'');
 }

@@ -35,6 +35,7 @@ from qcreport.parsers import (NBINS, clean_str, consensus_stats, mapdamage_stats
                               parse_gene_conversion, parse_gff,
                               parse_kraken, parse_lineage_colors, parse_metadata, parse_pnps, parse_profile,
                               parse_sample_meta, parse_summary, parse_vcfs, to_float)
+from qcreport.relatedness import build_relatedness, group_mismatches, parse_pairs
 from qcreport.render import REPO_URL, SECTION_INFO, build_html
 
 
@@ -98,6 +99,12 @@ def build_parser():
                          "in a thinly read sample they turn up by chance.")
     ap.add_argument("--out-deletions", default=None,
                     help="Write the deletion regions (with --depth-profiles) as a TSV.")
+    ap.add_argument("--snp-distances", default=None,
+                    help="Pairwise SNP distances between consensus sequences (snp_distances.py --pairs) -> "
+                         "the relatedness page and the GROUP_MISMATCH flag (optional).")
+    ap.add_argument("--cluster-snps", type=int, default=12,
+                    help="SNPs within which two samples are drawn as one cluster, and beyond which a "
+                         "sample is far from its group. The report can move it live.")
     ap.add_argument("--gate", action="store_true")
     return ap
 
@@ -249,6 +256,12 @@ def build_payload(args, thr, anc_thr):
     dates = parse_collection_dates(args.metadata)
     # What each sample's reads cover, compared across the cohort: the stretches no read covers that
     # other samples do read (deletions), and how much of each bin could be called at all.
+    # How close the samples are to each other, and which of them sit far from their own group (a
+    # patient, a line) while close to a sample of another one.
+    series_meta = parse_metadata(args.metadata)
+    groups = {s: md.get("group") for s, md in series_meta.items()}
+    distances = parse_pairs(args.snp_distances)
+    outside = group_mismatches(distances, groups, args.cluster_snps)
     profiles = parse_depth_profiles(args.depth_profiles)
     coverage, del_tracks = (build_coverage(profiles, min_len=args.deletion_min_len,
                                            min_depth=args.deletion_min_depth)[:2]
@@ -261,6 +274,9 @@ def build_payload(args, thr, anc_thr):
         snp_prof = parse_profile(m.get("snp_profile"))
         verdict, flags = flag_sample(m, thr, snp_med, snp_sig, ancient=anc, anc_thr=anc_thr, dmg=dmg,
                                      ref_lineage=ref_major.get(ref_of.get(sid)))
+        if sid in outside:
+            flags.append("GROUP_MISMATCH")
+            verdict = "FAIL" if verdict == "FAIL" else "WARN"
         counts[verdict] += 1
         jsamples.append({"s": sid, "v": verdict, "f": flags,
                          "lineage": clean_str(m.get("lineage")),
@@ -278,6 +294,9 @@ def build_payload(args, thr, anc_thr):
                          "ref": ref_of.get(sid),
                          "ref_lin": ref_major.get(ref_of.get(sid)),
                          "miss": miss_by_sample.get(sid),
+                         # what a GROUP_MISMATCH compares: the nearest sample of its own group and the
+                         # nearest of another, with their distances
+                         "grpd": outside.get(sid),
                          "trk": ({k: v for k, v in (("snp", snp_prof),
                                                     ("snpkb", snp_per_kb(snp_prof, profiles[sid])
                                                      if sid in profiles else None),
@@ -301,7 +320,7 @@ def build_payload(args, thr, anc_thr):
 
     _variants = load_variants(args)
     _sample_meta = parse_sample_meta(args.metadata)   # shared by the dynamics filter and the SNP matrix header
-    _dynamics = build_dynamics(parse_metadata(args.metadata), _variants, _sample_meta)   # feeds dynamics + epistasis
+    _dynamics = build_dynamics(series_meta, _variants, _sample_meta)   # feeds dynamics + epistasis
     # front-load 'dose' so it survives the correlation matrix's top-N view
     dist_keys = (["dose"] + DIST) if dose_map else DIST
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -325,6 +344,7 @@ def build_payload(args, thr, anc_thr):
                "epistasis": build_epistasis(_dynamics),
                "snp_matrix": build_snp_matrix(_variants, provenance.get('reference', '')),
                "coverage": coverage,
+               "relatedness": build_relatedness(distances, groups, args.cluster_snps),
                "sample_meta": _sample_meta,
                "metrics": [{"key": k, "label": l, "kind": kind, "dir": d} for k, l, kind, d in METRICS],
                "extra": extra_metrics,

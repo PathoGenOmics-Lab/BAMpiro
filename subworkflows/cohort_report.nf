@@ -6,7 +6,7 @@
 */
 
 include { ANNOTATE_CANONICAL } from '../modules/annotation'
-include { COLLECT_SUMMARY; COLLECT_DR; DEPTH_PROFILE; LIFT_VARIANTS; QC_REPORT; SNP_MATRIX } from '../modules/report'
+include { COLLECT_SUMMARY; COLLECT_DR; DEPTH_PROFILE; LIFT_VARIANTS; QC_REPORT; SNP_DISTANCES; SNP_MATRIX } from '../modules/report'
 include { asBool } from '../modules/utils'
 
 workflow COHORT_REPORT {
@@ -102,9 +102,19 @@ workflow COHORT_REPORT {
         def depth_profiles = depth.profile.map { sId, rId, win, zero -> [win, zero] }
                                   .mix(depth.genes.map { sId, rId, genes -> [genes] })
                                   .flatten().collect().ifEmpty([])
+        // Pairwise SNP distances between the consensus sequences. The manifest names each file's sample
+        // and reference, so neither has to be read back out of a file name.
+        // Without consensus sequences SNP_DISTANCES never runs, and ifEmpty hands the report the
+        // placeholder instead of leaving it waiting for an input that never comes.
+        def snp_dist = asBool(params.make_snp_distances)
+            ? SNP_DISTANCES(masked_consensus.map { sId, rId, fa -> "${sId}\t${rId}\t${fa.name}" }
+                                            .collectFile(name: 'consensus_manifest.tsv', newLine: true),
+                            cons_files, tsv_name).pairs
+                  .ifEmpty(file("${projectDir}/assets/NO_FILE_DISTANCES"))
+            : file("${projectDir}/assets/NO_FILE_DISTANCES")
         QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
                   report_meta, report_vcfs, report_vcfs_h37rv, pos_liftover, dr_report, report_gconv,
-                  report_kraken, depth_profiles, provenance, tsv_name)
+                  report_kraken, depth_profiles, snp_dist, provenance, tsv_name)
     }
 
     // 11b. Master SNP matrix: rows = SNP sites, columns = reference/annotation + per-sample AF & depth.

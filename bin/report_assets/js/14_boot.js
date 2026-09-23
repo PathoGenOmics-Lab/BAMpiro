@@ -1,11 +1,12 @@
-// ---- pages: the report reads as seven pages, and the sidebar is both the page list and the contents of
+// ---- pages: the report reads as eight pages, and the sidebar is both the page list and the contents of
 // the page on screen. Only that page is redrawn on a change (a new threshold, a highlighted sample, the
 // theme); the others are marked stale and redraw when opened, which is also when they know their width.
-var PAGES=['summary','qc','genome','variants','drug','gconv','diag'];
+var PAGES=['summary','qc','genome','related','variants','drug','gconv','diag'];
 var PAGE_RENDER={
   summary:function(){renderExec();},
   qc:function(){renderOverview();renderFlags();renderCuration();renderTable();renderLineages();renderKraken();renderPlots();renderADNA();},
   genome:function(){renderStacks();renderGenome();renderDeletions();renderFunction();renderGeneBurden();renderHotspots();renderPnps();},
+  related:function(){renderRelatedness();},
   variants:function(){renderDynamics();renderEpistasis();renderSnpMatrix();renderVarDose();},
   drug:function(){renderDrug();},
   gconv:function(){renderGconv();},
@@ -206,6 +207,7 @@ function genomeResetZoom(){st.gsel=null;st.gzoom=null;st.geneMark=null;var gg=el
     var rd=el('gselreadout');if(rd)rd.innerHTML='gene <b>'+esc(g.name)+'</b> &middot; '+fmtpos(g.start)+' - '+fmtpos(g.end)+' <button class="btn" id="gselclear" style="padding:2px 8px;font-size:11px">reset zoom</button>';
     var cb=el('gselclear');if(cb)cb.onclick=function(ev){ev.stopPropagation();genomeResetZoom();};};})();
 if(!R.samples.some(function(s){return s.miss||s.trk;})){var gs=el('genome');if(gs)gs.style.display='none';var ng=el('nav-genome');if(ng)ng.style.display='none';}
+if(!relSec()){['reldist','relclus','relgroup','nav-reldist','nav-relclus','nav-relgroup'].forEach(function(id){var x=el(id);if(x)x.style.display='none';});}
 if(!(R.coverage&&R.coverage.regions)){var dlx=el('deletions');if(dlx)dlx.style.display='none';var ndlx=el('nav-del');if(ndlx)ndlx.style.display='none';}
 if(!R.samples.some(function(s){return s.trk&&s.trk.snp;})){var hsx=el('hotspots');if(hsx)hsx.style.display='none';var nhx=el('nav-hot');if(nhx)nhx.style.display='none';}
 // signature layer gates: hide a panel when its data type is absent cohort-wide (organism-agnostic; render fns also degrade per-view)
@@ -234,7 +236,7 @@ if(!(R.kraken&&R.kraken.samples&&R.kraken.samples.length)){var kkx=el('kraken');
   if(!R.mask_bins){mb.style.display='none';return;}
   mb.title=(R.mask_pct||0)+'% of the reference masked (PE/PPE, IS, DR, repeats); toggle to exclude these zones';
   mb.onclick=function(){st.maskOn=!st.maskOn;mb.classList.toggle('on',st.maskOn);renderGenome();renderHotspots();};})();
-var rz;window.addEventListener('resize',function(){clearTimeout(rz);rz=setTimeout(function(){renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderGenome();renderTemporal();renderGconv();},120);});
+var rz;window.addEventListener('resize',function(){clearTimeout(rz);rz=setTimeout(function(){renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderGenome();renderTemporal();renderGconv();if(curPage=='related')renderRelatedness();},120);});
 // metric help panel
 el('helpmenu').innerHTML=R.metrics.map(function(m){var d=R.defs[m.key]||['',''];return '<div class="hitem"><b>'+esc(m.label)+'</b> <span class="hk">'+esc(m.key)+'</span><div class="hd">'+esc(d[0]||'')+(d[1]?' <span class="hr">('+esc(d[1])+')</span>':'')+'</div></div>';}).join('');
 // ---- colour-by toggle (beeswarm + scatter); hides the whole lineage UI when there is no lineage data ----
