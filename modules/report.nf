@@ -67,41 +67,45 @@ process COLLECT_DR {
 }
 
 process LIFT_VARIANTS {
-    // Whole-genome anchor-chain liftover of the run's variant positions onto the canonical (H37Rv) reference
-    // -> a mapping_pos<TAB>h37rv_pos map for the report's SNP tables (--pos-liftover). Alignment-free, no
-    // shared-coordinate assumption; every position (incl. SNP sites) is placed by interpolation between
-    // flanking unique anchors -> never mis-mapped. Pure Python (bin/pathotypr_liftover.py lift --global-chain).
-    tag "LiftVariants: ${reference}"
-    cpus 4
+    // Whole-genome anchor-chain liftover of ONE reference's variant positions onto the canonical (H37Rv-
+    // colinear) reference -> contig-aware map (src_contig src_pos tgt_contig tgt_pos strand) for the report's
+    // SNP tables (--pos-liftover) and for ANNOTATE_CANONICAL. One task per reference: every reference is lifted
+    // from its own sequence, and only the positions on its own contigs. Lifting a second reference's positions
+    // with the first one's sequence put 96% of them at a wrong coordinate. Alignment-free, no shared-coordinate
+    // assumption; every position (incl. SNP sites) is placed by interpolation between flanking unique anchors,
+    // on each of the reference's contigs -> correct or absent. Where it cannot interpolate (an indel between two
+    // anchors, or no anchor for longer than 2k) the stretch between the anchors is aligned (--align-gaps), and a
+    // position the canonical genome lacks is written as such. Pure Python (bin/pathotypr_liftover.py lift
+    // --global-chain), about 25 s and 2.5 GB for a 4.4 Mb genome.
+    tag "LiftVariants: ${refId}"
+    cpus 1
     memory { 6.GB * task.attempt }
 
     input:
-    path(vcfs)              // the report's per-sample annotated VCFs (mapping-reference coordinates; may be .gz)
-    path(ref_fa)            // the mapping reference FASTA (k-mer context source)
-    val(reference)
-    val(basename)
+    tuple val(refId), path(ref_fa)   // the mapping reference FASTA (k-mer context source)
+    path(vcfs)                       // the report's per-sample VCFs, of every reference (may be .gz)
 
     output:
-    path("${basename}_pos_liftover.tsv"), emit: map
+    path("${refId}.pos_liftover.tsv"), emit: map
 
     script:
     """
     set -euo pipefail
-    # union of variant positions across the report VCFs (mapping-reference coordinates)
-    zcat -f ${vcfs} | awk '!/^#/ && \$2 ~ /^[0-9]+\$/ {print \$2}' | sort -un > positions.txt
+    # This reference's contigs, and the variant positions on them. A VCF of another reference names none.
+    grep '^>' ${ref_fa} | sed 's/^>//; s/[[:space:]].*//' | sort -u > contigs.txt
+    zcat -f ${vcfs} | awk 'BEGIN{FS=OFS="\\t"} NR==FNR {c[\$1]=1; next} !/^#/ && (\$1 in c) && \$2 ~ /^[0-9]+\$/ {print \$1, \$2}' contigs.txt - \\
+        | sort -u > positions.txt
     if [ -s positions.txt ]; then
-        # synteny-anchored k-mer liftover of the variant positions (mapping-ref coords) onto the canonical
-        # reference; ambiguous (repeat) positions are resolved by the surrounding unique anchors, never mis-mapped.
         python3 ${projectDir}/bin/pathotypr_liftover.py lift positions.txt ${ref_fa} ${params.canonical_ref} \\
-            --out-map ${basename}_pos_liftover.tsv --kmer-size 21 --global-chain
+            --out-map ${refId}.pos_liftover.tsv --kmer-size 21 --global-chain --align-gaps
     else
-        printf 'src_pos\\ttgt_pos\\n' > ${basename}_pos_liftover.tsv
+        printf 'src_contig\\tsrc_pos\\ttgt_contig\\ttgt_pos\\tstrand\\n' > ${refId}.pos_liftover.tsv
     fi
     """
 
     stub:
     """
-    printf 'src_pos\\ttgt_pos\\n' > ${basename}_pos_liftover.tsv
+    printf 'src_contig\\tsrc_pos\\ttgt_contig\\ttgt_pos\\tstrand\\n' > ${refId}.pos_liftover.tsv
     """
 }
 

@@ -63,6 +63,7 @@ def build_dynamics(metadata, variants, sample_meta=None, emerge=0.25, fix=0.90, 
             series.append({'pos': pos, 'gene': (meta or {}).get('gene', ''), 'eff': (meta or {}).get('eff', ''),
                            'imp': (meta or {}).get('imp', ''), 'alt': (meta or {}).get('alt', ''),
                            'aa': (meta or {}).get('aa', ''), 'aa_h37rv': (meta or {}).get('aa_h37rv', ''),
+                           'gene_h37rv': (meta or {}).get('gene_h37rv', ''),
                            'pos_h37rv': (meta or {}).get('pos_h37rv', ''),
                            'traj': [round(x, 4) for x in traj], 'dp': dps, 'flags': flags})
         if not series:
@@ -265,10 +266,11 @@ def build_snp_matrix(variants, reference='', max_sites=50000):
             except ValueError:
                 continue
             st = sites.setdefault(key, {'contig': contig, 'pos': ipos, 'ref': v.get('ref', ''),
-                                        'alt': set(), 'gene': '', 'eff': '', 'aa': '', 'aa_h37rv': '', 'pos_h37rv': '', 'cells': {}})
+                                        'alt': set(), 'gene': '', 'eff': '', 'aa': '', 'aa_h37rv': '',
+                                        'gene_h37rv': '', 'pos_h37rv': '', 'cells': {}})
             if v.get('alt'):
                 st['alt'].add(v['alt'])
-            for k in ('gene', 'eff', 'aa', 'aa_h37rv', 'pos_h37rv'):
+            for k in ('gene', 'eff', 'aa', 'aa_h37rv', 'gene_h37rv', 'pos_h37rv'):
                 if v.get(k) and not st[k]:
                     st[k] = v[k]
             st['cells'][sidx[s]] = [v['af'], v.get('dp')]
@@ -279,7 +281,7 @@ def build_snp_matrix(variants, reference='', max_sites=50000):
         ordered.sort(key=lambda x: (x['contig'], x['pos']))
     rows = [{'contig': x['contig'], 'pos': x['pos'], 'ref': x['ref'], 'alt': ','.join(sorted(x['alt'])),
              'gene': x['gene'], 'eff': x['eff'], 'aa': x['aa'], 'aa_h37rv': x['aa_h37rv'],
-             'pos_h37rv': x['pos_h37rv'], 'n': len(x['cells']), 'cells': x['cells']}
+             'gene_h37rv': x['gene_h37rv'], 'pos_h37rv': x['pos_h37rv'], 'n': len(x['cells']), 'cells': x['cells']}
             for x in ordered]
     return {'samples': samples, 'reference': reference, 'rows': rows,
             'total_sites': len(sites), 'truncated': truncated}

@@ -51,7 +51,7 @@ Everything else is already generic. For the full table see [Configuration](../co
 The `generic` profile already handles this, but it is worth understanding:
 
 - **Lineage / DR typing** (`--run_pathotypr`) is MTBC-specific and **off by default** - leave it off. See [Lineage & Drug-Resistance Typing](../pathotypr.md).
-- **`--annotate_canonical`** stays **off**: H37Rv amino-acid numbering is meaningless for a non-MTBC organism. If you *do* want a canonical numbering for your species, set `--annotate_canonical true` with `--canonical_snpeff_db` (and `--canonical_label`) pointing at another SnpEff genome.
+- **`--annotate_canonical`** stays **off**: H37Rv amino-acid numbering is meaningless for a non-MTBC organism. If you *do* want a canonical numbering for your species, set `--annotate_canonical true` with `--canonical_snpeff_db` (and `--canonical_label`) pointing at another SnpEff genome, `--canonical_ref` at that genome's FASTA (each SNP is lifted onto it before it is annotated) and `--canonical_chrom` at the name the database gives its chromosome (empty keeps the FASTA's names).
 
 !!! note "Only the H37Rv SnpEff DB is bundled"
 

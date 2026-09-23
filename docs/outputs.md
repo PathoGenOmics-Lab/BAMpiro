@@ -36,7 +36,7 @@ results_bampiro/
     │
     ├── MP00091.LENS.ann.vcf.gz             # 🎯 MAIN OUTPUT: Annotated Variants (SNPs/Indels)
     ├── MP00091.LENS.ann.vcf.gz.tbi         # Index for the main VCF
-    ├── MP00091.LENS.canonical.ann.vcf.gz   # 🧬 Variants re-annotated vs the canonical ref (only if --annotate_canonical)
+    ├── MP00091.LENS.canonical.ann.vcf.gz   # 🧬 SNPs at their canonical (H37Rv) position, annotated there; INFO/OPOS = the mapping coordinate (only if --annotate_canonical)
     │
     ├── MP00091.LENS.all.pos.vcf.gz         # 🦴 BACKBONE: VCF containing ALL positions (WT + Variants)
     │                                       # (Ideal for phylogenetic supermatrices)

@@ -61,16 +61,24 @@ the bundled `rf_model.pathotypr` is currently unused and no flag exposes it.) Se
 
 ## Dual amino-acid numbering (H37Rv / Mycobrowser)
 
-With `--annotate_canonical true`, each sample's variants are re-annotated with a
-canonical snpEff database (`--canonical_snpeff_db`, default H37Rv) *in addition to*
-your mapping reference. The report then shows every amino-acid change in **both**
-numberings (the used reference + `--canonical_label`, default `H37Rv`) and links each
-gene to its Mycobrowser locus (`Rv…`). The **amino-acid** number is exact when your
-mapping reference shares (or is lifted to) H37Rv coordinates; the canonical
-**coordinate** shown beside it is provided independently and alignment-free by the
-k-mer liftover below, so the SNP tables carry the H37Rv position even for a non-H37Rv
-reference. Turn `--annotate_canonical` off for non-MTB organisms, or point
-`--canonical_snpeff_db` at another snpEff genome.
+With `--annotate_canonical true`, each sample's SNPs are also annotated against a
+canonical snpEff database (`--canonical_snpeff_db`, default H37Rv), *in addition to*
+your mapping reference. Each SNP is first moved to its H37Rv position with the k-mer
+liftover below (`bin/lift_vcf.py`): its REF becomes H37Rv's base, its allele is
+complemented where your reference lies reversed against H37Rv, and a SNP whose allele is
+H37Rv's own base is left out, since in H37Rv numbering nothing changed. So the gene and
+the amino-acid change are H37Rv's on **any** MTBC reference, whatever it calls and
+numbers its genes. The report then shows every amino-acid change in **both** numberings
+(the used reference + `--canonical_label`, default `H37Rv`), links each gene to its
+Mycobrowser locus (`Rv…`), and matches trajectories to the resistance catalogue in
+H37Rv's gene names and numbering.
+
+The database names H37Rv's chromosome `Chromosome` (`--canonical_chrom`), which is the
+name the lifted records are written under. For another organism, point
+`--canonical_snpeff_db` at its snpEff genome, `--canonical_ref` at that genome's FASTA,
+and `--canonical_chrom` at the name the database gives its chromosome (empty keeps the
+FASTA's own names, for a multi-chromosome genome whose names already match). Turn
+`--annotate_canonical` off for non-MTB organisms that have no canonical genome.
 
 ## Reference-agnostic coordinates (k-mer liftover)
 
@@ -84,9 +92,31 @@ interpolating between its flanking anchors — then the placement is **verified 
 the actual sequence**. The method is **"correct or absent"**: SNP sites, indels and
 inversions are followed, and any position it cannot pin (a repeat / low-complexity
 desert, or a rearrangement below the k-mer resolution) is *dropped* rather than
-mis-mapped. It replaces the Picard/bcftools liftover for the report coordinate (the
-amino-acid numbering still comes from the snpEff re-annotation above). See
-`bin/pathotypr_liftover.README.md` for the algorithm, options and limits.
+mis-mapped. `--annotate_canonical` runs it too. See `bin/pathotypr_liftover.README.md`
+for the algorithm, options and limits.
+
+Every reference of the run is lifted from its own sequence (`LIFT_VARIANTS`, one task
+per reference), and every contig of it: each contig of a draft assembly is chained on
+its own, so it is placed wherever and in whichever orientation it lies in H37Rv. The
+maps name the contig, and the report looks each variant up by its contig and position.
+
+Where a position cannot be interpolated — an indel between its two anchors, or no
+shared unique k-mer for longer than ~2k (a SNP-dense or repeated stretch) — the pipeline
+aligns the stretch between the two anchors (`--align-gaps`). The anchors pin both ends,
+so the alignment cannot drift to another copy of a repeat. A position is placed when a
+gap-free, ≥90%-identical run of the alignment joins it to one of the anchors and its own
+context agrees; one inside a stretch H37Rv does not have (an IS copy, a region H37Rv
+lost) is reported as **not in H37Rv**, which the report shows beside the variant; and
+one that could sit on either side of an indel in a repeat is left without a coordinate.
+
+On the two references of a 185-sample cohort, checked against minimap2's alignment of
+each to H37Rv: every position of 27 resistance genes lifts to minimap2's coordinate,
+99.8% of 20,000 random positions and of the report's variant sites do, and not one of
+those that differ fits H37Rv worse than minimap2's coordinate — they are exact ties in
+identical repeat units, bases at the junction of a structural difference, or places
+where minimap2 aligned another copy. About 0.2% stay without a coordinate, in PE_PGRS-type
+repeats and rearranged stretches that minimap2 mostly cannot place either. Cut into ten
+contigs with six of them reversed, the same reference lifts just as well.
 
 ## Blind-spot masking (H37Rv problematic sites)
 
@@ -96,7 +126,7 @@ low-mappability positions that are unreliable to call (Zenodo record
 `assets/H37Rv_blindspots.bed`, NC_000962.3 coordinates) — to each reference's
 exclusion mask, so those sites are dropped from variant calling, consensus and the
 report. Because the BED is in H37Rv coordinates, `--blindspot_liftover true` (default)
-lifts it onto the run reference with the **same k-mer liftover**, treating
+lifts it onto the run reference, every contig of it, with the **same k-mer liftover**, treating
 `--canonical_ref` as the FASTA the blind-spots are defined on (default: the
 H37Rv-colinear MTBC ancestor bundled at `/opt/pathotypr/reference.fasta`; point it at a
 true H37Rv FASTA for an exact lift), so the mask is correct even when the reference is

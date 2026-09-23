@@ -84,6 +84,36 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Fixed
 
+- **The H37Rv coordinate and numbering were wrong, or missing, on any reference but H37Rv.** On the
+  185-sample cohort, mapped against two assemblies, the report gave 15,653 of the second reference's
+  16,296 variant sites (97%) a wrong H37Rv coordinate. Four faults:
+
+  - The variant positions of every reference were lifted once, from the first reference's sequence,
+    and the map was applied by position alone. `LIFT_VARIANTS` now runs once per reference, each from
+    its own sequence, and the report looks each variant up by its contig. Where a position cannot be
+    interpolated between two anchors (an indel between them, or a stretch without a shared unique
+    k-mer), the stretch between the anchors is aligned (`--align-gaps`). Every position of 27
+    resistance genes now lifts to the coordinate minimap2 gives it, 99.8% of the report's variant sites
+    do, and none of the rest fits H37Rv worse than minimap2's coordinate; a position H37Rv lacks is
+    shown as *not in H37Rv*, and about 0.2%, in PE_PGRS-type repeats, are left without a coordinate.
+  - Only the first contig of a reference was read, so on a draft assembly a variant of any other
+    contig was lifted with the first contig's sequence: cut into ten contigs, one of the cohort's
+    references had half its positions misplaced. Each contig is now chained on its own, in whichever
+    orientation it lies, and the draft lifts as well as the complete assembly. The blind-spot mask
+    now reaches every contig as well.
+  - `--annotate_canonical`, on in the TB profile, annotated each VCF in place against the H37Rv snpEff
+    database: a position of another reference was read as an H37Rv one, and since the database names
+    H37Rv's chromosome `Chromosome`, which no mapping reference does, it annotated nothing. The
+    unlifted position was then shown as the H37Rv coordinate, over the lift. Each SNP is now moved to
+    its H37Rv position first (`bin/lift_vcf.py`: H37Rv's base as REF, the allele complemented where
+    the reference lies reversed, the mapping coordinate kept in `OPOS`), under the database's name for
+    the chromosome (`--canonical_chrom`, default `Chromosome`), and a record lends only the
+    coordinate it was lifted to.
+  - The SNP-dynamics panel compared a variant's HGVS change (`p.Ile66Met`) with the catalogue's short
+    form (`I66M`), so no trajectory was ever tagged with its catalogue entry. Both are now read in
+    one form, in H37Rv's gene name and numbering first, and a stop or frameshift matches the gene's
+    `LoF` entry.
+
 - **Gene conversion was called from reads that could not carry it, and the cohort multiplied
   it.** On a 185-sample cohort, 1,520 of the 1,579 calls were rows the samples themselves had
   left `ambiguous`, promoted because another sample had called the same stretch outright. Those

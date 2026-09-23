@@ -9,11 +9,13 @@ include { getSavePath; getSampleDir } from './utils'
 ==================================================================== */
 
 process ANNOTATE_CANONICAL {
-    // Re-annotate a sample's variants against a CANONICAL reference snpEff DB (H37Rv by default; set
-    // params.canonical_snpeff_db for another organism) so the report can show the amino-acid change in
-    // both the used-reference and the canonical numbering. Existing ANN is stripped first so only the
-    // canonical annotation remains (qc_report.py reads the first ANN). Positions must line up with the
-    // canonical reference (true when the mapping reference shares its coordinates).
+    // Annotate a sample's SNPs against a CANONICAL reference snpEff DB (H37Rv by default; set
+    // params.canonical_snpeff_db for another organism) so the report can show the amino-acid change and the
+    // gene in both the used-reference and the canonical numbering. The VCF is first moved to the canonical
+    // coordinates with the liftover map (bin/lift_vcf.py): annotated in place, a position of any other
+    // reference was read as an H37Rv one, and no position was read at all, since the database names its
+    // chromosome params.canonical_chrom ('Chromosome') and no mapping reference does. Each lifted record keeps
+    // its mapping coordinate in INFO/OPOS, which is how the report pairs it with its variant.
     tag "AnnCanonical: ${sampleId}"
     publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
     cpus 2
@@ -21,21 +23,29 @@ process ANNOTATE_CANONICAL {
 
     input:
     tuple val(sampleId), val(refId), path(vcf_in)
+    path(lift_map)          // LIFT_VARIANTS' maps of every reference, joined
     val canonical_db
 
     output:
     tuple val(sampleId), path("${sampleId}.${refId}.canonical.ann.vcf.gz"), emit: out
 
     script:
+    def chrom = params.canonical_chrom ? "--chrom ${params.canonical_chrom}" : ""
     """
     set -euo pipefail
-    # Drop any existing ANN, then annotate against the canonical genome DB. refId is in the name so a
-    # sample mapped to more than one reference does not produce a file-name collision downstream.
-    ( bcftools annotate -x INFO/ANN "${vcf_in}" -Ov 2>/dev/null || zcat -f "${vcf_in}" ) > stripped.vcf
-    snpEff ann -v ${canonical_db} stripped.vcf 2> ${sampleId}.${refId}.canonical.snpeff.log \\
+    # refId is in the name so a sample mapped to more than one reference does not produce a file-name
+    # collision downstream.
+    python3 ${projectDir}/bin/lift_vcf.py --vcf "${vcf_in}" --map "${lift_map}" --fasta "${params.canonical_ref}" \\
+        ${chrom} -o lifted.vcf
+    snpEff ann -v ${canonical_db} lifted.vcf 2> ${sampleId}.${refId}.canonical.snpeff.log \\
       | awk 'BEGIN{FS="\\t"; OFS="\\t"} /^#/{print;next} /^\\[/{next} NF>=8{print}' \\
       | bgzip -c > ${sampleId}.${refId}.canonical.ann.vcf.gz
     tabix -f -p vcf ${sampleId}.${refId}.canonical.ann.vcf.gz 2>/dev/null || : > ${sampleId}.${refId}.canonical.ann.vcf.gz.tbi
+    # A chromosome name the database does not have annotates nothing, and says so only in the log.
+    if grep -q 'ERROR_CHROMOSOME_NOT_FOUND' ${sampleId}.${refId}.canonical.snpeff.log 2>/dev/null \\
+       || zcat -f ${sampleId}.${refId}.canonical.ann.vcf.gz | grep -v '^#' | grep -q 'ERROR_CHROMOSOME_NOT_FOUND'; then
+        echo "WARN ${sampleId}: ${canonical_db} has no chromosome named as the lifted records; set --canonical_chrom" >&2
+    fi
     """
 
     stub:

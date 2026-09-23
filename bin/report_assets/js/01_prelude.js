@@ -33,8 +33,11 @@ var AA2LBL=R.aa2_label||'H37Rv';   // label for the canonical-reference amino-ac
 function aaDual(aa,aaH){ if(!aa) return ''; return esc(aa)+((aaH&&aaH!==aa)?(' <span class="aah37" title="same variant in the '+esc(AA2LBL)+' reference numbering">['+esc(AA2LBL)+' '+esc(aaH)+']</span>'):''); }
 var REFNAME=R.ref_name||'';   // the reference the samples were mapped against, shown in the SNP-table headers
 // mapping-reference position, plus the reference-of-interest (H37Rv) coordinate in brackets when the pipeline
-// provides one that differs (no shared-coordinate assumption; pos2 is a 'contig:pos' string from the lifted VCF)
-function refPos(pos,pos2){ var m=esc(''+pos); var p2=pos2?(''+pos2).split(':').pop():''; if(p2&&p2!==(''+pos)){ m+=' <span class="aah37" title="same variant in the '+esc(AA2LBL)+' reference coordinates">['+esc(AA2LBL)+' '+esc(p2)+']</span>'; } return m; }
+// provides one that differs (no shared-coordinate assumption; pos2 is a 'contig:pos' string from the lifted VCF).
+// 'absent' is a stretch of the mapping reference that H37Rv does not have: no coordinate, and said so.
+function refPos(pos,pos2){ var m=esc(''+pos); var p2=pos2?(''+pos2).split(':').pop():'';
+  if(p2==='absent') return m+' <span class="aah37" title="this stretch of the mapping reference has no counterpart in '+esc(AA2LBL)+': it was inserted relative to it">[not in '+esc(AA2LBL)+']</span>';
+  if(p2&&p2!==(''+pos)){ m+=' <span class="aah37" title="same variant in the '+esc(AA2LBL)+' reference coordinates">['+esc(AA2LBL)+' '+esc(p2)+']</span>'; } return m; }
 var thr=assign({},R.thresholds);
 var athr=assign({},R.anc_thresholds||{});      // ancient (aDNA) threshold view
 function actv(s){return (s.anc&&R.n_ancient)?athr:thr;}   // active threshold set for a sample

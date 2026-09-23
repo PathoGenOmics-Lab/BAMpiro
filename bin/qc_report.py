@@ -85,13 +85,14 @@ def build_parser():
                     help="Optional per-sample annotated VCFs -> per-SNP allele frequencies for the dynamics panel.")
     ap.add_argument("--vcfs-h37rv", nargs="*", default=[],
                     help="Optional per-sample VCFs annotated against a canonical reference -> the canonical "
-                         "amino-acid position shown alongside the used-reference one (matched by sample + contig:pos).")
+                         "amino-acid change and gene shown alongside the used-reference ones. Records lifted to the "
+                         "canonical coordinates carry the mapping coordinate in INFO/OPOS and are paired by it.")
     ap.add_argument("--aa2-label", default="H37Rv",
                     help="Label for the canonical-reference amino-acid numbering shown by --vcfs-h37rv (default H37Rv).")
     ap.add_argument("--pos-liftover", default=None,
-                    help="TSV 'mapping_pos<TAB>canonical_pos' (e.g. pathotypr_liftover.py apply --out-map) -> the "
-                         "reference-of-interest COORDINATE per variant, alignment-free. Fills pos_h37rv for the SNP "
-                         "tables; an alternative to --vcfs-h37rv when the references do not share coordinates.")
+                    help="TSV 'src_contig src_pos tgt_contig tgt_pos strand' (pathotypr_liftover.py lift "
+                         "--global-chain --out-map, one per reference joined) -> the canonical COORDINATE of each "
+                         "variant, looked up by contig and position. Fills pos_h37rv for the SNP tables.")
     ap.add_argument("--depth-profiles", nargs="*", default=[],
                     help="Per-sample depth tables from depth_profile.py (windows, stretches without reads, "
                          "genes) -> deletions and SNPs per callable kb along the genome (optional).")
@@ -164,44 +165,83 @@ def collect_damage(mapdamage_dirs, summ):
     return dmg_by_sample
 
 
+def read_lift_map(path):
+    """{(contig, position): canonical position, or None where the canonical genome has no counterpart} from
+    the liftover map, or {} without one.
+
+    LIFT_VARIANTS writes src_contig src_pos tgt_contig tgt_pos strand, one map per reference joined into
+    one, and '.' as the target of a position inserted relative to the canonical genome. A map in the older
+    two-column form (src_pos tgt_pos) names no contig and is keyed on (None, pos): it can only be applied
+    where the cohort has a single contig, since the same position of another contig, or of another reference,
+    is another site."""
+    out = {}
+    if not path or not os.path.exists(path) or os.path.basename(path).startswith("NO_FILE"):
+        return out
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                c = line.rstrip("\n").split("\t")
+                if len(c) >= 4 and c[1].strip().isdigit() and c[3].strip().isdigit():
+                    out[(c[0].strip(), int(c[1]))] = int(c[3])
+                elif len(c) >= 4 and c[1].strip().isdigit() and c[3].strip() == ".":
+                    out[(c[0].strip(), int(c[1]))] = None
+                elif len(c) >= 2 and c[0].strip().isdigit() and c[1].strip().isdigit():
+                    out[(None, int(c[0]))] = int(c[1])
+    except OSError as e:
+        sys.stderr.write("[qc_report] WARN pos-liftover (%s): %s\n" % (path, e))
+    return out
+
+
 def load_variants(args):
-    """{sample: {'chrom:pos': variant}} from --vcfs, with the canonical-reference amino acid
-    (--vcfs-h37rv) and/or the canonical coordinate (--pos-liftover) attached where available."""
+    """{sample: {'chrom:pos': variant}} from --vcfs, with the canonical-reference (H37Rv) amino acid, gene
+    and coordinate attached where they are known.
+
+    A canonical record is paired with a variant by the mapping coordinate it carries (OPOS, or Picard's
+    OriginalContig/OriginalStart), which ANNOTATE_CANONICAL writes as it lifts each record: its position is
+    then the canonical coordinate. A canonical record without one sits at the mapping coordinate itself (a
+    VCF annotated in place, right only for a reference that shares the canonical coordinates): it lends its
+    amino acid to the variant at the same contig and position, but not a coordinate, which it never had.
+    The liftover map fills the coordinate of every variant still without one, looked up by contig."""
     _variants = parse_vcfs(args.vcfs)   # parsed once, feeds both the dynamics panel and the SNP matrix
-    if args.vcfs_h37rv:   # attach the reference-of-interest (H37Rv) amino-acid change AND coordinate per variant
+    label = args.aa2_label
+    if args.vcfs_h37rv:
         _h37 = parse_vcfs(args.vcfs_h37rv)
         for _s, _pm in _variants.items():
-            _hs = _h37.get(_s, {})
-            # Pair each used-ref variant with its canonical-reference record. Prefer the ORIGINAL used-ref
-            # coordinate a liftover stamped (OriginalContig/Start or OPOS) so the two references need NOT
-            # share coordinates; else fall back to the bare position (references that DO share H37Rv coords).
-            _by_opos, _by_pos = {}, {}
-            for _ck, _cv in _hs.items():
+            _by_opos, _in_place = {}, {}
+            for _ck, _cv in _h37.get(_s, {}).items():
                 if _cv.get('opos'):
                     _by_opos[_cv['opos']] = (_ck, _cv)
-                _by_pos.setdefault(_ck.rpartition(':')[2], (_ck, _cv))
+                else:
+                    _in_place[_ck] = _cv
             for _key, _v in _pm.items():
-                _hit = _by_opos.get(_key) or _by_pos.get(_key.rpartition(':')[2])
+                _hit = _by_opos.get(_key)
+                _cv = _hit[1] if _hit else _in_place.get(_key)
+                if not _cv:
+                    continue
+                if _cv.get('aa'):
+                    _v['aa_h37rv'] = _cv['aa']
+                if _cv.get('gene'):
+                    _v['gene_h37rv'] = _cv['gene']
                 if _hit:
-                    _ck, _cv = _hit
-                    if _cv.get('aa'):
-                        _v['aa_h37rv'] = _cv['aa']
-                    _v['pos_h37rv'] = _ck   # reference-of-interest coordinate (contig:pos), possibly != the mapping one
-    if args.pos_liftover:   # alignment-free canonical coordinate per variant (pathotypr k-mer liftover map)
-        _lift = {}
-        try:
-            with open(args.pos_liftover, encoding="utf-8", errors="replace") as _fh:
-                for _line in _fh:
-                    _c = _line.rstrip("\n").split("\t")
-                    if len(_c) >= 2 and _c[0].strip().isdigit() and _c[1].strip().isdigit():
-                        _lift[_c[0].strip()] = _c[1].strip()
-        except OSError as _e:
-            sys.stderr.write("[qc_report] WARN pos-liftover (%s): %s\n" % (args.pos_liftover, _e))
-        for _s, _pm in _variants.items():
+                    _v['pos_h37rv'] = "%s:%s" % (label, _hit[0].rpartition(':')[2])
+    _lift = read_lift_map(args.pos_liftover)
+    if _lift:
+        contigs = {k.rpartition(':')[0] for _pm in _variants.values() for k in _pm}
+        legacy = len(contigs) <= 1      # a map without contigs is only unambiguous on a single contig
+        for _pm in _variants.values():
             for _key, _v in _pm.items():
-                _p = _key.rpartition(":")[2]
-                if not _v.get("pos_h37rv") and _p in _lift:
-                    _v["pos_h37rv"] = "%s:%s" % (args.aa2_label, _lift[_p])
+                if _v.get("pos_h37rv"):
+                    continue
+                _c, _, _p = _key.rpartition(":")
+                if not _p.isdigit():
+                    continue
+                _k = (_c, int(_p))
+                if _k not in _lift and legacy:
+                    _k = (None, int(_p))
+                if _k in _lift:
+                    # None: inserted relative to the canonical genome, which has no coordinate to give
+                    _t = _lift[_k]
+                    _v["pos_h37rv"] = "%s:%s" % (label, "absent" if _t is None else _t)
     return _variants
 
 

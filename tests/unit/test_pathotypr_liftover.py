@@ -629,8 +629,183 @@ def test_cmd_lift_global_chain_dispatches_to_lift_chain(tmp_path, capsys):
                       min_identity=0.9, rd_min=50, rd_out=None, source_contig="A")
     lift.cmd_lift(args)
 
-    assert (tmp_path / "lift.map").read_text() == "src_pos\ttgt_pos\n100\t100\n400\t436\n"
+    assert (tmp_path / "lift.map").read_text() == (
+        "src_contig\tsrc_pos\ttgt_contig\ttgt_pos\tstrand\nA\t100\tB\t100\t+\nA\t400\tB\t436\t+\n")
     assert "lift(anchor-chain): 2 fwd + 0 inverted = 2 lifted" in capsys.readouterr().err
+
+
+# ------------------------------------------------- several contigs (a draft assembly, a split target)
+
+
+def _write_multi_fasta(path, records, width=60):
+    lines = []
+    for name, seq in records:
+        lines.append(">%s" % name)
+        lines += [seq[i:i + width] for i in range(0, len(seq), width)]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return str(path)
+
+
+def test_named_positions_reads_contig_lists_beds_and_plain_positions(tmp_path):
+    p = tmp_path / "pos.txt"
+    p.write_text("chromosome\t12\nctg2\t5\t7\tx\n30\ntrack name=x\nchrom\tstart\tend\n")
+    assert lift._named_positions(str(p)) == [
+        (None, 30), ("chromosome", 12), ("ctg2", 6), ("ctg2", 7)]
+
+
+def test_a_draft_is_lifted_contig_by_contig_in_any_order_and_orientation(tmp_path):
+    """A draft assembly's contigs lie anywhere in the target, and some reverse-complemented: each is
+    chained on its own, so every one lands, with the strand it lands on."""
+    genome = _random_seq(3000, seed=21)
+    c1, c2, c3 = genome[:1000], genome[1000:2000], genome[2000:]
+    src = _write_multi_fasta(tmp_path / "draft.fa", [("c3", c3), ("c1", c1), ("c2rc", _rc(c2))])
+    tgt = _write_fasta(tmp_path / "ref.fa", "chr", genome)
+
+    good, stats = lift._lift_chain_multi(_chain_args(src, tgt), [("c1", 500), ("c3", 100), ("c2rc", 300)])
+
+    assert good[("c1", 500)] == ("chr", 500, "+")
+    assert good[("c3", 100)] == ("chr", 2100, "+")
+    assert good[("c2rc", 300)] == ("chr", 1000 + (1000 - 300 + 1), "-")
+    assert stats["drop"] == 0 and stats["unknown_contig"] == 0
+
+
+def test_a_position_is_placed_on_the_target_contig_it_belongs_to(tmp_path):
+    genome = _random_seq(2000, seed=22)
+    src = _write_fasta(tmp_path / "src.fa", "chr", genome)
+    tgt = _write_multi_fasta(tmp_path / "tgt.fa", [("t1", genome[:1000]), ("t2", genome[1000:])])
+
+    good, _ = lift._lift_chain_multi(_chain_args(src, tgt), [(None, 400), (None, 1400)])
+
+    assert good[("chr", 400)] == ("t1", 400, "+")
+    assert good[("chr", 1400)] == ("t2", 400, "+")
+
+
+def test_a_multi_contig_source_needs_the_contig_named(tmp_path):
+    """A plain position, or one on a contig the source lacks, is left out rather than read on the first
+    contig: that used to lift a variant of contig 2 with the sequence of contig 1."""
+    genome = _random_seq(2000, seed=23)
+    src = _write_multi_fasta(tmp_path / "src.fa", [("a", genome[:1000]), ("b", genome[1000:])])
+    tgt = _write_fasta(tmp_path / "tgt.fa", "chr", genome)
+
+    good, stats = lift._lift_chain_multi(_chain_args(src, tgt), [(None, 500), ("zz", 500), ("b", 500)])
+
+    assert good == {("b", 500): ("chr", 1500, "+")}
+    assert stats["unknown_contig"] == 2
+
+
+def test_a_single_contig_source_takes_positions_whatever_contig_they_name(tmp_path):
+    """The H37Rv blind-spot BED names NC_000962.3 and is read on an ancestor FASTA named otherwise."""
+    seq = _random_seq(600, seed=11)
+    src = _write_fasta(tmp_path / "anc.fa", "MTB_anc", seq)
+    tgt = _write_fasta(tmp_path / "ref.fa", "E1", seq)
+
+    good, _ = lift._lift_chain_multi(_chain_args(src, tgt), [("NC_000962.3", 300)])
+
+    assert good == {("MTB_anc", 300): ("E1", 300, "+")}
+
+
+def test_cmd_lift_global_chain_writes_a_bed_per_target_contig(tmp_path, capsys):
+    genome = _random_seq(2000, seed=22)
+    src = _write_fasta(tmp_path / "src.fa", "chr", genome)
+    tgt = _write_multi_fasta(tmp_path / "tgt.fa", [("t1", genome[:1000]), ("t2", genome[1000:])])
+    positions = tmp_path / "pos.bed"
+    positions.write_text("chr\t399\t402\nchr\t1399\t1401\n")
+
+    args = _lift_args(tmp_path, str(positions), src, tgt, global_chain=True, contig=None,
+                      sample=1, indel_tol=0, max_gap=None, min_chain=10, min_density=0.2,
+                      min_identity=0.9, rd_min=50, rd_out=None, source_contig=None)
+    lift.cmd_lift(args)
+
+    assert (tmp_path / "lift.bed").read_text() == "t1\t399\t402\tblindspot\nt2\t399\t401\tblindspot\n"
+
+
+# ------------------------------------------- --align-gaps: what interpolation cannot place, aligned
+
+
+def test_align_places_a_gap_as_far_left_as_the_scores_allow():
+    cols = lift._align("ACGTAAAATGCA", "ACGTAAATGCA")
+    top = "".join("-" if i is None else "ACGTAAAATGCA"[i] for i, _ in cols)
+    bottom = "".join("-" if j is None else "ACGTAAATGCA"[j] for _, j in cols)
+    assert (top, bottom) == ("ACGTAAAATGCA", "ACGT-AAATGCA")
+
+
+def test_align_finds_an_insertion():
+    cols = lift._align("ACGTCCGGTTAACCGGTTAAGGCA", "ACGTGGCA")
+    assert sum(1 for _, j in cols if j is None) == 16
+    assert sum(1 for i, _ in cols if i is None) == 0
+
+
+def test_align_gives_up_past_its_cell_budget():
+    assert lift._align("A" * 400, "C" * 5, max_cells=100) is None
+
+
+def _aligned_args(src, tgt, **kw):
+    return _chain_args(src, tgt, **{"align_gaps": True, "align_min_identity": 0.9, "max_align_gap": 20000, **kw})
+
+
+def test_positions_beside_an_indel_are_placed_by_aligning_between_the_anchors(tmp_path):
+    """A 5 bp deletion in the target: interpolation drops the positions around it, the alignment places
+    them, each at its own coordinate."""
+    seq = _random_seq(800, seed=31)
+    src = _write_fasta(tmp_path / "src.fa", "A", seq)
+    tgt = _write_fasta(tmp_path / "tgt.fa", "B", seq[:400] + seq[405:])
+    positions = [390, 395, 398, 410, 415]
+
+    strict, _ = lift._lift_chain(_chain_args(src, tgt), positions)
+    good, stats = lift._lift_chain_multi(_aligned_args(src, tgt), [(None, p) for p in positions])
+
+    assert len(strict) < len(positions), "interpolation alone cannot place them all"
+    assert good[("A", 390)] == ("B", 390, "+") and good[("A", 395)] == ("B", 395, "+")
+    assert good[("A", 410)] == ("B", 405, "+") and good[("A", 415)] == ("B", 410, "+")
+    assert stats["aligned"] >= 1
+
+
+def test_a_stretch_the_target_lacks_is_reported_absent_and_its_flanks_placed(tmp_path):
+    """A 300 bp insertion in the source, like an IS copy the target does not have at that site."""
+    seq, ins = _random_seq(800, seed=32), _random_seq(300, seed=33)
+    src = _write_fasta(tmp_path / "src.fa", "A", seq[:400] + ins + seq[400:])
+    tgt = _write_fasta(tmp_path / "tgt.fa", "B", seq)
+
+    good, stats = lift._lift_chain_multi(_aligned_args(src, tgt), [(None, p) for p in (395, 550, 705)])
+
+    assert good[("A", 395)] == ("B", 395, "+")
+    assert good[("A", 550)] is None, "inside the insertion: the target has no counterpart"
+    assert good[("A", 705)] == ("B", 405, "+")
+    assert stats["absent"] == 1
+
+
+def test_a_stretch_without_anchors_but_the_same_length_is_placed(tmp_path):
+    """A SNP every 8 bases for 200 bp leaves no shared 21-mer; the alignment is gap-free and places it."""
+    seq = list(_random_seq(900, seed=34))
+    tgt_seq = seq[:]
+    for i in range(350, 550, 8):
+        tgt_seq[i] = {"A": "C", "C": "G", "G": "T", "T": "A"}[tgt_seq[i]]
+    src = _write_fasta(tmp_path / "src.fa", "A", "".join(seq))
+    tgt = _write_fasta(tmp_path / "tgt.fa", "B", "".join(tgt_seq))
+
+    good, _ = lift._lift_chain_multi(_aligned_args(src, tgt, align_min_identity=0.8),
+                                     [(None, 400), (None, 450), (None, 500)])
+
+    assert good == {("A", p): ("B", p, "+") for p in (400, 450, 500)}
+
+
+def test_an_unrelated_stretch_is_neither_placed_nor_called_absent(tmp_path):
+    """200 bp of one sequence where the target has 200 bp of another: there is no counterpart to give,
+    and it is not missing from the target either."""
+    seq = _random_seq(900, seed=35)
+    src = _write_fasta(tmp_path / "src.fa", "A", seq[:350] + _random_seq(200, seed=36) + seq[550:])
+    tgt = _write_fasta(tmp_path / "tgt.fa", "B", seq[:350] + _random_seq(200, seed=37) + seq[550:])
+
+    good, stats = lift._lift_chain_multi(_aligned_args(src, tgt), [(None, 450)])
+
+    assert good == {}
+    assert stats["drop"] == 1
+
+
+def test_the_map_writes_an_absent_position_with_no_target(tmp_path):
+    out = tmp_path / "map.tsv"
+    lift._write_map({("A", 5): ("B", 9, "+"), ("A", 7): None}, str(out), ["A"])
+    assert out.read_text() == "src_contig\tsrc_pos\ttgt_contig\ttgt_pos\tstrand\nA\t5\tB\t9\t+\nA\t7\t.\t.\t.\n"
 
 
 # --------------------------------------------------------------------- cmd_markers

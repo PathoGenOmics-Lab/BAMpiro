@@ -7,10 +7,34 @@ flanking-context k-mer and finds it in the target genome; the target position is
 ## `lift` — the recommended method (self-contained, synteny-anchored)
 
 ```bash
-# lift the positions in POS (BED or 1-based list) from reference A onto reference B:
-python3 pathotypr_liftover.py lift POS A.fasta B.fasta --out-map map.tsv --out-bed lifted.bed --contig B \
+# lift the positions in POS (BED, 'contig<TAB>pos' or a 1-based list) from reference A onto reference B:
+python3 pathotypr_liftover.py lift POS A.fasta B.fasta --out-map map.tsv --out-bed lifted.bed \
         --kmer-size 21 --global-chain
 ```
+
+With `--global-chain` every contig of both FASTAs is read. Each source contig is chained on its own, so the
+contigs of a draft assembly are placed wherever, and in whichever orientation, they lie in the target; the map
+names both contigs and the strand (`src_contig  src_pos  tgt_contig  tgt_pos  strand`) and the BED is written
+per target contig (`--contig` renames a single-contig target). A position names its contig; on a single-contig
+source it may name any (a BED in NC_000962.3 coordinates read on an ancestor FASTA named otherwise), on a
+multi-contig one a position without a contig, or on a contig the source lacks, is left out and counted. The
+other modes read only the first contig of each FASTA.
+
+**`--align-gaps` (what `LIFT_VARIANTS` uses).** Interpolation only crosses an exactly colinear gap of ≤ ~2k, so a
+position beside an indel, or in a stretch with no shared unique k-mer (SNP-dense, repeated), drops. With
+`--align-gaps` the stretch between the two anchors is aligned instead (global, affine gaps with BWA-MEM's scores,
+banded, indels left-aligned as VCF normalisation does; pure Python, `--max-align-gap` 20 kb):
+
+- a position is placed when a gap-free run of the alignment at ≥ `--align-min-identity` (0.9) joins it to one of
+  the two anchors, and its own 10 bases on each side match — or, on the side where they do not, a short indel
+  (≤ 20 bp) sits right there, or a long one beside which its context occurs only once in the stretch;
+- a position inside a run the target lacks is written as absent (`.` as its target) when that run is the only
+  indel between the anchors, its flanks align at ≥ 90% and no anchor inside the gap points elsewhere;
+- anything else — between two indels, beside a long indel in a repeat — is left out.
+
+Against minimap2 on two MTBC assemblies (L7 and A4) lifted to H37Rv, every position of 27 resistance genes lands
+on minimap2's coordinate, 99.8% of random positions do, and of those that differ none fits H37Rv worse than
+minimap2's; about 0.2% are left out, in PE_PGRS-type repeats. It adds ~10 s to a 4.4 Mb lift.
 
 **`--global-chain` (recommended, what BAMpiro uses)** builds a whole-genome coordinate map: every k-mer
 unique in BOTH genomes is an anchor (~97 % of the MTBC genome — anchors roughly every base), chained into a
@@ -97,14 +121,16 @@ Flag style is mixed in pathotypr 0.1.0: `--tsv_pos` / `--ref_fasta` / `--tsv_gen
 but `--kmer-size` / `--fasta-genomes` use dashes. The classify main output is written to the `--output`
 name exactly (no extension); its columns are `genome  k-mer  k-merPOS  SNPgenome  SNPreference  lineage`.
 
-`map.tsv` = `src_pos <TAB> tgt_pos`; `lifted.bed` = the positions collapsed into intervals in B's coords.
+`map.tsv` = `src_pos <TAB> tgt_pos` for `apply` and the per-position `lift`; `src_contig src_pos tgt_contig tgt_pos
+strand` for `lift --global-chain`. `lifted.bed` = the positions collapsed into intervals in B's coords.
 
 ## The two BAMpiro use cases
 
 - **(A) SNP tables — variant position in H37Rv.** Lift the run's variant positions (mapping-reference
-  coords) **to H37Rv**: `A = mapping reference`, `B = H37Rv`. `snp_position` is the H37Rv coordinate; feed
-  it as the report's `pos_h37rv` (the same field the `--vcfs-h37rv` path fills). Alignment-free, replaces
-  the Picard/bcftools liftover.
+  coords) **to H37Rv**: `A = mapping reference`, `B = H37Rv`, once per reference of the run (`LIFT_VARIANTS`),
+  each with its own FASTA and the positions on its own contigs. The joined map feeds the report's
+  `pos_h37rv`, looked up by contig and position, and `bin/lift_vcf.py`, which moves each SNP to its H37Rv
+  position so the canonical snpEff annotation reads H37Rv's gene and codon.
 - **(B) Blind-spots mask on any reference.** Lift `assets/H37Rv_blindspots.bed` **from H37Rv to the run's
   reference**: `A = H37Rv`, `B = mapping reference`. The resulting BED (target coords) goes into the
   per-reference exclusion — so the mask works even when the reference is not H37Rv.
