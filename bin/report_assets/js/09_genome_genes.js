@@ -1,5 +1,8 @@
-var GTRACKS=[{k:'missing',lab:'Missing',base:[214,64,58]},{k:'snp',lab:'SNPs',base:[14,139,168]},
+var GTRACKS=[{k:'missing',lab:'Missing',base:[214,64,58]},{k:'del',lab:'Deletions',base:[150,40,110]},
+             {k:'snp',lab:'SNPs',base:[14,139,168]},{k:'snpkb',lab:'SNPs / kb',base:[22,100,150]},
              {k:'het',lab:'Het',base:[221,138,26]},{k:'indel',lab:'Indels',base:[124,92,191]}];
+// A track whose values are a share of the bin (0-1) rather than a count: drawn on a fixed 0-100% scale.
+function gtrackFrac(k){return k=='missing'||k=='del';}
 function gtrackHas(k){return R.samples.some(function(s){return k=='missing'?!!s.miss:(s.trk&&s.trk[k]);});}
 function gtrackMax(k){var mx=0;R.samples.forEach(function(s){var p=k=='missing'?s.miss:(s.trk&&s.trk[k]);if(p)p.forEach(function(v){if(v!=null&&v>mx)mx=v;});});return mx;}
 function gcol(base,mv){if(mv==null)return TH.cellnull;if(mv>1)mv=1;var a=isDark()?[30,42,56]:[238,244,240];
@@ -55,7 +58,7 @@ function renderGenome(){
   var rows0=samp.filter(function(s){return (tk=='missing')?s.miss:(s.trk&&s.trk[tk]);});
   if(!rows0.length){host.innerHTML='<span class="nd" style="padding:0">no data for this track.</span>';return;}
   var nb=(tk=='missing')?rows0[0].miss.length:rows0[0].trk[tk].length, gl=R.genome_len||nb;
-  var mx=(tk=='missing')?1:(gtrackMax(tk)||1);
+  var mx=gtrackFrac(tk)?1:(gtrackMax(tk)||1);
   var vis={}; visible().forEach(function(s){vis[s.s]=1;});
   var rows=rows0.slice().sort(function(a,b){var la=(R.lineages||[]).indexOf(a.lineage),lb=(R.lineages||[]).indexOf(b.lineage);
     if(la<0)la=999; if(lb<0)lb=999; if(la!=lb)return la-lb; return a.s.localeCompare(b.s);});
@@ -73,18 +76,18 @@ function renderGenome(){
   var pmax=Math.max.apply(null,agg.slice(z0,z1+1).map(function(v){return v||0;}).concat([1e-9]));
   var pts=[];for(var pi=z0;pi<=z1;pi++){var pv=agg[pi]||0;pts.push(x(pi).toFixed(1)+','+(profH-(pv/pmax)*(profH-10)).toFixed(1));}
   var bs='rgb('+base[0]+','+base[1]+','+base[2]+')',bf='rgba('+base[0]+','+base[1]+','+base[2]+',.15)';
-  var TLAB={missing:'missing %',snp:'SNP density',het:'het density',indel:'indel density'};
+  var TLAB={missing:'missing %',del:'deleted %',snp:'SNP density',snpkb:'SNPs per callable kb',het:'het density',indel:'indel density'};
   var svg='<svg width="'+W+'" height="'+totH+'">';
   svg+='<line x1="'+gut+'" y1="'+profH+'" x2="'+(gut+plotW).toFixed(1)+'" y2="'+profH+'" stroke="'+TH.grid+'"/>';
   svg+='<path d="M '+gut.toFixed(1)+' '+profH+' L '+pts.join(' L ')+' L '+(gut+plotW).toFixed(1)+' '+profH+' Z" fill="'+bf+'"/>';
   svg+='<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+bs+'" stroke-width="1.3" stroke-linejoin="round"/>';
   svg+='<text x="0" y="11" font-size="9" font-weight="600" fill="'+TH.mut+'">'+TLAB[tk]+'</text>';
-  svg+='<text x="'+(gut+plotW).toFixed(1)+'" y="11" font-size="8.5" fill="#94a3b8" text-anchor="end">peak '+(tk=='missing'?(pmax*100).toFixed(0)+'%':(Math.round(pmax*10)/10)+'/bin')+'</text>';
-  for(var pj=z0;pj<=z1;pj++)svg+='<rect x="'+x(pj).toFixed(1)+'" y="0" width="'+bw.toFixed(1)+'" height="'+profH+'" fill="transparent" data-bin="'+pj+'" data-v="'+(agg[pj]==null?'':(tk=='missing'?(agg[pj]*100).toFixed(0):(Math.round(agg[pj]*10)/10)))+'"/>';
+  svg+='<text x="'+(gut+plotW).toFixed(1)+'" y="11" font-size="8.5" fill="#94a3b8" text-anchor="end">peak '+(gtrackFrac(tk)?(pmax*100).toFixed(0)+'%':(Math.round(pmax*10)/10)+(tk=='snpkb'?'/kb':'/bin'))+'</text>';
+  for(var pj=z0;pj<=z1;pj++)svg+='<rect x="'+x(pj).toFixed(1)+'" y="0" width="'+bw.toFixed(1)+'" height="'+profH+'" fill="transparent" data-bin="'+pj+'" data-v="'+(agg[pj]==null?'':(gtrackFrac(tk)?(agg[pj]*100).toFixed(0):(Math.round(agg[pj]*10)/10)))+'"/>';
   rows.forEach(function(s,r){var dim=(st.q||st.onlyFlagged||st.flagFilter||st.ancOnly||st.linFilter)&&!vis[s.s],yy=y0+r*rowH;
     svg+='<rect x="'+(gut-9)+'" y="'+yy+'" width="5" height="'+(rowH-0.4).toFixed(1)+'" fill="'+linColor(s.lineage)+'"'+(dim?' opacity="0.25"':'')+'/>';
-    for(var i=z0;i<=z1;i++){var vv=raw(s,i),mv=vv==null?null:(tk=='missing'?vv:vv/mx);
-      svg+='<rect x="'+x(i).toFixed(1)+'" y="'+yy+'" width="'+bw.toFixed(1)+'" height="'+(rowH-0.4).toFixed(1)+'" fill="'+gcol(base,mv)+'"'+(dim?' opacity="0.3"':'')+' data-s="'+esc(s.s)+'" data-bin="'+i+'" data-v="'+(vv==null?'':(tk=='missing'?(vv*100).toFixed(0):vv))+'"/>';}
+    for(var i=z0;i<=z1;i++){var vv=raw(s,i),mv=vv==null?null:(gtrackFrac(tk)?vv:vv/mx);
+      svg+='<rect x="'+x(i).toFixed(1)+'" y="'+yy+'" width="'+bw.toFixed(1)+'" height="'+(rowH-0.4).toFixed(1)+'" fill="'+gcol(base,mv)+'"'+(dim?' opacity="0.3"':'')+' data-s="'+esc(s.s)+'" data-bin="'+i+'" data-v="'+(vv==null?'':(gtrackFrac(tk)?(vv*100).toFixed(0):vv))+'"/>';}
   });
   var yb=y0+rows.length*rowH;
   if(mb)for(var mk=z0;mk<=z1;mk++){var mf=mb[mk]||0;if(mf<=0)continue;   // grey out the masked zones
@@ -92,7 +95,7 @@ function renderGenome(){
   [0,0.25,0.5,0.75,1].forEach(function(t){var px=gut+t*plotW,pos=Math.round((z0+t*winN)/nb*gl);
     svg+='<line x1="'+px.toFixed(1)+'" y1="'+yb+'" x2="'+px.toFixed(1)+'" y2="'+(yb+4)+'" stroke="'+TH.axis+'"/>'+
       '<text x="'+px.toFixed(1)+'" y="'+(yb+14)+'" font-size="8.5" fill="#94a3b8" text-anchor="'+(t==0?'start':t==1?'end':'middle')+'">'+fmtpos(pos)+'</text>';});
-  if(tk=='snp'&&st.geneMark&&st.geneMark.b1>=z0&&st.geneMark.b0<=z1){var gm=st.geneMark,mx0=Math.max(gut,x(gm.b0)),mx1=Math.min(gut+plotW,x(gm.b1+1));
+  if((tk=='snp'||tk=='snpkb'||tk=='del'||tk=='missing')&&st.geneMark&&st.geneMark.b1>=z0&&st.geneMark.b0<=z1){var gm=st.geneMark,mx0=Math.max(gut,x(gm.b0)),mx1=Math.min(gut+plotW,x(gm.b1+1));
     svg+='<rect x="'+mx0.toFixed(1)+'" y="0" width="'+Math.max(2,mx1-mx0).toFixed(1)+'" height="'+yb+'" fill="none" stroke="'+TH.ink+'" stroke-width="1.2" stroke-dasharray="3 2"/>'+
       '<text x="'+Math.min(W-2,(mx0+mx1)/2).toFixed(1)+'" y="'+(profH+11)+'" font-size="9" font-weight="600" fill="'+TH.ink+'" text-anchor="middle">'+esc(gm.name||'')+'</text>';}
   svg+='<rect id="gbrush" x="0" y="0" width="0" height="'+yb+'" fill="rgba(14,139,168,.12)" stroke="#0e8ba8" stroke-width="1" stroke-dasharray="3 2" pointer-events="none" style="display:none"/>';
@@ -104,7 +107,9 @@ function renderGenome(){
   var gz=el('genzoom'); if(gz){ if(genomeZoom<=0)gz.value=rowH; gz.oninput=function(){ genomeZoom=+this.value; renderGenome(); }; }   // row-height zoom (re-renders; slider lives in the h2 so the drag survives)
   var lg=el('genome_legend');   // the scale of the track on screen (it used to be a fixed purple key over a red heatmap)
   if(lg)lg.innerHTML='<span><i style="width:56px;background:linear-gradient(90deg,'+gcol(base,0)+','+gcol(base,0.5)+','+gcol(base,1)+')"></i>'+
-    (tk=='missing'?'callable &#8594; all missing':'none &#8594; '+(Math.round(mx*10)/10)+' '+TLAB[tk].replace(' density','s')+' per bin')+'</span>'+
+    (tk=='missing'?'callable &#8594; all missing':tk=='del'?'read &#8594; the whole bin in a stretch without reads that other samples read':
+     tk=='snpkb'?'none &#8594; '+(Math.round(mx*10)/10)+' SNPs per callable kb (grey: under a tenth of the bin callable)':
+     'none &#8594; '+(Math.round(mx*10)/10)+' '+TLAB[tk].replace(' density','s')+' per bin')+'</span>'+
     (mb?'<span><i style="background:'+TH.faint+';opacity:.5"></i>masked</span>':'')+
     '<span style="margin-left:auto">top strip = cohort mean; hover a cell for the position and value</span>';
 }

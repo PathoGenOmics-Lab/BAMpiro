@@ -14,6 +14,9 @@ results_bampiro/
 ├── samples_legio_qc_flags.tsv            # Per-sample PASS/WARN/FAIL verdicts
 ├── samples_legio_summary.tsv             # Cohort metrics table (feeds the report)
 ├── samples_legio_snp_matrix.tsv          # Master SNP matrix (site × sample AF & depth)
+├── samples_legio_deletions.tsv           # Stretches some samples have no reads for (see below)
+├── samples_legio_snp_distances.tsv       # SNPs between every two consensus sequences (square matrix)
+├── samples_legio_snp_distances_pairs.tsv # The same, one row per pair, with how much each rests on
 ├── samples_legio_gene_burden.tsv         # Per-gene functional burden (cohort)
 ├── samples_legio_dr.tsv                  # 💊 Drug-resistance calls (pathotypr; only if --run_pathotypr)
 │
@@ -59,6 +62,9 @@ results_bampiro/
         ├── MP00091__<runId>.dr_mutations.tsv  # -> Pathotypr per-sample DR mutations (only if --run_pathotypr)
         ├── MP00091.LENS.gene_conversion.tsv       # -> Conversion tracts (only if --find_gene_conversion)
         ├── MP00091.LENS.gene_conversion_loci.tsv  # -> One row per paralog pair looked at, found or not
+        ├── MP00091.LENS.depth_windows.tsv  # -> Depth per 1 kb window: mean, share without reads, share callable
+        ├── MP00091.LENS.zero_depth.tsv     # -> Every stretch of 50+ bp no read covers
+        ├── MP00091.LENS.gene_depth.tsv     # -> Per gene: share read, share callable, depth against the genome
         └── Locus_to_exclude_LENS.txt       # -> List of repetitive regions excluded from calling
 ```
 
@@ -90,6 +96,54 @@ genotype's dosage passed off as a fraction.
 
 Rows are keyed on contig and position, so two references that share a contig name cannot be told
 apart; the matrix step warns when it sees one.
+
+## SNP distances
+
+`<samplesheet>_snp_distances.tsv` is the square matrix of SNPs between every two consensus
+sequences, `NA` between samples mapped against different references, which share no coordinates.
+A sample mapped against two references has a row and a column for each, named `sample@reference`.
+Two samples differ at a position only where both called a base (`A`, `C`, `G` or `T`) and the
+bases differ: a no-call, a masked position or an ambiguity code at a mixed site is never a
+difference, whichever sample it is in. These are the distances a tree built on the same
+consensus sequences sees.
+
+`<samplesheet>_snp_distances_pairs.tsv` has one row per pair with `compared`, the number of the
+reference's variable positions both samples called. A thinly called sample is close to everyone
+because it called little that could differ; the report leaves pairs that compared under half of
+the variable positions out of its clusters. Off with `--make_snp_distances false`, and absent
+without consensus sequences.
+
+## Deletions
+
+`<samplesheet>_deletions.tsv` lists the stretches of the reference that some samples have no reads
+for. A stretch without reads means different things depending on the rest of the cohort, so each
+one is compared with the other samples mapped to the same reference:
+
+| `class` | Meaning |
+| :--- | :--- |
+| `private` | One sample lacks it and the others read it: a deletion in that sample |
+| `shared` | Several samples lack it and the others read it: often a deletion that defines a lineage |
+| `cohort` | At least 90% of the samples on its reference lack it: a repeat no read can be placed on, or a part of the reference none of these genomes has. Nobody's deletion |
+| `alone` | The only sample on its reference read deeply enough, so there is nothing to compare it with |
+
+Two samples' stretches are the same deletion when each covers at least half of the other,
+measured against the stretch that opened the region. Plain overlap would chain a run of
+neighbouring small deletions into one, and let one sample's long deletion swallow a short gap
+every sample shares.
+
+Only stretches of at least `--deletion_min_len` bp (200) count, and only in samples whose median
+depth reaches `--report_depth_min`: in a thinly read sample, stretches without reads turn up by
+chance. The `samples` column gives each carrier's own stretch and `genes` the genes a carrier
+reads less than half of.
+
+The per-sample tables behind it are in each sample's `stats/` folder and are useful on their own
+(they are written whether or not a report is made). *Callable* there means read by
+`--allpos_min_cov` reads or more, where the consensus can call a base; it is also what the
+report's *SNPs / kb* divides by.
+`gene_depth.tsv` says, for every gene of the GFF, how much of it the sample read and at what depth
+against its genome-wide median, which is also where an amplification shows as a depth well above 1.
+A deletion shorter than the minimum, or one the variant caller already reported as an indel, is
+not in this file.
 
 ## Gene conversion
 
@@ -131,6 +185,7 @@ live-adjustable inside the HTML report.
 | `HIGH_IUPAC` | ambiguous/IUPAC % above | `--report_iupac_max` | :octicons-alert-fill-16:{ .amber } WARN |
 | `TITV_LOW` | Ti/Tv below | `--report_titv_min` | :octicons-alert-fill-16:{ .amber } WARN |
 | `LINEAGE_MISMATCH` | typed as a different lineage from the other samples mapped to its reference (it was probably mapped to the wrong genome) | - | :octicons-alert-fill-16:{ .amber } WARN |
+| `GROUP_MISMATCH` | further than the cluster threshold from every other sample of its samplesheet group (patient, line, series), in a group whose members are otherwise within it of each other: swapped, mislabelled, contaminated or reinfected | `--snp_cluster_threshold` | :octicons-alert-fill-16:{ .amber } WARN |
 
 **FAIL** = a candidate for the report's exclusion list (FAIL samples start in it);
 **WARN** = review, usually keep. See [Downstream](downstream.md) for applying the list.

@@ -1,13 +1,14 @@
-// ---- pages: the report reads as seven pages, and the sidebar is both the page list and the contents of
+// ---- pages: the report reads as eight pages, and the sidebar is both the page list and the contents of
 // the page on screen. Only that page is redrawn on a change (a new threshold, a highlighted sample, the
 // theme); the others are marked stale and redraw when opened, which is also when they know their width.
-var PAGES=['summary','qc','genome','variants','drug','gconv','diag'];
+var PAGES=['summary','qc','genome','related','variants','drug','gconv','diag'];
 var PAGE_RENDER={
   summary:function(){renderExec();},
   qc:function(){renderOverview();renderFlags();renderCuration();renderTable();renderLineages();renderKraken();renderPlots();renderADNA();},
-  genome:function(){renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderPnps();},
-  variants:function(){renderDynamics();renderEpistasis();renderSnpMatrix();renderVarDose();},
-  drug:function(){renderDrug();},
+  genome:function(){renderStacks();renderGenome();renderDeletions();renderFunction();renderGeneBurden();renderHotspots();renderPnps();},
+  related:function(){renderRelatedness();},
+  variants:function(){renderSeries();renderMinority();renderDynamics();renderEpistasis();renderSnpMatrix();renderVarDose();},
+  drug:function(){renderDrug();renderDrSeries();},
   gconv:function(){renderGconv();},
   diag:function(){renderScatter();renderCorr();renderQCspace();renderRefBias();renderDoseTx();renderTemporal();}};
 var curPage='summary', pageDirty={};
@@ -63,7 +64,7 @@ Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),functio
   if(cn)cn.onclick=function(e){e.preventDefault();Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.checked=false;st.hidden[cb.getAttribute('data-k')]=1;});renderTable();saveState();};})();
 el('q').oninput=function(e){st.q=e.target.value.toLowerCase().trim();renderTable();clearTimeout(_qdb);_qdb=setTimeout(function(){renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderStacks();renderGenome();renderFunction();renderTemporal();renderGconv();},160);};
 // per-panel gene search (Functional gene burden / Variable genes / pN-pS): filter each gene table by gene name
-[['gbq','gbq',renderGeneBurden],['hotq','hotq',renderHotspots],['pnpsq','pnpsq',renderPnps],['vardoseq','vardoseq',renderVarDose]].forEach(function(w){var inp=el(w[0]);if(inp)inp.oninput=function(e){st[w[1]]=e.target.value.trim();w[2]();};});
+[['gbq','gbq',renderGeneBurden],['hotq','hotq',renderHotspots],['delq','delq',renderDeletions],['pnpsq','pnpsq',renderPnps],['vardoseq','vardoseq',renderVarDose]].forEach(function(w){var inp=el(w[0]);if(inp)inp.oninput=function(e){st[w[1]]=e.target.value.trim();w[2]();};});
 el('of').onchange=function(e){st.onlyFlagged=e.target.checked;renderAll();};
 Array.prototype.forEach.call(document.querySelectorAll('#ptype button'),function(b){b.onclick=function(){st.ptype=b.getAttribute('data-t');
   Array.prototype.forEach.call(document.querySelectorAll('#ptype button'),function(x){x.classList.toggle('on',x==b);});renderPlots();};});
@@ -158,11 +159,11 @@ wireHover(el('plots')); wireHover(el('scatter')); wireHover(el('qcpca_body')); w
     document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);e.preventDefault();});})();
 // genome landscape hover + click
 (function(){var g=el('genome_body'); if(!g)return;
-  var LAB={missing:'missing',snp:'homozygous SNPs',het:'het variants',indel:'indels'};
+  var LAB={missing:'missing',del:'deleted',snp:'homozygous SNPs',snpkb:'SNPs per callable kb',het:'het variants',indel:'indels'};
   g.addEventListener('mousemove',function(e){var t=e.target;
     if(t.tagName=='rect'&&t.hasAttribute('data-v')){var bin=+t.getAttribute('data-bin'),nb=R.nbins||200,gl=R.genome_len||nb,tk=st.gtrack||'missing';
       var p0=Math.round(bin/nb*gl),p1=Math.round((bin+1)/nb*gl),v=t.getAttribute('data-v');
-      var val=(v==='')?'NA':(tk=='missing'?v+'% missing':v+' '+LAB[tk]);
+      var val=(v==='')?'NA':(tk=='missing'?v+'% missing':tk=='del'?v+'% in a stretch without reads that other samples read':v+' '+LAB[tk]);
       tip('<b>'+esc(t.getAttribute('data-s')||'cohort (mean)')+'</b><br>'+fmtpos(p0)+' - '+fmtpos(p1)+'<br>'+val,e.clientX,e.clientY);}
     else tip('');});
   g.addEventListener('mouseleave',function(){tip('');});
@@ -206,6 +207,11 @@ function genomeResetZoom(){st.gsel=null;st.gzoom=null;st.geneMark=null;var gg=el
     var rd=el('gselreadout');if(rd)rd.innerHTML='gene <b>'+esc(g.name)+'</b> &middot; '+fmtpos(g.start)+' - '+fmtpos(g.end)+' <button class="btn" id="gselclear" style="padding:2px 8px;font-size:11px">reset zoom</button>';
     var cb=el('gselclear');if(cb)cb.onclick=function(ev){ev.stopPropagation();genomeResetZoom();};};})();
 if(!R.samples.some(function(s){return s.miss||s.trk;})){var gs=el('genome');if(gs)gs.style.display='none';var ng=el('nav-genome');if(ng)ng.style.display='none';}
+if(!(R.series&&R.series.groups&&R.series.groups.length)){['gains','nav-gains','drseries','nav-drseries'].forEach(function(id){var x=el(id);if(x)x.style.display='none';});}
+else if(!(R.dr&&R.dr.calls&&R.dr.calls.length)){['drseries','nav-drseries'].forEach(function(id){var x=el(id);if(x)x.style.display='none';});}
+if(!R.minority){['minority','nav-minority'].forEach(function(id){var x=el(id);if(x)x.style.display='none';});}
+if(!relSec()){['reldist','relclus','relgroup','nav-reldist','nav-relclus','nav-relgroup'].forEach(function(id){var x=el(id);if(x)x.style.display='none';});}
+if(!(R.coverage&&R.coverage.regions)){var dlx=el('deletions');if(dlx)dlx.style.display='none';var ndlx=el('nav-del');if(ndlx)ndlx.style.display='none';}
 if(!R.samples.some(function(s){return s.trk&&s.trk.snp;})){var hsx=el('hotspots');if(hsx)hsx.style.display='none';var nhx=el('nav-hot');if(nhx)nhx.style.display='none';}
 // signature layer gates: hide a panel when its data type is absent cohort-wide (organism-agnostic; render fns also degrade per-view)
 if(!pca2(R.samples).ok){var qp=el('qcpca');if(qp)qp.style.display='none';var nqp=el('nav-pca');if(nqp)nqp.style.display='none';}
@@ -233,7 +239,7 @@ if(!(R.kraken&&R.kraken.samples&&R.kraken.samples.length)){var kkx=el('kraken');
   if(!R.mask_bins){mb.style.display='none';return;}
   mb.title=(R.mask_pct||0)+'% of the reference masked (PE/PPE, IS, DR, repeats); toggle to exclude these zones';
   mb.onclick=function(){st.maskOn=!st.maskOn;mb.classList.toggle('on',st.maskOn);renderGenome();renderHotspots();};})();
-var rz;window.addEventListener('resize',function(){clearTimeout(rz);rz=setTimeout(function(){renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderGenome();renderTemporal();renderGconv();},120);});
+var rz;window.addEventListener('resize',function(){clearTimeout(rz);rz=setTimeout(function(){renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderGenome();renderTemporal();renderGconv();if(curPage=='related')renderRelatedness();},120);});
 // metric help panel
 el('helpmenu').innerHTML=R.metrics.map(function(m){var d=R.defs[m.key]||['',''];return '<div class="hitem"><b>'+esc(m.label)+'</b> <span class="hk">'+esc(m.key)+'</span><div class="hd">'+esc(d[0]||'')+(d[1]?' <span class="hr">('+esc(d[1])+')</span>':'')+'</div></div>';}).join('');
 // ---- colour-by toggle (beeswarm + scatter); hides the whole lineage UI when there is no lineage data ----
@@ -330,13 +336,13 @@ function loadState(){try{var s=JSON.parse(localStorage.getItem(SKEY)||'null');if
 // ---- expand-to-fill (fullscreen within the window) for the big panels ----
 function collapseExpanded(){var ex=document.querySelector('.panel.expanded');if(!ex)return;ex.classList.remove('expanded');document.body.classList.remove('has-expanded');
   Array.prototype.forEach.call(document.querySelectorAll('.exp-h'),function(b){b.innerHTML=icon('maximize')+'full';});
-  renderGenome();renderPlots();renderScatter();renderTable();renderQCspace();renderRefBias();renderFunction();renderGeneBurden();renderHotspots();renderPnps();renderGconv();}
+  renderGenome();renderPlots();renderScatter();renderTable();renderQCspace();renderRefBias();renderFunction();renderGeneBurden();renderHotspots();renderPnps();renderGconv();renderDeletions();renderMinority();}
 Array.prototype.forEach.call(document.querySelectorAll('.exp-h'),function(b){b.onclick=function(){
   var panel=el(b.getAttribute('data-panel')); if(!panel)return;
   var willExpand=!panel.classList.contains('expanded'); collapseExpanded();
   if(willExpand){panel.classList.add('expanded');document.body.classList.add('has-expanded');b.innerHTML=icon('minimize')+'close';}
   var rn=b.getAttribute('data-render');
-  setTimeout(function(){if(rn=='genome')renderGenome();else if(rn=='plots')renderPlots();else if(rn=='scatter')renderScatter();else if(rn=='corr')renderCorr();else if(rn=='pca')renderQCspace();else if(rn=='divcomp')renderRefBias();else if(rn=='function')renderFunction();else if(rn=='geneburden')renderGeneBurden();else if(rn=='hotspots')renderHotspots();else if(rn=='pnps')renderPnps();else if(rn=='dosetx')renderDoseTx();else if(rn=='vardose')renderVarDose();else if(rn=='gconv')renderGconv();else if(rn=='table')renderTable();},20);};});
+  setTimeout(function(){if(rn=='genome')renderGenome();else if(rn=='plots')renderPlots();else if(rn=='scatter')renderScatter();else if(rn=='corr')renderCorr();else if(rn=='pca')renderQCspace();else if(rn=='divcomp')renderRefBias();else if(rn=='function')renderFunction();else if(rn=='geneburden')renderGeneBurden();else if(rn=='hotspots')renderHotspots();else if(rn=='deletions')renderDeletions();else if(rn=='minority')renderMinority();else if(rn=='pnps')renderPnps();else if(rn=='dosetx')renderDoseTx();else if(rn=='vardose')renderVarDose();else if(rn=='gconv')renderGconv();else if(rn=='table')renderTable();},20);};});
 if(el('expClose'))el('expClose').onclick=collapseExpanded;
 document.addEventListener('keydown',function(e){if(e.key=='Escape')collapseExpanded();});
 // per-sample detail modal close (button, backdrop, Esc)

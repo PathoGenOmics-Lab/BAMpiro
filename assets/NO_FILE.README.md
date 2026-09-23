@@ -11,6 +11,8 @@ stages one of these empty files instead, and the process recognises it by the
 | `NO_FILE_DR` | drug-resistance calls (`QC_REPORT`) | `--run_pathotypr false` |
 | `NO_FILE_H37RV` | canonically annotated VCFs (`QC_REPORT`) | `--annotate_canonical false` |
 | `NO_FILE_LIFTOVER` | variant coordinate map (`QC_REPORT`) | `--variant_liftover false` |
+| `NO_FILE_DISTANCES` | pairwise SNP distances (`QC_REPORT`) | `--make_snp_distances false`, or no consensus sequences |
+| `NO_FILE_MATRIX` | the master SNP matrix (`QC_REPORT`) | `--make_snp_matrix false` |
 
 Two properties matter, and both are load-bearing:
 

@@ -1,6 +1,6 @@
 var extraSet={}; R.extra.forEach(function(e){extraSet[e.key]=1;R.metrics.push(e);R.defs[e.key]=R.defs[e.key]||['Auto-detected metric from the summary TSV (not a named QC metric).',''];});
 var st={sortKey:'v',asc:false,q:'',onlyFlagged:false,hidden:{},hi:null,flagFilter:null,ptype:'beeswarm',   // default view: worst QC first (a returning user's saved sort overrides this)
-        sx:'mean_depth',sy:'breadth_pct',excl:{},detail:null,colorBy:'qc',groupLin:false,ancOnly:null,linFilter:null,metaFilter:{},gtrack:'missing',maskOn:false,gsel:null,gzoom:null,gbq:'',hotq:'',pnpsq:'',vardoseq:'',colf:{},showColF:false};
+        sx:'mean_depth',sy:'breadth_pct',excl:{},detail:null,colorBy:'qc',groupLin:false,ancOnly:null,linFilter:null,metaFilter:{},gtrack:'missing',maskOn:false,gsel:null,gzoom:null,gbq:'',hotq:'',delq:'',pnpsq:'',vardoseq:'',colf:{},showColF:false};
 var SGEO=null, GGEO=null;   // scatter + genome brush geometry caches (for inverse-mapping the rubber-band)
 var _thdb,_qdb,_mxdb,_cfdb;  // debounce timers: keep live inputs snappy at cohort scale (defer heavy re-renders)
 // The table opens on the metrics a verdict is made of; the other ~35 are one click away under "columns".
@@ -75,7 +75,7 @@ function pipelineFlags(s){return (s.f0||[]).filter(function(x){return !JS_FLAGS[
 var FLAGLAB={LOW_DEPTH:'Low depth',LOW_BREADTH:'Low breadth',HIGH_MISSING:'Incomplete consensus',NO_DATA:'No output',
   MAPPING_LOW:'Few reads map',HIGH_DUP:'High duplication',HIGH_IUPAC:'Many ambiguous bases',TITV_LOW:'Low Ti/Tv',
   SNP_LOW:'Unusually few SNPs',SNP_HIGH:'Unusually many SNPs',HET_HIGH:'Mixed alleles',MIXED:'Mixed lineages',
-  LINEAGE_MISMATCH:'Wrong reference?',DAMAGE_LOW:'No aDNA damage',QC_OUTLIER:'Unusual QC profile',
+  LINEAGE_MISMATCH:'Wrong reference?',GROUP_MISMATCH:'Outside its group?',DAMAGE_LOW:'No aDNA damage',QC_OUTLIER:'Unusual QC profile',
   HIGH_IMPACT_EXCESS:'Excess high-impact variants',LOF_EXCESS:'Excess loss-of-function',
   PNPS_PROXY_HIGH:'High missense/silent',ANNOTATION_POOR:'Poor annotation'};
 function flagLab(f){return FLAGLAB[f]||String(f).toLowerCase().replace(/_/g,' ');}
@@ -127,6 +127,7 @@ function flagWhy(s,fl){var T=actv(s),M=MET;function u(k){return (M[k]&&M[k].kind
     case 'PNPS_PROXY_HIGH':return 'missense/silent ratio '+shortv(s.m.missense_silent,'float')+' above cohort (robust z > '+thr.snp_z+'); a spectrum proxy only, possible base-call error or contamination; not dN/dS, see the pN/pS panel';
     case 'ANNOTATION_POOR':return 'annotated '+shortv(s.m.annotated_pct,'pct')+'% below floor '+ANNOT_FLOOR+' or below cohort; the GFF-to-snpEff database may be mismatched for this reference';
     case 'LINEAGE_MISMATCH':return 'types as '+linMain(s.lineage)+(s.ref_lin?(' while the other samples on '+(s.ref?'reference '+s.ref:'its reference')+' type as '+linMain(s.ref_lin)):' unlike the other samples on its reference')+': probably mapped to a genome it does not belong to, so its SNPs measure that distance';
+    case 'GROUP_MISMATCH':return s.grpd?(s.grpd.din+' SNPs from the nearest sample of its group '+s.grpd.g+' ('+s.grpd.nin+')'+(s.grpd.nout?', '+s.grpd.dout+' from '+s.grpd.nout+(s.grpd.gout?' of group '+s.grpd.gout:''):'')+': swapped, mislabelled, contaminated or reinfected'):'far from the rest of its group';
     default:return flagLab(fl);}}
 // The top level of a lineage call ('A4;M_bovis;A4.7;A4.7.1' -> 'A4'), which is what a mismatch compares.
 function linMain(l){return l?String(l).split(';')[0]:'NA';}
@@ -150,6 +151,7 @@ function flagReason(s,fl){var T=actv(s),m=s.m;function v(k){return nv(m[k]);}
     case 'HET_HIGH':return [flagLab(fl),v('het_frac')+'% of variant calls heterozygous, at most '+thr.het_max_frac+'%'];
     case 'MIXED':return [flagLab(fl),m.n_lineages+' lineages above '+thr.mixed_min_frac+'% of the markers'];
     case 'LINEAGE_MISMATCH':return [flagLab(fl),'types as '+esc(linMain(s.lineage))+(s.ref_lin?'; the rest of '+esc(s.ref||'its reference')+' types as '+esc(linMain(s.ref_lin)):'')];
+    case 'GROUP_MISMATCH':return [flagLab(fl),s.grpd?(s.grpd.din.toLocaleString('en-US')+' SNPs from the rest of its group '+esc(s.grpd.g)+(s.grpd.nout?'; '+s.grpd.dout.toLocaleString('en-US')+' from '+esc(s.grpd.nout)+(s.grpd.gout?' ('+esc(s.grpd.gout)+')':''):'')):'far from the rest of its group'];
     case 'QC_OUTLIER':return [flagLab(fl),(s._mdrv&&s._mdrv.length?s._mdrv.slice(0,3).map(function(d){return esc(d.label)+' '+(d.z>=0?'+':'&#8722;')+Math.abs(d.z).toFixed(1)+'&#963;';}).join(', '):'d&#178; '+v('qc_mahal'))+' against the cohort'];
     case 'HIGH_IMPACT_EXCESS':return [flagLab(fl),shortv(m.ann_high,'int')+' HIGH-impact variants; the cohort median is '+(ANNHI?shortv(ANNHI.med,'int'):'NA')];
     case 'LOF_EXCESS':return [flagLab(fl),v('lof_pct')+'% of coding changes; the cohort median is '+(LOFHI?shortv(LOFHI.med,'float'):'NA')+'%'];

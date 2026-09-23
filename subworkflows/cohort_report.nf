@@ -6,7 +6,7 @@
 */
 
 include { ANNOTATE_CANONICAL } from '../modules/annotation'
-include { COLLECT_SUMMARY; COLLECT_DR; LIFT_VARIANTS; QC_REPORT; SNP_MATRIX } from '../modules/report'
+include { COLLECT_SUMMARY; COLLECT_DR; DEPTH_PROFILE; LIFT_VARIANTS; QC_REPORT; SNP_DISTANCES; SNP_MATRIX } from '../modules/report'
 include { asBool } from '../modules/utils'
 
 workflow COHORT_REPORT {
@@ -36,12 +36,39 @@ workflow COHORT_REPORT {
                       .collect().ifEmpty([])
     def ref_name = refMap.keySet().join(',')
 
-    // 11a. Consolidated QC report: aggregate every per-sample legacy log into one summary TSV, then
+    // 11a. Master SNP matrix: rows = SNP sites, columns = reference/annotation + per-sample AF & depth.
+    // The all-positions VCFs say what a sample's reads show at a site it has no call at. Built before
+    // the report, which reads it to tell a site absent at a series' first time point from one not read.
+    def snp_matrix = asBool(params.make_snp_matrix)
+        ? SNP_MATRIX(report_vcfs, allpos_vcf.map { sId, rId, vcf, tbi -> vcf }.collect().ifEmpty([]),
+                     ref_name, tsv_name).matrix
+        : file("${projectDir}/assets/NO_FILE_MATRIX")
+
+    // 11b. What each sample's reads cover, from its all-positions VCF and its reference's GFF: the
+    // report reads them against each other for deletions and SNPs per callable kb, and the tables
+    // are published per sample whether or not a report is made.
+    def depth = DEPTH_PROFILE(allpos_vcf.map { sId, rId, vcf, tbi -> tuple(sId, rId, vcf, file(refGffMap[rId])) })
+    def depth_profiles = depth.profile.map { sId, rId, win, zero -> [win, zero] }
+                              .mix(depth.genes.map { sId, rId, genes -> [genes] })
+                              .flatten().collect().ifEmpty([])
+
+    // 11c. Pairwise SNP distances between the consensus sequences, a deliverable of their own. The
+    // manifest names each file's sample and reference, so neither has to be read back out of a file
+    // name. Without consensus sequences SNP_DISTANCES never runs, and ifEmpty hands the report the
+    // placeholder instead of leaving it waiting for an input that never comes.
+    def cons_files = masked_consensus.map { sId, rId, fa -> fa }.collect().ifEmpty([])
+    def snp_dist = asBool(params.make_snp_distances)
+        ? SNP_DISTANCES(masked_consensus.map { sId, rId, fa -> "${sId}\t${rId}\t${fa.name}" }
+                                        .collectFile(name: 'consensus_manifest.tsv', newLine: true),
+                        cons_files, tsv_name).pairs
+              .ifEmpty(file("${projectDir}/assets/NO_FILE_DISTANCES"))
+        : file("${projectDir}/assets/NO_FILE_DISTANCES")
+
+    // 11d. Consolidated QC report: aggregate every per-sample legacy log into one summary TSV, then
     // render the self-contained interactive HTML + PASS/WARN/FAIL flags.
     if (asBool(params.make_qc_report)) {
         def all_logs = legacy_log.collect()
         def summ = COLLECT_SUMMARY(all_logs, tsv_name)
-        def cons_files = masked_consensus.map { sId, rId, fa -> fa }.collect().ifEmpty([])
         // Reference-level extras (cohort report -> take the reference bundle; single-ref is the norm):
         // GFF enables the per-gene SNP-density panel, the nucmer/repeat BED the masked-regions panel.
         def report_ref  = refGffMap.keySet().toList().first()   // deterministic: the first reference
@@ -98,13 +125,7 @@ workflow COHORT_REPORT {
             : file("${projectDir}/assets/NO_FILE_LIFTOVER")
         QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
                   report_meta, report_vcfs, report_vcfs_h37rv, pos_liftover, dr_report, report_gconv,
-                  report_kraken, provenance, tsv_name)
+                  report_kraken, depth_profiles, snp_dist, snp_matrix, provenance, tsv_name)
     }
 
-    // 11b. Master SNP matrix: rows = SNP sites, columns = reference/annotation + per-sample AF & depth.
-    // The all-positions VCFs say what a sample's reads show at a site it has no call at.
-    if (asBool(params.make_snp_matrix)) {
-        def depth_vcfs = allpos_vcf.map { sId, rId, vcf, tbi -> vcf }.collect().ifEmpty([])
-        SNP_MATRIX(report_vcfs, depth_vcfs, ref_name, tsv_name)
-    }
 }

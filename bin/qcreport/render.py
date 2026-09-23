@@ -47,7 +47,9 @@ CSS = "".join(_asset(m) for m in _CSS_MODULES)
 _JS_MODULES = [
     "js/01_prelude.js", "js/02_qcspace.js", "js/03_state.js", "js/04_helpers.js",
     "js/05_insights_qc.js", "js/06_insights_genome.js", "js/07_render_core.js", "js/07b_summary.js",
-    "js/08_curation.js", "js/09_genome_genes.js", "js/10_dynamics.js", "js/11_epistasis.js",
+    "js/08_curation.js", "js/09_genome_genes.js", "js/09b_coverage.js", "js/09c_relatedness.js",
+    "js/10_dynamics.js", "js/10b_series.js", "js/10c_minority.js",
+    "js/11_epistasis.js",
     "js/12_snpmatrix.js", "js/13_drug_kraken.js", "js/14_boot.js",
 ]
 JS = "".join(_asset(m) for m in _JS_MODULES)
@@ -104,7 +106,52 @@ SECTION_INFO = {
             "(ambiguous) % and the longest gap. A phylogeny-oriented view of completeness, not just average depth.",
     "genome": "Per-position callability / variant density along the reference, binned into a heatmap per "
               "sample. Brush a region to list the genes under it. Reveals systematically low-callability "
-              "regions (repeats, deletions) shared across samples.",
+              "regions (repeats, deletions) shared across samples. 'Deletions' shows the share of each bin "
+              "in a stretch the sample has no reads for while other samples read it; 'SNPs / kb' divides "
+              "the SNPs of a bin by the positions deep enough for the consensus to call a base "
+              "(--allpos_min_cov reads), so a half-read bin does not look half as variable.",
+    "gains": "For every group of the samplesheet followed over time (a patient, a passage line), the SNPs "
+             "each later sample carries fixed (allele fraction 0.9 or more) that the group's first time "
+             "point did not. 'New' needs the first time point to have been read at the site without the "
+             "allele, which the SNP matrix's depth says; where it was not read the SNP is 'unknown' rather "
+             "than new. 'Lost' is the other way round: fixed at the start, read and absent later. SNPs "
+             "only, from the variant calls.",
+    "minority": "Variant calls below fixation (allele fraction under 0.9), the reads they rest on and "
+                "their spread of fractions. Three alternate reads or fewer is where a sequencing error "
+                "and a real minority look the same. When the samplesheet names libraries of the same DNA "
+                "(dna_id, extract, biosample...), each library's calls are looked up in the others: a real "
+                "minority is in the DNA and is reproduced, an error is not. Pairs that share a FASTQ file "
+                "share reads and are left out, and a call only counts, reproduced or not, where the other "
+                "library was read deeply enough to have called it: above --consensus_min_dp reads, with at "
+                "least five alternate reads expected at the call's fraction.",
+    "drseries": "The resistance mutations (WHO grade 1-2, from pathotypr) at every time point of every "
+                "series, with those acquired since the first time point set apart and those no longer "
+                "called crossed out. Answers when resistance appears along a series and whether it "
+                "persists. A genomic screen, not a drug-susceptibility result.",
+    "reldist": "Pairwise SNP distances between the consensus sequences, counted over the positions both "
+               "samples called: a gap, a masked position or a mixed site is never a difference, as in a "
+               "tree built on the same sequences. Samples are ordered so that every single-linkage "
+               "cluster sits together at any threshold. A pair that both called under half of the "
+               "reference's variable positions is blank: a thinly called sample looks close to everyone.",
+    "relclus": "Samples joined by a chain of pairs each within the threshold (single linkage). The "
+               "threshold is a convention of the organism and the question: about 12 SNPs is the usual "
+               "cut for recent Mycobacterium tuberculosis transmission, other organisms need their own. "
+               "A cluster spanning several samplesheet groups points at transmission between them, or at "
+               "a sample in the wrong group.",
+    "relgroup": "Samples the samplesheet puts in a group (patient, line, series) that sit further than the "
+                "threshold from every other member of it. Only groups whose members are normally within "
+                "the threshold of each other, and with three or more of them, are checked. Flagged "
+                "GROUP_MISMATCH (WARN): a swap, a mislabel, a contaminated or mixed culture, or a "
+                "reinfection. The nearest sample of another group helps tell them apart: a swap sits "
+                "next to one, a contaminant next to nobody.",
+    "deletions": "Stretches of the reference a sample has no reads for, compared with the other samples on "
+                 "the same reference. Lacked by one sample it is a private deletion; by several, a shared "
+                 "one (often a lineage's); by nearly all (90% or more), a repeat or a part of the reference "
+                 "these genomes do not have, which is nobody's deletion and is listed apart. Two samples' "
+                 "stretches are one deletion when each covers at least half of the other. Only samples "
+                 "read deeply enough are assessed, since in a thin sample stretches without reads turn up "
+                 "by chance. From the all-positions VCF, so a deletion shorter than the minimum length, or "
+                 "one the caller already reported as an indel, is not listed here.",
     "function": "The snpEff functional class of each sample's variants (HIGH/MODERATE/LOW/MODIFIER impact and "
                 "effect types such as missense / synonymous). A per-sample mutational-impact profile.",
     "geneburden": "Genes carrying the most impactful (HIGH/MODERATE) variants across the cohort, with the "

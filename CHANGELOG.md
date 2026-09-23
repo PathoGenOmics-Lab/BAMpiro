@@ -8,6 +8,57 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Added
 
+- **How low an allele frequency can be trusted.** A *Minority variants* panel counts each
+  sample's calls below fixation, their spread of allele fractions and how many rest on three
+  alternate reads or fewer, where an error and a real minority look the same. When the
+  samplesheet names each sample's DNA extract (a column such as `dna_id`, `extract` or
+  `biosample`), libraries of the same DNA are compared: a real minority is in the DNA and another
+  library calls it too, an error is not reproduced. Pairs that share a FASTQ file (a merged sample
+  and its runs) or were mapped against different references are left out, and a call only counts,
+  reproduced or not, where the other library could have called it: above `--consensus_min_dp`
+  reads, with at least five alternate reads expected at the call's fraction.
+
+- **What each series gained since its first time point.** For every samplesheet group followed
+  over time (a patient, a passage line), the report lists the SNPs each later sample carries fixed
+  that the group's first time point did not: *new* where that first time point was read at the
+  site without the allele, *risen* where it held the allele as a minority, *unknown* where it was
+  not read there, and *lost* for those fixed at the start and read without the allele later. The
+  depth comes from the SNP matrix, which the report now reads, so a site the start never read is
+  not counted as new. The first time point is the earliest with a sample the QC keeps and places
+  in the series, and a time that is a date is read as one (`2021-03-01`, `15/01/2020`), with
+  `baseline` or `pre` first. A chart follows each series through the median of each time point,
+  coloured by treatment, and leaves out the samples the QC fails or places outside their series.
+  On the *Resistance* page, each series' grade 1-2 mutations are laid out per time point with
+  those acquired since the start set apart: on the cohort that motivated it, the three bedaquiline
+  lines of one lineage acquire atpE I66M at passages 18 and 19, two of them with E61D.
+
+- **How close the samples are to each other.** A new step, `SNP_DISTANCES`, counts the SNPs
+  between every two consensus sequences over the positions both called, so a no-call, a masked
+  position or a mixed site is never a difference: the distances a tree built on the same
+  sequences sees. They are written as `<samplesheet>_snp_distances.tsv` and, one row per pair
+  with how many positions each comparison rests on, `_pairs.tsv`. The report gains a
+  *Relatedness* page: a heatmap in the order that keeps every single-linkage cluster together,
+  the clusters at a threshold that can be moved live (`--snp_cluster_threshold`, 12 by default,
+  the usual *M. tuberculosis* cut), and the samples far from the rest of their samplesheet group.
+  Those are flagged `GROUP_MISMATCH` (WARN) when their group is otherwise tight: on the cohort
+  that motivated it, with distances approximated from its SNP matrix, 18 of the 20 samples it
+  flags are the ones typed as another lineage than their line. A sample mapped against two
+  references is compared on each, as `sample@reference`.
+
+- **Deletions, and SNPs per callable kb along the genome.** Each sample's all-positions VCF is
+  reduced to its depth per window, the stretches no read covers and a per-gene table
+  (`DEPTH_PROFILE`, published under `stats/`). The report compares those stretches across the
+  samples of each reference: one a sample lacks while the others read it is a deletion, private or
+  shared; one nearly every sample lacks (90% or more) is a repeat or a part of the reference none
+  of these genomes has, and is listed apart instead of being counted as anyone's. Two samples'
+  stretches are one deletion when each covers at least half of the other. A *Deletions* panel
+  lists them with the genes they remove and zooms the landscape onto each, and
+  `<samplesheet>_deletions.tsv` keeps them with every carrier's own coordinates. The landscape
+  gains a *Deletions* track and a *SNPs / kb* track that divides each bin's SNPs by the positions
+  deep enough for the consensus to call a base (`--allpos_min_cov` reads), so a bin half of which
+  was not read no longer looks half as variable. Samples under `--report_depth_min` are not
+  assessed: stretches without reads turn up there by chance.
+
 - **Two guards against a sample mapped to a genome it does not belong to.** In a 185-sample
   cohort, 22 samples annotated as one lineage were really another, were routed to that lineage's
   reference, carried about 2,000 SNPs where their line mates carried 5, and produced 507 of the

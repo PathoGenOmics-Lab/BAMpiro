@@ -165,12 +165,23 @@ function findResistance(){
     nums:[{n:d.nCarriers,l:'samples',t:d.nCarriers?'bad':'good'},{n:d.acquired.length,l:'mutations',t:''},{n:d.drugs.length,l:_plural(d.drugs.length,'drug'),t:''}],
     link:{href:'#drug',t:'See every mutation'},note:'WHO catalogue grades 1&#8211;2, called from the reads. A genomic screen, not a drug-susceptibility result.',short:shortTxt};
 }
+// Per series, the fixed SNPs gained by its last time point: the median across series and the most.
+// Samples the QC fails or places outside their series are left out, as the chart leaves them out.
+function seriesGainSummary(){var S=R.series;if(!(S&&S.groups&&S.groups.length))return null;
+  var last=[];S.groups.forEach(function(g){var kept=g.rows.filter(function(r){return !serOutside(r.s);});
+    if(!kept.length)return;var t=kept[kept.length-1].time,at=kept.filter(function(r){return r.time===t;});
+    last.push({g:g.group,n:_median(at.map(function(r){return r['new'].length+r.risen.length;}))});});
+  if(!last.length)return null;
+  var top=last.slice().sort(function(a,b){return b.n-a.n;})[0];
+  return {median:_median(last.map(function(x){return x.n;})),max:top.n,top:top.g,checked:S.checked};}
 function findDynamics(){
   var d=dynSummary(); if(!d)return null;
   var head='<b>'+d.sweep.length+'</b> '+_plural(d.sweep.length,'allele','alleles')+' swept toward fixation and <b>'+d.rise+'</b> rose, across '+d.nSeries+' series';
   var body=[];
   if(d.parallel.length)body.push('Rising in two or more independent series: '+_list(d.parallel.map(function(x){return '<b>'+esc(x.gene)+'</b> ('+x.n+')';}),5)+'.');
   body.push('Out of '+d.n.toLocaleString('en-US')+' trajectories; '+d.fall+' declined.');
+  var sg=seriesGainSummary(); if(sg)body.push('By its last time point a series had gained a median of <b>'+sg.median.toLocaleString('en-US')+'</b> fixed '+_plural(sg.median,'SNP','SNPs')+
+    ' since its first'+(sg.max>sg.median?(', up to '+sg.max.toLocaleString('en-US')+' in '+esc(sg.top)):'')+(sg.checked?'':' (the start not checked for depth)')+'.');
   return {k:'dyn',eyebrow:'Variants over time',tone:'',head:head,body:body.join(' '),
     link:{href:'#dynamics',t:'Open the trajectories'},note:'A screen of allele-frequency trajectories, not a selection test: drift and linked passengers move too.',
     short:d.sweep.length?d.sweep.length+' '+_plural(d.sweep.length,'allele','alleles')+' swept toward fixation.':''};
@@ -189,6 +200,41 @@ function findGconv(){
   return {k:'gconv',eyebrow:'Gene conversion',tone:'',head:head,body:body.join(' '),link:{href:'#gconv',t:'Inspect the tracts'},
     note:'Candidates to check in the reads, not confirmed events.'};
 }
+// Relatedness: the clusters at the pipeline's threshold, and the samples outside their own group.
+function relSummary(){var S=R.relatedness;if(!(S&&S.refs))return null;
+  var thr=S.threshold,minC=100*(S.min_compared!=null?S.min_compared:0.5),nCl=0,big=0,inCl=0;
+  Object.keys(S.refs).forEach(function(k){relClusters(S.refs[k],thr,minC).forEach(function(c){if(c.length>1){nCl++;inCl+=c.length;if(c.length>big)big=c.length;}});});
+  return {thr:thr,nCl:nCl,big:big,inCl:inCl,out:R.samples.filter(function(s){return s.grpd;})};}
+function findRelatedness(){
+  var g=relSummary(); if(!g)return null;
+  var head='<b>'+g.nCl+'</b> '+_plural(g.nCl,'cluster')+' of samples within '+g.thr+' SNPs of each other';
+  var body=[];
+  if(g.nCl)body.push(g.inCl+' samples belong to one; the largest holds '+g.big+'.');
+  if(g.out.length)body.push('<b class="tone-warn">'+g.out.length+'</b> '+_plural(g.out.length,'sample sits','samples sit')+' far from the rest of '+_plural(g.out.length,'its group','their groups')+' ('+
+    _list(g.out.map(function(s){return esc(s.s);}),4)+'): swapped, mislabelled, contaminated or reinfected.');
+  return {k:'rel',eyebrow:'Relatedness',tone:g.out.length?'warn':'',head:head,body:body.join(' '),
+    link:{href:'#p-related',t:'See the distances'},
+    note:'SNPs between consensus sequences; the threshold is a convention of the organism.',
+    short:g.out.length?(g.out.length+' '+_plural(g.out.length,'sample sits','samples sit')+' outside '+_plural(g.out.length,'its group','their groups')+'.'):''};
+}
+// Minority variants: how many calls below fixation rest on a handful of reads, and how far down
+// libraries of the same DNA reproduce them.
+function findMinority(){
+  var M=R.minority; if(!M)return null;
+  var tot=M.hist.reduce(function(a,b){return a+b;},0); if(!tot||!M.with_dp)return null;
+  var pct=Math.round(100*M.le3/M.with_dp),r=M.replicates,body=[];
+  var head='<b>'+pct+'%</b> of the '+tot.toLocaleString('en-US')+' calls below fixation rest on three alternate reads or fewer';
+  var tested=r&&r.tested?r.tested.reduce(function(a,b){return a+b;},0):0;
+  if(r&&r.tested&&tested){var low=r.tested[0]+r.tested[1],rl=r.reproduced[0]+r.reproduced[1],fl=minFloor(M);
+    if(low)body.push('Another library of the same DNA calls '+Math.round(100*rl/low)+'% of those under allele fraction '+M.edges[2]+
+      (r.fixed_tested?' and '+Math.round(100*r.fixed_reproduced/r.fixed_tested)+'% of the fixed ones':'')+'.');
+    body.push(fl==null?'No band of allele fraction was compared 20 times, too few to say where the noise ends.':fl<0?'Even the highest band compared is not reproduced 80% of the time.':(fl===0?'Every band is reproduced 80% or more.':'Calls reproduce 80% or more from allele fraction '+M.edges[fl]+' up.'));}
+  else if(r&&r.tested)body.push('The samplesheet names DNA extracts ('+esc(r.column)+'), but no two independent libraries share one'+(r.shared?' (those that do share reads)':'')+', so nothing was compared.');
+  else if(r)body.push('Libraries of the same DNA are named ('+esc(r.column)+') but need the SNP matrix to be compared.');
+  else body.push('Naming each sample&#39;s DNA extract in the samplesheet would measure where the noise ends.');
+  return {k:'minor',eyebrow:'Minority variants',tone:'',head:head,body:body.join(' '),link:{href:'#minority',t:'See the calls'},
+    note:'Below a few reads, an error and a real minority look the same.'};
+}
 function findCoverage(){
   var S=R.samples; if(!S.length)return null;
   function med(k){return _median(S.map(function(s){return s.m[k];}));}
@@ -196,9 +242,13 @@ function findCoverage(){
   var head='Median depth <b>'+(d!=null?fmt(d,'float')+'&#215;':'NA')+'</b>'+(b!=null?', breadth <b>'+b.toFixed(1)+'%</b>':'');
   var rd=_range(S.map(function(s){return s.m.mean_depth;}));
   var body=(rd?'Depth ranges from '+fmt(rd[0],'float')+'&#215; to '+fmt(rd[1],'float')+'&#215;. ':'')+(c!=null?'The median consensus has '+c.toFixed(1)+'% of the genome as confident bases.':'');
+  var C=R.coverage;
+  if(C&&C.regions){var k={private:0,shared:0,cohort:0};C.regions.forEach(function(r){if(r.cls in k)k[r.cls]++;});
+    body+=' '+(k.private+k.shared)+' '+_plural(k.private+k.shared,'stretch','stretches')+' of '+C.min_len+' bp or more some samples have no reads for and others do ('+k.private+' private to one sample, '+k.shared+' shared); '+
+      k.cohort+' no sample reads.';}
   return {k:'cov',eyebrow:'Coverage',tone:'',head:head,body:body,link:{href:'#dist',t:'See the distributions'}};
 }
-function findings(){return [findQC(),findIdentity(),findResistance(),findDynamics(),findLineage(),findGconv(),findCoverage()].filter(function(f){return f;});}
+function findings(){return [findQC(),findIdentity(),findRelatedness(),findResistance(),findDynamics(),findMinority(),findLineage(),findGconv(),findCoverage()].filter(function(f){return f;});}
 function findingCard(f){
   var nums=(f.nums&&f.nums.length)?'<div class="f-nums">'+f.nums.map(function(x){return '<div class="f-num'+(x.t&&x.n?' '+x.t:'')+'"><b>'+x.n+'</b><span>'+esc(x.l)+'</span></div>';}).join('')+'</div>':'';
   return '<article class="finding'+(f.tone?' f-'+f.tone:'')+'" data-k="'+f.k+'"><div class="f-eyebrow">'+esc(f.eyebrow)+'</div>'+
@@ -223,5 +273,6 @@ function renderNavBadges(){
   set('bdg-qc',c.FAIL?String(c.FAIL):(c.WARN?String(c.WARN):''),c.FAIL?'bad':'warn',c.FAIL?c.FAIL+' samples to exclude':(c.WARN?c.WARN+' samples to review':''));
   var d=drSummary(); set('bdg-drug',d&&d.nCarriers?String(d.nCarriers):'','bad',d&&d.nCarriers?d.nCarriers+' samples with resistance mutations beyond their lineage':'');
   var g=gconvSummary(); set('bdg-gconv',g&&g.nPassEvents?String(g.nPassEvents):'','neu',g?g.nPassEvents+' gene-conversion events in samples the QC does not fail':'');
+  var rl=relSummary(); set('bdg-related',rl&&rl.out.length?String(rl.out.length):'','warn',rl&&rl.out.length?rl.out.length+' samples far from the rest of their group':'');
   var y=dynSummary(); set('bdg-variants',y&&y.sweep.length?String(y.sweep.length):'','neu',y?y.sweep.length+' alleles sweeping toward fixation':'');
 }

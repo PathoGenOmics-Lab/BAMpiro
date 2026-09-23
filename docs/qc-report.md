@@ -18,7 +18,7 @@ back as a short report, plus a machine-readable `<samplesheet>_qc_flags.tsv` of 
 
 ## How it reads
 
-The report is seven pages, listed in the sidebar in the order a reader needs them. A page
+The report is eight pages, listed in the sidebar in the order a reader needs them. A page
 whose data the run did not produce disappears with its entry, and the rest are renumbered.
 The sidebar badge next to a page says whether it needs attention: the samples to exclude
 on *Sample QC*, the samples with resistance mutations their lineage does not share on
@@ -28,11 +28,12 @@ on *Sample QC*, the samples with resistance mutations their lineage does not sha
 | :--- | :--- |
 | **1 · Summary** | What the run found, as sentences with their numbers: an *In short* paragraph, then one card per finding (sample QC, identity, resistance, variants over time, lineages, gene conversion, coverage). Every card links to the page that holds its evidence and says what it does not prove. |
 | **2 · Sample QC** | Which samples can be trusted: the verdicts, the live thresholds, the **flagged samples** with the value behind every flag, the **exclusion list** and its exports, the table of all samples, lineages, **contamination** (Kraken2), distributions and aDNA damage. |
-| **3 · Genome & genes** | Consensus completeness, the genome landscape, functional impact (snpEff), gene burden, variable genes and dN/dS. |
-| **4 · Variants over time** | SNP dynamics, co-varying pairs (epistasis), the SNP matrix and variant &#215; dose. |
-| **5 · Resistance** | WHO-catalogue mutations grouped by mutation, the sample &#215; drug matrix and every call. |
-| **6 · Gene conversion** | Candidate tracts and the evidence behind each verdict. |
-| **7 · Diagnostics** | Metric pairs, the correlation matrix, QC space, divergence vs completeness, dose &#215; treatment and sampling dates: views for digging into a problem, none of which flags a sample. |
+| **3 · Genome & genes** | Consensus completeness, the genome landscape (missing calls, **deletions**, SNPs per bin and **per callable kb**, het, indels), the **deletions** found by comparing each sample's stretches without reads with the rest of the cohort, functional impact (snpEff), gene burden, variable genes and dN/dS. |
+| **4 · Relatedness** | SNP distances between the consensus sequences, over the positions both samples called: a heatmap in the order that keeps each cluster together, the **clusters** at a threshold you can move, and the samples far from the rest of their own group (patient, line, series). |
+| **5 · Variants over time** | What each series **gained since its first time point** (new, risen, unknown, lost, charted per treatment), the **minority variants** (calls below fixation, the reads they rest on and, with libraries of the same DNA, how often another library reproduces them), SNP dynamics, co-varying pairs (epistasis), the SNP matrix and variant &#215; dose. |
+| **6 · Resistance** | WHO-catalogue mutations grouped by mutation, the sample &#215; drug matrix, every call, and each series' mutations **per time point**, those acquired since the first one set apart. |
+| **7 · Gene conversion** | Candidate tracts and the evidence behind each verdict. |
+| **8 · Diagnostics** | Metric pairs, the correlation matrix, QC space, divergence vs completeness, dose &#215; treatment and sampling dates: views for digging into a problem, none of which flags a sample. |
 
 Printing (or saving as PDF) lays out every page one after another.
 
@@ -124,8 +125,9 @@ there is nothing to configure - add a column and the matching panel reacts.
 | Column (matched by name) | Examples | What it drives |
 | :--- | :--- | :--- |
 | **sample id** | `sample`, `sample_id`, `name`, `gid`, `strain`, `isolate`… | Keys the metadata to each sample's VCF / stats (falls back to the first column). |
-| **time** | `timepoint`, `day`, `date`, `week`, `month`, `hour`, `passage`, `generation`, `visit`, `tp`, `t0`… | The x-axis of the **SNP dynamics** trajectories. |
-| **group / series** | `group`, `patient`, `series`, `host`, `subject`, `cluster`, `experiment`, `donor`, `case`, `replicate`, `chain`, `samples`… | Connects samples into one longitudinal series (a trajectory set per group) for **SNP dynamics** and **epistasis**. |
+| **time** | `timepoint`, `day`, `date`, `week`, `month`, `hour`, `passage`, `generation`, `visit`, `tp`, `t0`… | The x-axis of the **SNP dynamics** trajectories, and the order of each series. A date is read as a date (`2021-03-01`, or day first: `15/01/2020`, unless the day gives it away, as in `03/15/2020`), a word for the start (`baseline`, `pre`, `start`) comes first, and anything else by its first number (`P3`, `day 14`). |
+| **group / series** | `group`, `patient`, `series`, `host`, `subject`, `cluster`, `experiment`, `donor`, `case`, `replicate`, `chain`, `samples`… | Connects samples into one longitudinal series (a trajectory set per group) for **SNP dynamics** and **epistasis**, and for what each series **gained since its first time point**: its earliest sample the QC keeps and places in the series. On *Relatedness*, a sample far from the rest of its group is flagged `GROUP_MISMATCH`. A DNA-extract column (below) is never taken for the group. |
+| **DNA extract** | `dna_id`, `dna`, `extract`, `extract_id`, `biosample`, `specimen_id`, `isolate_id`, `replicate_of`… | Names the libraries of one DNA: the **Minority variants** panel compares them to measure how low an allele frequency is reproduced. Samples sharing a FASTQ file are not compared. |
 | **any other column** | `treatment`, `site`, `region`, `ward`, `batch`… | A categorical annotation - becomes a **cohort filter** dropdown in the toolbar (restrict the whole QC view to one value) and a SNP-matrix header level. |
 | **collection date** | `collection_date`, `sampling_date`, `isolation_date`, `date`, `year`, `fecha` | The *Sampling dates* panel (Diagnostics) and the date in each sample's profile. The day the pipeline processed a sample is never read as one. |
 | **dose** | `dose`, `dosis` | A **numeric** column - becomes a first-class metric (selectable on the scatter axes + the correlation matrix, with a Spearman *r* + *p* read-out) and drives the **Dose × treatment** test. |

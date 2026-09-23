@@ -231,3 +231,43 @@ describe("findGconv", () => {
     assert.deepEqual(host(g.failSamples), ["C"], "B shares chr:1 with a kept sample");
   });
 });
+
+describe("seriesGainSummary, what the series gained since their first time point", () => {
+  it("summarises series without the samples the chart leaves out, and with a true median", () => {
+    const row = (s, time, n) => ({ s, time, tnum: +time, new: Array(n).fill("c:1"), risen: [], unknown: 0, lost: [] });
+    const rep = report([sample("a1", "L7"), sample("a2", "L7"), sample("bad", "L7", {}, { v: "WARN", f: ["LINEAGE_MISMATCH"] }),
+                        sample("b1", "L7")], {
+      series: { checked: true, groups: [
+        { group: "A", rows: [row("a1", "6", 0), row("a2", "6", 10), row("bad", "9", 2462)] },
+        { group: "B", rows: [row("b1", "6", 3)] },
+      ] },
+    });
+    const g = host(load(["seriesGainSummary", "serOutside"], rep).seriesGainSummary());
+    assert.equal(g.max, 5, "A's last counted time point is 6, median of 0 and 10");
+    assert.equal(g.median, 4, "the median of 5 and 3");
+  });
+});
+
+describe("minFloor, the allele fraction from which calls are reproduced", () => {
+  it("reads the noise floor from the top band down", () => {
+    // 50/85/60/70/95/97%: the first passing band is 0.1-0.2, but 0.2-0.5 fall short again.
+    const tested = [100, 100, 100, 100, 100, 100];
+    const rep = report([], { minority: { edges: [0, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9],
+      replicates: { tested, reproduced: [50, 85, 60, 70, 95, 97] } } });
+    assert.equal(load(["minFloor"], rep).minFloor(rep.minority), 4, "from 0.5 up");
+  });
+
+  it("gives no floor when the band just below fixation already fails", () => {
+    const rep = report([], { minority: { edges: [0, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9],
+      replicates: { tested: [100, 100, 100, 100, 100, 100], reproduced: [90, 90, 90, 90, 90, 50] } } });
+    assert.equal(load(["minFloor"], rep).minFloor(rep.minority), -1);
+  });
+
+  it("gives none at all when no band was compared often enough to judge", () => {
+    const M = { edges: [0, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9], hist: [4, 3, 2, 1, 1, 1], le3: 2, with_dp: 12,
+                replicates: { column: "dna_id", tested: [5, 4, 3, 2, 1, 1], reproduced: [1, 1, 1, 1, 1, 1] } };
+    const fn = load(["minFloor", "findMinority"], report([], { minority: M }));
+    assert.equal(fn.minFloor(M), null);
+    assert.match(fn.findMinority().body, /too few to say where the noise ends/);
+  });
+});

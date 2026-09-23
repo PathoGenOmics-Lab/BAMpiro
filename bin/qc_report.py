@@ -26,6 +26,7 @@ import os
 import sys
 from datetime import datetime, timezone
 
+from qcreport.coverage import build_coverage, parse_depth_profiles, snp_per_kb, write_deletions
 from qcreport.metrics import (ANC_DEF, DEF, DEFS, DIST, METRICS, build_gene_map, discover_extra_metrics,
                               flag_sample, het_frac, is_ancient, lineage_counts_parsed, lineage_fracs, robust)
 from qcreport.panels import build_dynamics, build_epistasis, build_snp_matrix
@@ -34,6 +35,10 @@ from qcreport.parsers import (NBINS, clean_str, consensus_stats, mapdamage_stats
                               parse_gene_conversion, parse_gff,
                               parse_kraken, parse_lineage_colors, parse_metadata, parse_pnps, parse_profile,
                               parse_sample_meta, parse_summary, parse_vcfs, to_float)
+from qcreport.relatedness import build_relatedness, group_mismatches, parse_pairs
+from qcreport.minority import build_minority, replicate_pairs, replicate_sets
+from qcreport.minority import needed_cells as replicate_cells
+from qcreport.series import build_series, needed_cells, read_matrix_cells
 from qcreport.render import REPO_URL, SECTION_INFO, build_html
 
 
@@ -87,6 +92,29 @@ def build_parser():
                     help="TSV 'mapping_pos<TAB>canonical_pos' (e.g. pathotypr_liftover.py apply --out-map) -> the "
                          "reference-of-interest COORDINATE per variant, alignment-free. Fills pos_h37rv for the SNP "
                          "tables; an alternative to --vcfs-h37rv when the references do not share coordinates.")
+    ap.add_argument("--depth-profiles", nargs="*", default=[],
+                    help="Per-sample depth tables from depth_profile.py (windows, stretches without reads, "
+                         "genes) -> deletions and SNPs per callable kb along the genome (optional).")
+    ap.add_argument("--deletion-min-len", type=int, default=200,
+                    help="Shortest stretch without reads reported as a deletion, in bp.")
+    ap.add_argument("--deletion-min-depth", type=float, default=10.0,
+                    help="Median depth a sample needs before its stretches without reads are assessed: "
+                         "in a thinly read sample they turn up by chance.")
+    ap.add_argument("--out-deletions", default=None,
+                    help="Write the deletion regions (with --depth-profiles) as a TSV.")
+    ap.add_argument("--snp-distances", default=None,
+                    help="Pairwise SNP distances between consensus sequences (snp_distances.py --pairs) -> "
+                         "the relatedness page and the GROUP_MISMATCH flag (optional).")
+    ap.add_argument("--cluster-snps", type=int, default=12,
+                    help="SNPs within which two samples are drawn as one cluster, and beyond which a "
+                         "sample is far from its group. The report can move it live.")
+    ap.add_argument("--snp-matrix", default=None,
+                    help="The master SNP matrix TSV (build_snp_matrix.py with --depth-vcfs) -> what each "
+                         "series gained since its first time point, telling a site absent there from one "
+                         "not read (optional).")
+    ap.add_argument("--min-dp", type=int, default=7,
+                    help="Depth a site needs before a sample without a call there counts as lacking the "
+                         "allele (--consensus_min_dp).")
     ap.add_argument("--gate", action="store_true")
     return ap
 
@@ -236,13 +264,39 @@ def build_payload(args, thr, anc_thr):
             by_ref.setdefault(ref, []).append(lin.split(";")[0])
     ref_major = {r: max(set(v), key=v.count) for r, v in by_ref.items() if len(v) >= 3}
     dates = parse_collection_dates(args.metadata)
+    # What each sample's reads cover, compared across the cohort: the stretches no read covers that
+    # other samples do read (deletions), and how much of each bin could be called at all.
+    # How close the samples are to each other, and which of them sit far from their own group (a
+    # patient, a line) while close to a sample of another one.
+    series_meta = parse_metadata(args.metadata)
+    groups = {s: md.get("group") for s, md in series_meta.items()}
+    distances = parse_pairs(args.snp_distances)
+    outside = group_mismatches(distances, groups, args.cluster_snps)
+    profiles, gene_lists = parse_depth_profiles(args.depth_profiles, min_len=args.deletion_min_len)
+    coverage, del_tracks = (build_coverage(profiles, gene_lists, min_len=args.deletion_min_len,
+                                           min_depth=args.deletion_min_depth)[:2]
+                            if profiles else (None, {}))
+    # A sample mapped against two references has a profile for each; its row in the report is the
+    # one of the reference the samplesheet gives it first.
+    profile_keys = {}
+    for key in profiles:
+        profile_keys.setdefault(key[0], []).append(key)
+
+    def profile_of(sid):
+        keys = profile_keys.get(sid, [])
+        return (sid, ref_of.get(sid)) if (sid, ref_of.get(sid)) in profiles else (keys[0] if len(keys) == 1 else None)
 
     jsamples, counts = [], {"PASS": 0, "WARN": 0, "FAIL": 0}
     for sid, m in summ.items():
         anc = is_ancient(m)
         dmg = dmg_by_sample.get(sid)
+        snp_prof = parse_profile(m.get("snp_profile"))
+        pkey = profile_of(sid)
         verdict, flags = flag_sample(m, thr, snp_med, snp_sig, ancient=anc, anc_thr=anc_thr, dmg=dmg,
                                      ref_lineage=ref_major.get(ref_of.get(sid)))
+        if sid in outside:
+            flags.append("GROUP_MISMATCH")
+            verdict = "FAIL" if verdict == "FAIL" else "WARN"
         counts[verdict] += 1
         jsamples.append({"s": sid, "v": verdict, "f": flags,
                          "lineage": clean_str(m.get("lineage")),
@@ -260,9 +314,15 @@ def build_payload(args, thr, anc_thr):
                          "ref": ref_of.get(sid),
                          "ref_lin": ref_major.get(ref_of.get(sid)),
                          "miss": miss_by_sample.get(sid),
-                         "trk": ({k: v for k, v in (("snp", parse_profile(m.get("snp_profile"))),
+                         # what a GROUP_MISMATCH compares: the nearest sample of its own group and the
+                         # nearest of another, with their distances
+                         "grpd": outside.get(sid),
+                         "trk": ({k: v for k, v in (("snp", snp_prof),
+                                                    ("snpkb", snp_per_kb(snp_prof, profiles[pkey])
+                                                     if pkey else None),
                                                     ("het", parse_profile(m.get("het_profile"))),
-                                                    ("indel", parse_profile(m.get("indel_profile")))) if v is not None}
+                                                    ("indel", parse_profile(m.get("indel_profile"))),
+                                                    ("del", del_tracks.get(pkey))) if v is not None}
                                  or None),
                          "ann_db_error": (clean_str(m.get("ann_db_error")) == "yes"),
                          "m": dict({k: to_float(m.get(k)) for k in metric_keys + extra_keys + EFF_KEYS},
@@ -280,7 +340,27 @@ def build_payload(args, thr, anc_thr):
 
     _variants = load_variants(args)
     _sample_meta = parse_sample_meta(args.metadata)   # shared by the dynamics filter and the SNP matrix header
-    _dynamics = build_dynamics(parse_metadata(args.metadata), _variants, _sample_meta)   # feeds dynamics + epistasis
+    # What each series gained since its first time point. The matrix is read only at the cells the
+    # comparison needs, and without it a site not called at the start cannot be told from one not read.
+    matrix_ok = bool(args.snp_matrix and os.path.exists(args.snp_matrix)
+                     and not os.path.basename(args.snp_matrix).startswith("NO_FILE"))
+    # Libraries of the same DNA, for how far down a minority call reproduces. The matrix is read once
+    # for the cells both comparisons need.
+    rep_col, rep_val, rep_reads = replicate_sets(args.metadata)
+    rep_pairs, rep_shared = (replicate_pairs(rep_val, rep_reads, set(_variants), ref_of)
+                             if rep_col else ([], 0))
+    # A sample the QC fails or places outside its series (another lineage, far from its group)
+    # cannot be the first time point every later one is read against.
+    not_in_series = {s["s"] for s in jsamples
+                     if s["v"] == "FAIL" or {"GROUP_MISMATCH", "LINEAGE_MISMATCH"} & set(s["f"])}
+    _need = needed_cells(series_meta, _variants, excluded=not_in_series)
+    for site, who in replicate_cells(rep_pairs, _variants).items():
+        _need.setdefault(site, set()).update(who)
+    _cells = read_matrix_cells(args.snp_matrix, _need) if matrix_ok else {}
+    _series = build_series(series_meta, _variants, _cells, _sample_meta, args.min_dp, checked=matrix_ok,
+                           excluded=not_in_series)
+    _minority = build_minority(_variants, rep_pairs, rep_shared, _cells, rep_col, args.min_dp, checked=matrix_ok)
+    _dynamics = build_dynamics(series_meta, _variants, _sample_meta)   # feeds dynamics + epistasis
     # front-load 'dose' so it survives the correlation matrix's top-N view
     dist_keys = (["dose"] + DIST) if dose_map else DIST
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -303,6 +383,10 @@ def build_payload(args, thr, anc_thr):
                "dynamics": _dynamics,
                "epistasis": build_epistasis(_dynamics),
                "snp_matrix": build_snp_matrix(_variants, provenance.get('reference', '')),
+               "coverage": coverage,
+               "relatedness": build_relatedness(distances, groups, args.cluster_snps),
+               "series": _series,
+               "minority": _minority,
                "sample_meta": _sample_meta,
                "metrics": [{"key": k, "label": l, "kind": kind, "dir": d} for k, l, kind, d in METRICS],
                "extra": extra_metrics,
@@ -357,6 +441,8 @@ def main():
     with open(args.out_html, "w", encoding="utf-8") as fh:
         fh.write(build_html(args.title, payload))
     write_flags(args.out_flags, jsamples)
+    if args.out_deletions and payload.get("coverage"):
+        write_deletions(args.out_deletions, payload["coverage"]["regions"])
 
     sys.stderr.write(f"[qc_report] {len(jsamples)} samples -> {counts['PASS']} PASS, {counts['WARN']} WARN, "
                      f"{counts['FAIL']} FAIL. Wrote {args.out_html} + {args.out_flags}\n")
