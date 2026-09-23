@@ -443,7 +443,7 @@ function renderGconv(){
         th('s','Sample')+th('locus','Locus','','the acceptor locus and the donor its alleles came from')+th('verdict','Verdict')+
         th('bf','BF','gcv-num','log10 Bayes factor for a conversion tract over the best alternative: an independent substitution at the same sites, or reads that arrived from the donor. 3 is decisive')+
         th('n_ev','Samples','gcv-num','how many samples of the cohort carry this event, and what fraction that is. One or two is a finding; nearly all of them means the reference or the aligner, not the isolates')+
-        th('tract_af','Carried by','gcv-num','fraction of the reads that carry the tract. Below 1 means either a mixed infection or a third copy of the family contributing unconverted reads; nothing in short reads tells those apart')+
+        th('tract_af','Carried by','gcv-num','fraction of the reads that carry the tract. Below 1 means either a mixed infection or a third copy of the family contributing unconverted reads; nothing in short reads tells those apart. The model does not go below 20%, so a thinner share is shown as 20%: AF in is what the reads themselves carry')+
         th('mismap','Donor reads','gcv-num','fraction of reads at this locus the model had to assume came from the donor')+
         th('start','Tract','gcv-num','start position and length of the tract')+
         th('n_sites','Sites','gcv-num','diagnostic sites inside the tract / outside it. No site outside means boundedness cannot be tested')+

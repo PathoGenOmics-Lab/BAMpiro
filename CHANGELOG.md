@@ -31,6 +31,23 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Fixed
 
+- **Gene conversion was called from reads that could not carry it, and the cohort multiplied
+  it.** On a 185-sample cohort, 1,520 of the 1,579 calls were rows the samples themselves had
+  left `ambiguous`, promoted because another sample had called the same stretch outright. Those
+  rows carried the donor's bases in 2 to 5% of the reads; the model's tract fraction stops at
+  20%, so it fitted 20% to all of them and reported Bayes factors for a fraction the reads did not
+  have. The outright calls vouching for them came from samples at 0.2x to 2x depth, contaminated
+  cultures the QC fails outright, whose tracts were read by one to four molecules: one read with
+  the donor's bases at four sites is log10 BF 7 on base quality alone. Reads from a third copy of
+  a gene family reproduce the same stretch in every library mapped to the same reference, which is
+  exactly what the corroboration rule took for independent confirmation.
+
+  A tract most of whose sites are under `--gconv_min_depth`, or whose reads carry the donor's
+  bases below half the model's thinnest tract (10%), is now `ambiguous` with a reason that quotes
+  the reads rather than the floor, and neither kind takes part in corroboration. The cohort pass
+  applies the same check, so re-running only that step corrects a run. On that cohort the calls
+  drop from 38 events to 4, two of them in the mixed cultures the QC also fails.
+
 - **Kraken counted runs and read species, so a clean cohort looked contaminated.** One report
   per run became one row per run, so 185 samples gave 225 rows, and a sample's "primary taxon"
   was its top species: Kraken2 leaves most *M. tuberculosis* reads on the complex, so the

@@ -405,6 +405,61 @@ def test_mismapping_is_not_promoted_by_corroboration():
     assert out[1]["cohort_verdict"] == "mismapping"
 
 
+# ------------------------------------------- what a sample's own reads can carry
+#
+# On a 185-sample cohort 1,520 of the 1,579 calls were promotions. Each rested on 2 to 5% of the
+# reads carrying the donor's bases, fitted at the model's 20% floor, and each was vouched for by a
+# single "outright" call from a sample at 0.2x to 2x depth whose tract was read by one to four
+# molecules. Reads from a third copy of the family reproduce the same stretch in every library
+# mapped to the same reference, so recurrence at that level is the artefact, not the confirmation.
+
+
+def test_a_call_resting_on_a_handful_of_reads_corroborates_nobody():
+    rows = [tract("S0", verdict="gene_conversion", n_sites="5", n_undetermined="4"),
+            tract("S1", verdict="ambiguous", bf="2.4")]
+
+    out, _ = gcc.annotate(rows, cohort(10))
+
+    assert out[1]["cohort_verdict"] == "ambiguous"
+
+
+def test_a_call_resting_on_a_handful_of_reads_is_not_a_call_either():
+    """Per-sample files written before the check still hold these as calls; the cohort pass
+    applies it too, so re-running only this step over them is enough to correct a run."""
+    rows = [tract("S0", verdict="gene_conversion", n_sites="5", n_undetermined="4")]
+
+    out, _ = gcc.annotate(rows, cohort(10))
+
+    assert out[0]["cohort_verdict"] == "ambiguous"
+    assert "only 1 of the tract's 5 sites are read by enough molecules" in out[0]["reason"]
+
+
+def test_a_trickle_is_not_promoted_however_many_samples_carry_it():
+    rows = [tract("S0", verdict="gene_conversion", donor_af_in="0.9")]
+    rows += [tract(f"S{i}", verdict="ambiguous", bf="6.0", tract_af="0.2", donor_af_in="0.03",
+                   reason="only 20% of the reads here carry the tract") for i in range(1, 8)]
+
+    out, _ = gcc.annotate(rows, cohort(40))
+
+    assert all(r["cohort_verdict"] == "ambiguous" for r in out[1:])
+    assert "only 3% of the reads over the tract" in out[1]["reason"], \
+        "the reason quotes the reads, not the floor the fit was parked on"
+
+
+def test_corroboration_says_what_the_sample_fell_short_of():
+    """The old reason quoted the Bayes factor as short of the threshold on rows at log10 BF 5.6
+    against a threshold of 3: what they lacked was the read fraction."""
+    rows = [tract("S0", verdict="gene_conversion", bf="12.0"),
+            tract("S1", verdict="ambiguous", bf="6.0", tract_af="0.22", donor_af_in="0.25")]
+
+    out, _ = gcc.annotate(rows, cohort(10), min_tract_af=0.25)
+
+    assert out[1]["cohort_verdict"] == "gene_conversion"
+    assert out[1]["reason"].startswith("carried by 22% of the reads, under the 25% one sample "
+                                       "needs on its own, but the same tract is called outright")
+    assert "Bayes factor" not in out[1]["reason"]
+
+
 # ------------------------------------------------------------- the background
 
 

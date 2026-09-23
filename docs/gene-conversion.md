@@ -151,7 +151,25 @@ speak below `--gconv_min_tract_af`, and that floor is the reason two of the twen
 benchmark tracts were missed. A weak signal is a different proposition when the SAME tract at the
 SAME coordinates is called outright in another sample: contamination and index hopping do not
 reproduce a specific tract across independent libraries. Such a row is promoted, provided it
-clears `--gconv_corroborated_bf` on its own evidence and the event is not one everybody has.
+clears `--gconv_corroborated_bf` on its own evidence, the event is not one everybody has, and
+**its own reads can carry a call** (see [When the reads cannot carry a
+call](#when-the-reads-cannot-carry-a-call)). The reason says what the row fell short of on its
+own: the Bayes factor, the read fraction, or both.
+
+!!! warning "Reads from a third copy DO reproduce a specific tract across libraries"
+
+    They are a property of the reference and the aligner, so the same stretch turns up at a few
+    percent in every library mapped to the same genome. On a 185-sample cohort, 1,520 of the 1,579
+    calls were rows like that, carried by 2 to 5% of the reads and fitted at the model's 20%
+    floor, each promoted because one thinly read sample had "called it outright". Neither a
+    trickle nor a thinly read call takes part in corroboration any more, on either side.
+
+!!! note "Two libraries of one DNA extract are one observation"
+
+    A samplesheet that lists a merged sample next to the runs it was merged from has the same
+    reads in both. They can confirm each other's call without that being independent evidence,
+    and the cohort pass has no way to see it; check the extract before reading two such samples
+    as two events.
 
 A sample never corroborates itself. A gene family reports the same converted stretch through
 several relationships, so events are grouped on the acceptor's coordinates rather than on the
@@ -299,6 +317,26 @@ that the breakpoints do not resolve.
     one, and half an answer there is worse than none. Deletion sites still count towards the
     tract and towards the genes it covers.
 
+## When the reads cannot carry a call
+
+Two things make a Bayes factor large without the reads saying anything about the genome, and a
+tract showing either is reported as `ambiguous`, whatever the model concluded:
+
+- **Most of the tract was not read.** The model weighs every base by its quality, so one molecule
+  carrying the donor's bases at four sites is worth log10 BF 7 on its own. When that molecule is
+  all there is, the call is a statement about a stretch the sequencing never reached. A tract
+  most of whose sites are under `--gconv_min_depth` (`n_undetermined` above half of `n_sites`) is
+  not called. On the cohort that showed this, those calls came from samples at 0.2x to 2x depth,
+  contaminated cultures the QC fails outright, and each went on to corroborate the same stretch in
+  dozens of other samples.
+- **A trickle, not a tract.** The model's tract fraction stops at 20%, on purpose. Reads carrying
+  the donor's bases at a few percent have no fraction to fit, so the fit parks on the floor and the
+  Bayes factor is computed for a fraction the reads do not have. A tract whose `donor_af_in` is
+  under half that floor (10%) is not called, and the reason quotes the reads, not the floor.
+
+The cohort pass applies both as well, so re-running only that step over per-sample files written
+before these checks is enough to correct a run.
+
 ## Verdicts
 
 | Verdict | Meaning |
@@ -390,7 +428,7 @@ the donor/acceptor graph of your reference.
 | `--gconv_max_tracts` | `2` | Conversion tracts looked for per paralog pair |
 | `--gconv_min_mismap` | `0.2` | Fitted donor-read fraction reported as mismapping |
 | `--gconv_min_sites` | `3` | Diagnostic sites a pair needs before it is analysed at all |
-| `--gconv_min_depth` | `5` | Depth below which a site is undetermined in the summaries |
+| `--gconv_min_depth` | `5` | Depth below which a site is undetermined. A tract most of whose sites are undetermined is not called |
 | `--gconv_min_bq` | `13` | Base-quality floor when reading an allele off a read |
 | `--gconv_reciprocal_af` | `0.5` | Share of the DONOR's reads carrying the acceptor's bases at which the event is an exchange rather than a conversion |
 | `--gconv_ubiquitous` | `0.9` | Fraction of the cohort at which an event is a reference artifact |

@@ -18,9 +18,12 @@ The per-sample caller refuses to speak below `--gconv_min_tract_af`, because und
 of the reads a minority conversion, index hopping and a contaminating sample are the same picture.
 That floor cost two of the twenty-three tracts in the benchmark, at 25% and 40% frequency. A weak
 signal is a different proposition when the SAME tract, at the SAME coordinates, is unambiguous in
-another sample: the alternatives do not reproduce a specific tract across independent libraries.
-So a sub-threshold call can be corroborated, and the recurrence check above is what stops that
-from rescuing an artefact instead.
+another sample: contamination and index hopping do not reproduce a specific tract across
+independent libraries. So a sub-threshold call can be corroborated, and the recurrence check above
+is what stops that from rescuing an artefact instead. Reads from a third copy of a gene family DO
+reproduce a stretch in every library mapped to the same reference, at a few percent of the reads,
+so neither a trickle like that nor a call read by a handful of molecules takes part, on either
+side (`gene_conversion.unreadable`).
 
     gconv_cohort.py --tracts s1.tsv s2.tsv ... --loci s1.loci.tsv ... -o cohort.tsv
 
@@ -37,6 +40,7 @@ import sys
 from collections import defaultdict
 
 from gene_conversion import COLUMNS as TRACT_COLUMNS
+from gene_conversion import unreadable
 
 # Added to every row of the cohort file. The per-sample columns pass through untouched.
 COHORT_COLUMNS = ["event_id", "event_samples", "event_frac", "cohort_verdict",
@@ -178,6 +182,16 @@ def rank_donors(rows, indices, margin=1.0):
     return out
 
 
+def readable_call(row):
+    """A per-sample conversion call whose reads can carry it (see gene_conversion.unreadable).
+
+    Checked here as well as where the call is made, so a cohort pass over per-sample files written
+    before that check still refuses to count a call resting on a handful of reads.
+    """
+    return ((row.get("verdict") or "").strip() == "gene_conversion"
+            and not unreadable(row.get("n_sites"), row.get("n_undetermined"), row.get("donor_af_in")))
+
+
 def locus_background(locus_rows):
     """Per (pair_id) cohort statistics from the per-locus files.
 
@@ -223,7 +237,7 @@ def divergent_samples(tract_rows, max_locus_frac, min_loci=20, min_sample_loci=5
         if pair in (None, ""):
             continue
         loci.add(pair)
-        if (r.get("verdict") or "").strip() == "gene_conversion":
+        if readable_call(r):
             by_sample.setdefault(r.get("sample"), set()).add(pair)
     # A fraction of a handful of loci says nothing: one tract out of three is 33% and means only
     # that the reference has three paralogous loci. Both floors are absolute for that reason, and
@@ -235,14 +249,16 @@ def divergent_samples(tract_rows, max_locus_frac, min_loci=20, min_sample_loci=5
 
 
 def cohort_verdict(row, event, background, n_samples, min_bf, corroborated_bf,
-                   ubiquitous, min_samples, divergent=None):
+                   ubiquitous, min_samples, divergent=None, min_tract_af=0.25):
     """Revise a per-sample verdict in the light of the rest of the cohort.
 
     Only two revisions are made, in opposite directions, and both need the cohort to be possible.
-    Everything else is left exactly as the per-sample caller decided it.
+    Everything else is left exactly as the per-sample caller decided it, except a call its own
+    reads cannot carry, which per-sample files written before that check still hold.
     """
     verdict = (row.get("verdict") or "").strip()
     bf = num(row, "log10_bf")
+    why_not = unreadable(row.get("n_sites"), row.get("n_undetermined"), row.get("donor_af_in"))
 
     # Before anything else: if the SAMPLE is diverged from the reference, none of its tracts mean
     # what they say, however good each one looks on its own. This one comes first because the
@@ -274,21 +290,40 @@ def cohort_verdict(row, event, background, n_samples, min_bf, corroborated_bf,
             "conversion arising in every isolate. In a clonal cohort it may instead be shared "
             "ancestry, which recurrence alone cannot distinguish")
 
+    # Both verdicts: an ambiguous row resting on a trickle still carries the reason the model
+    # gave, "only 20% of the reads here carry the tract", which quotes the floor the fit was
+    # parked on rather than the 3% the reads actually hold.
+    if why_not and verdict in ("gene_conversion", "ambiguous"):
+        return "ambiguous", why_not
+
     # A tract the sample alone could not commit to, corroborated by the same tract at the same
     # coordinates in a sample that could. Contamination and index hopping do not reproduce a
     # specific tract across independent libraries; a real minority conversion does.
-    if verdict == "ambiguous" and bf is not None and bf >= corroborated_bf \
+    #
+    # Reads from a third copy of the family DO reproduce one, in every library mapped to the same
+    # reference, because they are a property of the reference and the aligner. That is why a row
+    # its own reads cannot carry is never promoted: on a 185-sample cohort, 1,520 of 1,579 calls
+    # were rows of 2 to 5% donor reads that a single thinly read sample had "called outright".
+    if verdict == "ambiguous" and not why_not and bf is not None and bf >= corroborated_bf \
             and event["n_called"] >= 1:
+        taf = num(row, "tract_af")
+        short = []
+        if bf < min_bf:
+            short.append(f"log10 Bayes factor {bf:.1f} on its own, below the {min_bf:.1f} needed")
+        if taf is not None and taf < min_tract_af:
+            short.append(f"carried by {taf:.0%} of the reads, under the {min_tract_af:.0%} one "
+                         "sample needs on its own")
         return "gene_conversion", (
-            f"log10 Bayes factor {bf:.1f} on its own, below the {min_bf:.1f} needed, but the same "
-            f"tract is called outright in {event['n_called']} other sample(s) of the cohort")
+            ("; ".join(short) or "not called on its own") +
+            f", but the same tract is called outright in {event['n_called']} other sample(s) of "
+            "the cohort")
 
     return verdict, (row.get("reason") or "").strip()
 
 
 def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
              ubiquitous=0.9, min_samples=5, slack=0, donor_margin=1.0, cohort_size=None,
-             max_locus_frac=0.1):
+             max_locus_frac=0.1, min_tract_af=0.25):
     """Add the cohort columns to every tract row, revising the verdict where the cohort speaks.
 
     `cohort_size` is how many samples were RUN. It matters because the ubiquity rule is a
@@ -323,7 +358,7 @@ def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
         e = events[eid]
         e["samples"].add(r.get("sample"))
         e["bf"].append(num(r, "log10_bf"))
-        if (r.get("verdict") or "").strip() == "gene_conversion":
+        if readable_call(r):
             e["called"].add(r.get("sample"))
 
     # Donor resolution is per event PER SAMPLE: the several relationships are one sample's
@@ -347,7 +382,8 @@ def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
         info = {"n_samples": len(e["samples"]),
                 "n_called": len(e["called"] - {r.get("sample")})}
         verdict, reason = cohort_verdict(r, info, background, n_samples, min_bf,
-                                         corroborated_bf, ubiquitous, min_samples, divergent)
+                                         corroborated_bf, ubiquitous, min_samples, divergent,
+                                         min_tract_af=min_tract_af)
         bg = background.get(r.get("pair_id"), {})
         row = dict(r)
         row.update({
@@ -360,7 +396,7 @@ def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
         })
         row.update(donors.get(i, {"donor_rank": "", "n_donors": "", "donor_margin": "",
                                   "donor_call": "", "is_representative": ""}))
-        if verdict != (r.get("verdict") or "").strip():
+        if verdict != (r.get("verdict") or "").strip() or reason != (r.get("reason") or "").strip():
             row["reason"] = reason
         out.append(row)
     return out, n_samples
@@ -375,6 +411,8 @@ def parse_args(argv=None):
     p.add_argument("-o", "--output", required=True)
     p.add_argument("--min-bf", type=float, default=3.0,
                    help="the per-sample calling threshold, quoted back in the reasons")
+    p.add_argument("--min-tract-af", type=float, default=0.25,
+                   help="the per-sample read-fraction floor, quoted back in the reasons")
     p.add_argument("--corroborated-bf", type=float, default=2.0,
                    help="Bayes factor a sub-threshold tract needs before another sample's "
                         "outright call is allowed to corroborate it")
@@ -410,7 +448,8 @@ def main(argv=None) -> int:
     columns = (list(tracts[0].keys()) if tracts else list(TRACT_COLUMNS)) + COHORT_COLUMNS
     rows, n_samples = annotate(tracts, loci, a.min_bf, a.corroborated_bf,
                                a.ubiquitous, a.min_samples, a.slack, a.donor_margin,
-                               a.cohort_size, max_locus_frac=a.max_locus_frac)
+                               a.cohort_size, max_locus_frac=a.max_locus_frac,
+                               min_tract_af=a.min_tract_af)
 
     if n_samples is None and tracts:
         sys.stderr.write(
@@ -421,7 +460,8 @@ def main(argv=None) -> int:
     with open(a.output, "w") as fh:
         for note in notes:
             fh.write(note + "\n")
-        fh.write(f"# gconv_cohort.py min_bf={a.min_bf} corroborated_bf={a.corroborated_bf} "
+        fh.write(f"# gconv_cohort.py min_bf={a.min_bf} min_tract_af={a.min_tract_af} "
+                 f"corroborated_bf={a.corroborated_bf} "
                  f"ubiquitous={a.ubiquitous} min_samples={a.min_samples} "
                  f"donor_margin={a.donor_margin} slack={a.slack} "
                  f"cohort_size={n_samples if n_samples is not None else 'unknown'}\n")

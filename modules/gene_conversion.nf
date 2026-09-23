@@ -178,6 +178,7 @@ process COLLECT_GENE_CONVERSION {
         --loci ${loci} \\
         --output ${basename}_gene_conversion.tsv \\
         --min-bf ${params.gconv_min_bf} \\
+        --min-tract-af ${params.gconv_min_tract_af} \\
         --corroborated-bf ${params.gconv_corroborated_bf} \\
         --ubiquitous ${params.gconv_ubiquitous} \\
         --min-samples ${params.gconv_cohort_min_samples} \\
