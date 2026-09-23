@@ -62,6 +62,28 @@ results_bampiro/
         └── Locus_to_exclude_LENS.txt       # -> List of repetitive regions excluded from calling
 ```
 
+## SNP matrix
+
+`<samplesheet>_snp_matrix.tsv` has one row per SNP site called in any sample and two columns per
+sample, `<sample>|AF` and `<sample>|DP`. A cell says what that sample's reads showed at the site:
+
+| `AF` | `DP` | Meaning |
+| :--- | :--- | :--- |
+| a fraction | the depth | The alternate allele was called, carried by that fraction of the reads |
+| `0` | the depth | The sample was read there and no alternate allele was called: absent, not unknown |
+| empty | `0` | No read covers the site in that sample, so its absence says nothing |
+| empty | empty | The site is not in that sample's genome: it was mapped against another reference |
+
+The depth of a `0` cell comes from the sample's all-positions VCF, the pileup the consensus is
+built from. That pileup does not apply the caller's mapping-quality floor
+(`--freebayes_min_map_qual`), so in a repeat it can read higher than the depth of a called cell.
+Read a `0` together with its depth: at three reads it says little, and at or below
+`--consensus_min_dp` the consensus leaves the site uncalled.
+
+A call the variant VCF writes as part of a longer allele (an MNP or a complex record) is not a
+single-base SNP as written, so the matrix skips it; the all-positions VCF holds it as one, and the
+cell takes its allele fraction from there rather than showing a `0` the reads contradict.
+
 ## Gene conversion
 
 Off unless `--find_gene_conversion true`. Four files, and which one to open depends on the

@@ -19,6 +19,7 @@ workflow COHORT_REPORT {
     patho_dr_results   // (sId, dr mutations); empty when pathotypr is off
     vcf_for_stats      // (sId, rId, vcf)
     freebayes_ann      // annotated freebayes.raw VCFs; empty when annotate_legacy_vcfs is off
+    allpos_vcf         // (sId, rId, all.pos.vcf.gz, tbi): the depth of every site, for the SNP matrix
     gconv_cohort       // cohort gene-conversion TSV; empty when --find_gene_conversion is off
     refMap             // refId -> refFasta
     refGffMap          // refId -> refGff
@@ -101,7 +102,9 @@ workflow COHORT_REPORT {
     }
 
     // 11b. Master SNP matrix: rows = SNP sites, columns = reference/annotation + per-sample AF & depth.
+    // The all-positions VCFs say what a sample's reads show at a site it has no call at.
     if (asBool(params.make_snp_matrix)) {
-        SNP_MATRIX(report_vcfs, ref_name, tsv_name)
+        def depth_vcfs = allpos_vcf.map { sId, rId, vcf, tbi -> vcf }.collect().ifEmpty([])
+        SNP_MATRIX(report_vcfs, depth_vcfs, ref_name, tsv_name)
     }
 }
