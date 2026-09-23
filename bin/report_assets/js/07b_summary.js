@@ -224,10 +224,12 @@ function findMinority(){
   var tot=M.hist.reduce(function(a,b){return a+b;},0); if(!tot||!M.with_dp)return null;
   var pct=Math.round(100*M.le3/M.with_dp),r=M.replicates,body=[];
   var head='<b>'+pct+'%</b> of the '+tot.toLocaleString('en-US')+' calls below fixation rest on three alternate reads or fewer';
-  if(r&&r.tested){var low=r.tested[0]+r.tested[1],rl=r.reproduced[0]+r.reproduced[1],fl=minFloor(M);
-    body.push('Another library of the same DNA calls '+(low?Math.round(100*rl/low)+'%':'none')+' of those under allele fraction '+M.edges[2]+
+  var tested=r&&r.tested?r.tested.reduce(function(a,b){return a+b;},0):0;
+  if(r&&r.tested&&tested){var low=r.tested[0]+r.tested[1],rl=r.reproduced[0]+r.reproduced[1],fl=minFloor(M);
+    if(low)body.push('Another library of the same DNA calls '+Math.round(100*rl/low)+'% of those under allele fraction '+M.edges[2]+
       (r.fixed_tested?' and '+Math.round(100*r.fixed_reproduced/r.fixed_tested)+'% of the fixed ones':'')+'.');
-    body.push(fl==null||fl<0?'No band below fixation reaches 80% reproduced.':(fl===0?'Every band is reproduced 80% or more.':'Calls reproduce 80% or more from allele fraction '+M.edges[fl]+' up.'));}
+    body.push(fl==null?'No band of allele fraction was compared 20 times, too few to say where the noise ends.':fl<0?'Even the highest band compared is not reproduced 80% of the time.':(fl===0?'Every band is reproduced 80% or more.':'Calls reproduce 80% or more from allele fraction '+M.edges[fl]+' up.'));}
+  else if(r&&r.tested)body.push('The samplesheet names DNA extracts ('+esc(r.column)+'), but no two independent libraries share one'+(r.shared?' (those that do share reads)':'')+', so nothing was compared.');
   else if(r)body.push('Libraries of the same DNA are named ('+esc(r.column)+') but need the SNP matrix to be compared.');
   else body.push('Naming each sample&#39;s DNA extract in the samplesheet would measure where the noise ends.');
   return {k:'minor',eyebrow:'Minority variants',tone:'',head:head,body:body.join(' '),link:{href:'#minority',t:'See the calls'},

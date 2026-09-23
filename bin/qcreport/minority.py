@@ -11,7 +11,9 @@ one library makes that another library of the same DNA also makes, in each band 
 fraction, is where the noise ends. Two samples that share a FASTQ file share reads, so their
 agreement proves nothing and they are not compared; a merged sample and the runs it was merged
 from are the usual case. A call is only counted as missing from the other library where that
-library was read at the site (the SNP matrix's depth); a site it did not read says nothing.
+library was read at the site above --consensus_min_dp reads (the SNP matrix's depth) and deeply
+enough to have called it: at least five alternate reads expected at the call's fraction, since
+at 8x a 5% minority is not there to see, real or not.
 """
 from __future__ import annotations
 
@@ -19,10 +21,11 @@ import csv
 import os
 import re
 
+from .parsers import _TECHREP_RE as _REP_RE
+
 FIXED = 0.9
 EDGES = [0.0, 0.1, 0.2, 0.3, 0.5, 0.7, FIXED]
-_REP_RE = re.compile(r"^(dna[_ ]?id|dna|extract(ion)?([_ ]?id)?|biosample([_ ]?id)?|specimen([_ ]?id)?|"
-                     r"isolate[_ ]?id|library[_ ]?of|replicate[_ ]?of|tech(nical)?[_ ]?rep(licate)?([_ ]?of)?)$", re.I)
+MIN_EXPECTED_ALT = 5
 _SAMPLE_RE = re.compile(r"^(sample[_ ]?id|sample|id|name)$", re.I)
 
 
@@ -159,8 +162,10 @@ def _reproducibility(variants, pairs, shared, cells, column, min_dp, fixed):
                     hit = True
                 else:
                     cell = cells.get((site, y))
-                    if cell is None or cell[1] is None or cell[1] < min_dp:
+                    if cell is None or cell[1] is None or cell[1] <= min_dp:
                         continue          # the other library was not read there: nothing to learn
+                    if not cell[0] and af * cell[1] < MIN_EXPECTED_ALT:
+                        continue          # read, but too thinly to have called it at this fraction
                     hit = bool(cell[0])
                 if af >= fixed:
                     fx_t += 1

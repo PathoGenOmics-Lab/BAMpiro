@@ -122,7 +122,8 @@ SECTION_INFO = {
                 "(dna_id, extract, biosample...), each library's calls are looked up in the others: a real "
                 "minority is in the DNA and is reproduced, an error is not. Pairs that share a FASTQ file "
                 "share reads and are left out, and a call only counts as missed where the other library "
-                "was read (the SNP matrix's depth).",
+                "was read deeply enough to have called it: above --consensus_min_dp reads, with at least "
+                "five alternate reads expected at the call's fraction (the SNP matrix's depth).",
     "drseries": "The resistance mutations (WHO grade 1-2, from pathotypr) at every time point of every "
                 "series, with those acquired since the first time point set apart and those no longer "
                 "called crossed out. Answers when resistance appears along a series and whether it "

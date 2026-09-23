@@ -69,11 +69,14 @@ def test_a_samplesheet_without_a_dna_column_has_no_replicates(tmp_path):
     assert mn.replicate_sets(str(p))[0] is None
 
 
-def test_reproducibility_counts_only_where_the_other_library_was_read():
-    variants = {"A": {"c:1": call(0.05), "c:2": call(0.06), "c:3": call(0.4), "c:9": call(1.0)},
+def test_reproducibility_counts_only_where_the_other_library_could_have_called_it():
+    variants = {"A": {"c:1": call(0.05), "c:2": call(0.06), "c:3": call(0.4), "c:4": call(0.05),
+                      "c:5": call(0.3), "c:9": call(1.0)},
                 "B": {"c:3": call(0.35), "c:9": call(1.0)}}
-    cells = {("c:1", "B"): (0.0, 80),      # read, and not there: an error
-             ("c:2", "B"): (None, 2)}      # not read: says nothing
+    cells = {("c:1", "B"): (0.0, 200),     # read deeply, and not there: an error
+             ("c:2", "B"): (None, 2),      # not read: says nothing
+             ("c:4", "B"): (0.0, 60),      # read, but 5% of 60 is 3 reads: too thin to tell
+             ("c:5", "B"): (0.0, 7)}       # at the consensus minimum: not read
 
     rep = mn.build_minority(variants, [("A", "B")], 0, cells, "dna_id", min_dp=7)["replicates"]
 
