@@ -30,9 +30,12 @@ set -euo pipefail
 SAMPLESHEET="${1:-samples.tsv}"
 OUTDIR="${2:-results_bampiro}"
 
-# The pipeline revision. A branch, a tag or a commit: whatever you pass is what runs, and it is
-# recorded in the report's provenance footer.
-REVISION="feat/gene-conversion"
+# The pipeline revision. A branch, a tag or a commit: whatever you pass is what runs.
+#
+# With -latest below, a branch means "that branch as it is when the driver starts", so two runs
+# days apart can differ. Nextflow prints the commit it ran at the top of the driver log
+# (`revision: <hash> [main]`); put that hash, or a release tag, here to repeat a run exactly.
+REVISION="main"
 
 # Off by default. Needs --exclude_repeats true, which is also the default.
 FIND_GENE_CONVERSION="false"
@@ -48,9 +51,10 @@ KRAKEN2_DB=""
 
 # ---------------------------------------------------------------- preflight
 
+# Not $0: under sbatch that is SLURM's spooled copy of this script, not the name you typed.
 if [ ! -s "${SAMPLESHEET}" ]; then
     echo "samplesheet not found or empty: ${SAMPLESHEET}" >&2
-    echo "usage: sbatch $0 <samplesheet.tsv> [outdir]" >&2
+    echo "usage: sbatch conf/garnatxa.sbatch <samplesheet.tsv> [outdir]" >&2
     exit 2
 fi
 
@@ -64,7 +68,7 @@ echo "BAMpiro on $(hostname), SLURM job ${SLURM_JOB_ID:-none}"
 echo "  samplesheet : ${SAMPLESHEET}"
 echo "  outdir      : ${OUTDIR}"
 echo "  revision    : ${REVISION}"
-echo "  nextflow    : $(nextflow -version 2>&1 | awk '/version/{print $3; exit}')"
+echo "  nextflow    : $(nextflow -version 2>&1 | awk '/version/{print $2; exit}')"
 
 # ---------------------------------------------------------------- run
 
@@ -78,10 +82,15 @@ if [ "${FIND_GENE_CONVERSION}" = "true" ]; then
     EXTRA="${EXTRA} --find_gene_conversion true"
 fi
 
+# -latest is not optional with a branch. Nextflow keeps a clone of the project under
+# ~/.nextflow/assets and, without it, runs the copy it cloned the first time: a fix merged since
+# then does not arrive, and a relaunch repeats the failure with the code that caused it.
+#
 # -resume reuses finished work, so a driver that hit its time limit costs only the tasks that
 # were still running. -ansi-log false keeps the log readable in a file rather than redrawing it.
 nextflow run PathoGenOmics-Lab/BAMpiro \
     -r "${REVISION}" \
+    -latest \
     -profile garnatxa \
     -resume \
     -ansi-log false \
