@@ -167,6 +167,7 @@ def test_gene_conversion_refuses_to_run_without_the_masking_it_reads_from(
 @pytest.mark.parametrize("flag,process", [
     ("--make_qc_report", "QC_REPORT"),
     ("--make_snp_matrix", "SNP_MATRIX"),
+    ("--make_snp_distances", "SNP_DISTANCES"),
     ("--make_consensus", "CONSENSUS_FASTA"),
     ("--annotate_main_vcf", "ANNOTATE_MAIN_VCF"),
 ])
