@@ -205,7 +205,7 @@ function findRelatedness(){
   var g=relSummary(); if(!g)return null;
   var head='<b>'+g.nCl+'</b> '+_plural(g.nCl,'cluster')+' of samples within '+g.thr+' SNPs of each other';
   var body=[];
-  if(g.nCl)body.push(g.inCl+' samples sit in one, the largest holding '+g.big+'.');
+  if(g.nCl)body.push(g.inCl+' samples belong to one; the largest holds '+g.big+'.');
   if(g.out.length)body.push('<b class="tone-warn">'+g.out.length+'</b> '+_plural(g.out.length,'sample sits','samples sit')+' far from the rest of '+_plural(g.out.length,'its group','their groups')+' ('+
     _list(g.out.map(function(s){return esc(s.s);}),4)+'): swapped, mislabelled, contaminated or reinfected.');
   return {k:'rel',eyebrow:'Relatedness',tone:g.out.length?'warn':'',head:head,body:body.join(' '),
@@ -236,6 +236,10 @@ function findCoverage(){
   var head='Median depth <b>'+(d!=null?fmt(d,'float')+'&#215;':'NA')+'</b>'+(b!=null?', breadth <b>'+b.toFixed(1)+'%</b>':'');
   var rd=_range(S.map(function(s){return s.m.mean_depth;}));
   var body=(rd?'Depth ranges from '+fmt(rd[0],'float')+'&#215; to '+fmt(rd[1],'float')+'&#215;. ':'')+(c!=null?'The median consensus has '+c.toFixed(1)+'% of the genome as confident bases.':'');
+  var C=R.coverage;
+  if(C&&C.regions){var k={private:0,shared:0,cohort:0};C.regions.forEach(function(r){if(r.cls in k)k[r.cls]++;});
+    body+=' '+(k.private+k.shared)+' '+_plural(k.private+k.shared,'stretch','stretches')+' of '+C.min_len+' bp or more some samples have no reads for and others do ('+k.private+' private to one sample, '+k.shared+' shared); '+
+      k.cohort+' no sample reads.';}
   return {k:'cov',eyebrow:'Coverage',tone:'',head:head,body:body,link:{href:'#dist',t:'See the distributions'}};
 }
 function findings(){return [findQC(),findIdentity(),findRelatedness(),findResistance(),findDynamics(),findMinority(),findLineage(),findGconv(),findCoverage()].filter(function(f){return f;});}
