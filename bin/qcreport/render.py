@@ -47,7 +47,8 @@ CSS = "".join(_asset(m) for m in _CSS_MODULES)
 _JS_MODULES = [
     "js/01_prelude.js", "js/02_qcspace.js", "js/03_state.js", "js/04_helpers.js",
     "js/05_insights_qc.js", "js/06_insights_genome.js", "js/07_render_core.js", "js/07b_summary.js",
-    "js/08_curation.js", "js/09_genome_genes.js", "js/10_dynamics.js", "js/11_epistasis.js",
+    "js/08_curation.js", "js/09_genome_genes.js", "js/09b_coverage.js", "js/10_dynamics.js",
+    "js/11_epistasis.js",
     "js/12_snpmatrix.js", "js/13_drug_kraken.js", "js/14_boot.js",
 ]
 JS = "".join(_asset(m) for m in _JS_MODULES)
@@ -104,7 +105,17 @@ SECTION_INFO = {
             "(ambiguous) % and the longest gap. A phylogeny-oriented view of completeness, not just average depth.",
     "genome": "Per-position callability / variant density along the reference, binned into a heatmap per "
               "sample. Brush a region to list the genes under it. Reveals systematically low-callability "
-              "regions (repeats, deletions) shared across samples.",
+              "regions (repeats, deletions) shared across samples. 'Deletions' shows the share of each bin "
+              "in a stretch the sample has no reads for while other samples read it; 'SNPs / kb' divides "
+              "the SNPs of a bin by the positions deep enough to call, so a half-read bin does not look "
+              "half as variable.",
+    "deletions": "Stretches of the reference a sample has no reads for, compared with the other samples on "
+                 "the same reference. Lacked by one sample it is a private deletion; by several, a shared "
+                 "one (often a lineage's); by all, a repeat or a part of the reference these genomes do not "
+                 "have, which is nobody's deletion and is listed apart. Only samples read deeply enough are "
+                 "assessed, since in a thin sample stretches without reads turn up by chance. From the "
+                 "all-positions VCF, so a deletion shorter than the minimum length, or one the caller "
+                 "already reported as an indel, is not listed here.",
     "function": "The snpEff functional class of each sample's variants (HIGH/MODERATE/LOW/MODIFIER impact and "
                 "effect types such as missense / synonymous). A per-sample mutational-impact profile.",
     "geneburden": "Genes carrying the most impactful (HIGH/MODERATE) variants across the cohort, with the "

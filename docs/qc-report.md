@@ -28,7 +28,7 @@ on *Sample QC*, the samples with resistance mutations their lineage does not sha
 | :--- | :--- |
 | **1 · Summary** | What the run found, as sentences with their numbers: an *In short* paragraph, then one card per finding (sample QC, identity, resistance, variants over time, lineages, gene conversion, coverage). Every card links to the page that holds its evidence and says what it does not prove. |
 | **2 · Sample QC** | Which samples can be trusted: the verdicts, the live thresholds, the **flagged samples** with the value behind every flag, the **exclusion list** and its exports, the table of all samples, lineages, **contamination** (Kraken2), distributions and aDNA damage. |
-| **3 · Genome & genes** | Consensus completeness, the genome landscape, functional impact (snpEff), gene burden, variable genes and dN/dS. |
+| **3 · Genome & genes** | Consensus completeness, the genome landscape (missing calls, **deletions**, SNPs per bin and **per callable kb**, het, indels), the **deletions** found by comparing each sample's stretches without reads with the rest of the cohort, functional impact (snpEff), gene burden, variable genes and dN/dS. |
 | **4 · Variants over time** | SNP dynamics, co-varying pairs (epistasis), the SNP matrix and variant &#215; dose. |
 | **5 · Resistance** | WHO-catalogue mutations grouped by mutation, the sample &#215; drug matrix and every call. |
 | **6 · Gene conversion** | Candidate tracts and the evidence behind each verdict. |

@@ -167,6 +167,8 @@ Two documented, ready-to-use **organism** configs live in
 | | `--blindspot_liftover` | `true` | Lift the blind-spots onto the run reference (k-mer liftover) so the mask is correct on **any** reference. |
 | **QC Report** | `--make_qc_report` | `true` | Build the interactive HTML QC report + `qc_flags.tsv`. |
 | | `--make_snp_matrix` | `true` | Also emit the master SNP-matrix TSV. |
+| | `--depth_window` | `1000` | Window (bp) of each sample's depth profile, behind the deletions and SNPs per callable kb. |
+| | `--deletion_min_len` | `200` | Shortest stretch without reads reported as a deletion. |
 | | `--report_gate` | `false` | Fail the run if any sample is flagged **FAIL**. |
 | | `--report_depth_min` | `10` | Gate: min mean depth (all `report_*` cut-offs are editable live in the report). |
 | | `--report_breadth_min` | `90` | Gate: min breadth %. |

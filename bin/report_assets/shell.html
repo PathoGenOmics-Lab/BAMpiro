@@ -8,7 +8,7 @@
 <div class="toc-brand"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</div>
 <div class="toc-group" data-page="summary"><a class="toc-gh" href="#p-summary"><span class="toc-n">1</span>Summary</a></div>
 <div class="toc-group" data-page="qc"><a class="toc-gh" href="#p-qc"><span class="toc-n">2</span>Sample QC<span class="toc-badge" id="bdg-qc"></span></a><div class="toc-items"><a class="toc-link" href="#flagged">Flagged samples</a><a class="toc-link" href="#gstats">All samples</a><a class="toc-link" href="#linsum" id="nav-lin">Lineages</a><a class="toc-link" href="#kraken" id="nav-kraken">Contamination</a><a class="toc-link" href="#dist">Distributions</a><a class="toc-link" href="#adna" id="nav-adna">aDNA damage</a></div></div>
-<div class="toc-group" data-page="genome"><a class="toc-gh" href="#p-genome"><span class="toc-n">3</span>Genome &amp; genes</a><div class="toc-items"><a class="toc-link" href="#cons">Consensus</a><a class="toc-link" href="#genome" id="nav-genome">Genome landscape</a><a class="toc-link" href="#function" id="nav-function">Functional impact</a><a class="toc-link" href="#geneburden" id="nav-geneburden">Gene burden</a><a class="toc-link" href="#hotspots" id="nav-hot">Variable genes</a><a class="toc-link" href="#pnps" id="nav-pnps">Selection (dN/dS)</a></div></div>
+<div class="toc-group" data-page="genome"><a class="toc-gh" href="#p-genome"><span class="toc-n">3</span>Genome &amp; genes</a><div class="toc-items"><a class="toc-link" href="#cons">Consensus</a><a class="toc-link" href="#genome" id="nav-genome">Genome landscape</a><a class="toc-link" href="#deletions" id="nav-del">Deletions</a><a class="toc-link" href="#function" id="nav-function">Functional impact</a><a class="toc-link" href="#geneburden" id="nav-geneburden">Gene burden</a><a class="toc-link" href="#hotspots" id="nav-hot">Variable genes</a><a class="toc-link" href="#pnps" id="nav-pnps">Selection (dN/dS)</a></div></div>
 <div class="toc-group" data-page="variants"><a class="toc-gh" href="#p-variants"><span class="toc-n">4</span>Variants over time<span class="toc-badge" id="bdg-variants"></span></a><div class="toc-items"><a class="toc-link" href="#dynamics" id="nav-dyn">SNP dynamics</a><a class="toc-link" href="#epistasis" id="nav-epi">Co-varying pairs</a><a class="toc-link" href="#snpmatrix" id="nav-snpmx">SNP matrix</a><a class="toc-link" href="#vardose" id="nav-vardose">Variant &#215; dose</a></div></div>
 <div class="toc-group" data-page="drug"><a class="toc-gh" href="#p-drug"><span class="toc-n">5</span>Resistance<span class="toc-badge" id="bdg-drug"></span></a><div class="toc-items"><a class="toc-link" href="#drug" id="nav-drug">Resistance mutations</a></div></div>
 <div class="toc-group" data-page="gconv"><a class="toc-gh" href="#p-gconv"><span class="toc-n">6</span>Gene conversion<span class="toc-badge" id="bdg-gconv"></span></a><div class="toc-items"><a class="toc-link" href="#gconv" id="nav-gconv">Candidate tracts</a></div></div>
@@ -67,7 +67,7 @@
 </div>
 
 <div class="page" id="p-genome" data-page="genome">
-<div class="page-h"><div class="eyebrow">3 &#183; Genome &amp; genes</div><h1>How much of the genome each sample recovers, and where its variants fall</h1><p class="page-lede">Completeness of each consensus, where along the reference calls are missing or variants concentrate, and which genes carry them.</p></div>
+<div class="page-h"><div class="eyebrow">3 &#183; Genome &amp; genes</div><h1>How much of the genome each sample recovers, and where its variants fall</h1><p class="page-lede">Completeness of each consensus, where along the reference calls are missing, reads are absent or variants concentrate, and which genes carry them.</p></div>
 <section id="cons"><h2>Consensus completeness <span class="c">callable / ambiguous (IUPAC) / missing share of each consensus, worst first</span>
 <label class="dyn-zoom" title="Resize the per-sample bars" style="margin-left:auto"><span><span data-ic="search" data-ic-cls="sort"></span>&#8211;/+</span><input type="range" id="conszoom" min="18" max="56" step="2" value="26"></label></h2>
 <div class="panel"><div id="stacks" style="max-height:60vh;overflow:auto"></div>
@@ -78,6 +78,9 @@
 <button class="exp-h" data-panel="genomePanel" data-render="genome"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="genomePanel"><div class="genome-scroll"><div id="genome_body" class="pad"></div></div>
 <div class="legend" id="genome_legend"></div></div></section>
+<section id="deletions"><h2>Deletions <span class="c">stretches a sample has no reads for while other samples on its reference do; click a row to show it in the landscape</span>
+<input class="gsearch" id="delq" type="search" placeholder="search sample / gene / position" style="margin-left:auto"><button class="exp-h" data-panel="deletionsPanel" data-render="deletions"><span data-ic="maximize"></span>full</button></h2>
+<div class="panel" id="deletionsPanel"><div id="del_body"></div></div></section>
 <section id="function"><h2>Functional impact <span class="c">snpEff impact classes per sample; the missense/silent ratio is a proxy, not a selection test</span>
 <label class="dyn-zoom" title="Resize the per-sample bars" style="margin-left:auto"><span><span data-ic="search" data-ic-cls="sort"></span>&#8211;/+</span><input type="range" id="fnzoom" min="18" max="56" step="2" value="26"></label>
 <button class="exp-h" data-panel="functionPanel" data-render="function"><span data-ic="maximize"></span>full</button></h2>

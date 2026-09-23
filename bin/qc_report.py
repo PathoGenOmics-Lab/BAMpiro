@@ -26,6 +26,7 @@ import os
 import sys
 from datetime import datetime, timezone
 
+from qcreport.coverage import build_coverage, parse_depth_profiles, snp_per_kb, write_deletions
 from qcreport.metrics import (ANC_DEF, DEF, DEFS, DIST, METRICS, build_gene_map, discover_extra_metrics,
                               flag_sample, het_frac, is_ancient, lineage_counts_parsed, lineage_fracs, robust)
 from qcreport.panels import build_dynamics, build_epistasis, build_snp_matrix
@@ -87,6 +88,16 @@ def build_parser():
                     help="TSV 'mapping_pos<TAB>canonical_pos' (e.g. pathotypr_liftover.py apply --out-map) -> the "
                          "reference-of-interest COORDINATE per variant, alignment-free. Fills pos_h37rv for the SNP "
                          "tables; an alternative to --vcfs-h37rv when the references do not share coordinates.")
+    ap.add_argument("--depth-profiles", nargs="*", default=[],
+                    help="Per-sample depth tables from depth_profile.py (windows, stretches without reads, "
+                         "genes) -> deletions and SNPs per callable kb along the genome (optional).")
+    ap.add_argument("--deletion-min-len", type=int, default=200,
+                    help="Shortest stretch without reads reported as a deletion, in bp.")
+    ap.add_argument("--deletion-min-depth", type=float, default=10.0,
+                    help="Median depth a sample needs before its stretches without reads are assessed: "
+                         "in a thinly read sample they turn up by chance.")
+    ap.add_argument("--out-deletions", default=None,
+                    help="Write the deletion regions (with --depth-profiles) as a TSV.")
     ap.add_argument("--gate", action="store_true")
     return ap
 
@@ -236,11 +247,18 @@ def build_payload(args, thr, anc_thr):
             by_ref.setdefault(ref, []).append(lin.split(";")[0])
     ref_major = {r: max(set(v), key=v.count) for r, v in by_ref.items() if len(v) >= 3}
     dates = parse_collection_dates(args.metadata)
+    # What each sample's reads cover, compared across the cohort: the stretches no read covers that
+    # other samples do read (deletions), and how much of each bin could be called at all.
+    profiles = parse_depth_profiles(args.depth_profiles)
+    coverage, del_tracks = (build_coverage(profiles, min_len=args.deletion_min_len,
+                                           min_depth=args.deletion_min_depth)[:2]
+                            if profiles else (None, {}))
 
     jsamples, counts = [], {"PASS": 0, "WARN": 0, "FAIL": 0}
     for sid, m in summ.items():
         anc = is_ancient(m)
         dmg = dmg_by_sample.get(sid)
+        snp_prof = parse_profile(m.get("snp_profile"))
         verdict, flags = flag_sample(m, thr, snp_med, snp_sig, ancient=anc, anc_thr=anc_thr, dmg=dmg,
                                      ref_lineage=ref_major.get(ref_of.get(sid)))
         counts[verdict] += 1
@@ -260,9 +278,12 @@ def build_payload(args, thr, anc_thr):
                          "ref": ref_of.get(sid),
                          "ref_lin": ref_major.get(ref_of.get(sid)),
                          "miss": miss_by_sample.get(sid),
-                         "trk": ({k: v for k, v in (("snp", parse_profile(m.get("snp_profile"))),
+                         "trk": ({k: v for k, v in (("snp", snp_prof),
+                                                    ("snpkb", snp_per_kb(snp_prof, profiles[sid])
+                                                     if sid in profiles else None),
                                                     ("het", parse_profile(m.get("het_profile"))),
-                                                    ("indel", parse_profile(m.get("indel_profile")))) if v is not None}
+                                                    ("indel", parse_profile(m.get("indel_profile"))),
+                                                    ("del", del_tracks.get(sid))) if v is not None}
                                  or None),
                          "ann_db_error": (clean_str(m.get("ann_db_error")) == "yes"),
                          "m": dict({k: to_float(m.get(k)) for k in metric_keys + extra_keys + EFF_KEYS},
@@ -303,6 +324,7 @@ def build_payload(args, thr, anc_thr):
                "dynamics": _dynamics,
                "epistasis": build_epistasis(_dynamics),
                "snp_matrix": build_snp_matrix(_variants, provenance.get('reference', '')),
+               "coverage": coverage,
                "sample_meta": _sample_meta,
                "metrics": [{"key": k, "label": l, "kind": kind, "dir": d} for k, l, kind, d in METRICS],
                "extra": extra_metrics,
@@ -357,6 +379,8 @@ def main():
     with open(args.out_html, "w", encoding="utf-8") as fh:
         fh.write(build_html(args.title, payload))
     write_flags(args.out_flags, jsamples)
+    if args.out_deletions and payload.get("coverage"):
+        write_deletions(args.out_deletions, payload["coverage"]["regions"])
 
     sys.stderr.write(f"[qc_report] {len(jsamples)} samples -> {counts['PASS']} PASS, {counts['WARN']} WARN, "
                      f"{counts['FAIL']} FAIL. Wrote {args.out_html} + {args.out_flags}\n")

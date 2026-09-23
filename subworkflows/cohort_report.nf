@@ -6,7 +6,7 @@
 */
 
 include { ANNOTATE_CANONICAL } from '../modules/annotation'
-include { COLLECT_SUMMARY; COLLECT_DR; LIFT_VARIANTS; QC_REPORT; SNP_MATRIX } from '../modules/report'
+include { COLLECT_SUMMARY; COLLECT_DR; DEPTH_PROFILE; LIFT_VARIANTS; QC_REPORT; SNP_MATRIX } from '../modules/report'
 include { asBool } from '../modules/utils'
 
 workflow COHORT_REPORT {
@@ -96,9 +96,15 @@ workflow COHORT_REPORT {
         def pos_liftover  = asBool(params.variant_liftover)
             ? LIFT_VARIANTS(report_vcfs, report_ref_fa, report_ref, tsv_name).map
             : file("${projectDir}/assets/NO_FILE_LIFTOVER")
+        // What each sample's reads cover, from its all-positions VCF and its reference's GFF: the
+        // report reads them against each other for deletions and SNPs per callable kb.
+        def depth = DEPTH_PROFILE(allpos_vcf.map { sId, rId, vcf, tbi -> tuple(sId, rId, vcf, file(refGffMap[rId])) })
+        def depth_profiles = depth.profile.map { sId, rId, win, zero -> [win, zero] }
+                                  .mix(depth.genes.map { sId, rId, genes -> [genes] })
+                                  .flatten().collect().ifEmpty([])
         QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
                   report_meta, report_vcfs, report_vcfs_h37rv, pos_liftover, dr_report, report_gconv,
-                  report_kraken, provenance, tsv_name)
+                  report_kraken, depth_profiles, provenance, tsv_name)
     }
 
     // 11b. Master SNP matrix: rows = SNP sites, columns = reference/annotation + per-sample AF & depth.

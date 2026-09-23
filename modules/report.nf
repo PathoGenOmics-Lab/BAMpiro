@@ -1,4 +1,4 @@
-include { asBool } from './utils'
+include { asBool; getSampleDir; getSavePath } from './utils'
 nextflow.enable.dsl=2
 
 /* ====================================================================
@@ -124,12 +124,14 @@ process QC_REPORT {
     path(dr_report)         // run drug-resistance calls TSV (collect_dr) -> Drug resistance panel (may be NO_FILE)
     path(gene_conversion)   // cohort gene-conversion tracts TSV (COLLECT_GENE_CONVERSION) -> Gene conversion panel (may be empty)
     path(kraken_reports)    // per-sample Kraken2 .report files -> Taxonomic composition panel (may be empty)
+    path(depth_profiles, stageAs: 'depth/*')   // per-sample DEPTH_PROFILE tables -> deletions + SNPs per callable kb (may be empty)
     val(provenance)         // pre-quoted provenance tokens (container=..., reference=...)
     val(basename)
 
     output:
     path("${basename}_qc_report.html"), emit: html
     path("${basename}_qc_flags.tsv"),   emit: flags
+    path("${basename}_deletions.tsv"),  emit: deletions, optional: true
 
     script:
     def gate_arg = asBool(params.report_gate) ? "--gate" : ""
@@ -149,12 +151,15 @@ process QC_REPORT {
     # A header-only TSV (the stage ran but found nothing) parses to no tracts, so the panel self-hides.
     GC_ARG="";  case "${gene_conversion}" in ""|NO_FILE*) ;; *) [ -s "${gene_conversion}" ] && GC_ARG="--gene-conversion ${gene_conversion}";; esac
     KRK_ARG=""; [ -n "${kraken_reports}" ] && KRK_ARG="--kraken ${kraken_reports}"
+    DEL_ARG=""; [ -n "${depth_profiles}" ] && DEL_ARG="--depth-profiles ${depth_profiles} --out-deletions ${basename}_deletions.tsv"
     python3 ${projectDir}/bin/qc_report.py \\
         --summary ${summary} \\
         ${cons_arg} \\
         --gene-burden ${gene_burden} \\
         --gff ${gff} \\
-        \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$PL_ARG \$DR_ARG \$GC_ARG \$KRK_ARG \\
+        \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$PL_ARG \$DR_ARG \$GC_ARG \$KRK_ARG \$DEL_ARG \\
+        --deletion-min-len ${params.deletion_min_len} \\
+        --deletion-min-depth ${params.report_depth_min} \\
         --aa2-label "${params.canonical_label}" \\
         --provenance ${provenance} \\
         --version "${workflow.manifest.version}" \\
@@ -174,6 +179,42 @@ process QC_REPORT {
     """
     touch ${basename}_qc_report.html
     touch ${basename}_qc_flags.tsv
+    """
+}
+
+process DEPTH_PROFILE {
+    // What one sample's reads cover, reduced from its all-positions VCF to windows, the stretches
+    // no read covers, and a per-gene table. The report reads them against the rest of the cohort,
+    // which is what tells a deletion from a part of the reference none of these genomes has.
+    tag "Depth profile: ${sampleId}"
+    publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
+    cpus 1
+    memory { 2.GB * task.attempt }
+
+    input:
+    tuple val(sampleId), val(refId), path(allpos_vcf), path(gff)
+
+    output:
+    tuple val(sampleId), val(refId), path("${sampleId}.${refId}.depth_windows.tsv"), path("${sampleId}.${refId}.zero_depth.tsv"), emit: profile
+    // Absent when the GFF has neither gene nor CDS features.
+    tuple val(sampleId), val(refId), path("${sampleId}.${refId}.gene_depth.tsv"), optional: true, emit: genes
+
+    script:
+    """
+    set -euo pipefail
+    python3 ${projectDir}/bin/depth_profile.py \\
+        --vcf ${allpos_vcf} \\
+        --gff ${gff} \\
+        --reference ${refId} \\
+        --window ${params.depth_window} \\
+        --min-dp ${params.consensus_min_dp} \\
+        --out-prefix ${sampleId}.${refId}
+    """
+
+    stub:
+    """
+    printf '# sample=${sampleId}\\ncontig\\tstart\\tend\\tmean_dp\\tzero_frac\\tcallable_frac\\n' > ${sampleId}.${refId}.depth_windows.tsv
+    printf '# sample=${sampleId}\\ncontig\\tstart\\tend\\tlength\\n' > ${sampleId}.${refId}.zero_depth.tsv
     """
 }
 

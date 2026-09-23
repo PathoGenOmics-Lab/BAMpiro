@@ -8,6 +8,18 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Added
 
+- **Deletions, and SNPs per callable kb along the genome.** Each sample's all-positions VCF is
+  reduced to its depth per window, the stretches no read covers and a per-gene table
+  (`DEPTH_PROFILE`, published under `stats/`). The report compares those stretches across the
+  samples of each reference: one a sample lacks while the others read it is a deletion, private
+  or shared; one nobody reads is a repeat or a part of the reference none of these genomes has,
+  and is listed apart instead of being counted as anyone's. A *Deletions* panel lists them with
+  the genes they remove and zooms the landscape onto each, and `<samplesheet>_deletions.tsv`
+  keeps them with every carrier's own coordinates. The landscape gains a *Deletions* track and a
+  *SNPs / kb* track that divides each bin's SNPs by the positions deep enough to call, so a bin
+  half of which was not read no longer looks half as variable. Samples under
+  `--report_depth_min` are not assessed: stretches without reads turn up there by chance.
+
 - **Two guards against a sample mapped to a genome it does not belong to.** In a 185-sample
   cohort, 22 samples annotated as one lineage were really another, were routed to that lineage's
   reference, carried about 2,000 SNPs where their line mates carried 5, and produced 507 of the
