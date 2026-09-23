@@ -69,12 +69,17 @@ workflow COHORT_REPORT {
     if (asBool(params.make_qc_report)) {
         def all_logs = legacy_log.collect()
         def summ = COLLECT_SUMMARY(all_logs, tsv_name)
-        // Reference-level extras (cohort report -> take the reference bundle; single-ref is the norm):
-        // GFF enables the per-gene SNP-density panel, the nucmer/repeat BED the masked-regions panel.
-        def report_ref  = refGffMap.keySet().toList().first()   // deterministic: the first reference
-        def report_gff  = file(refGffMap[report_ref])
-        def report_mask = ref_bundle.filter { rId, fa, idx, excl -> rId == report_ref }
-                                    .map { rId, fa, idx, excl -> excl }.first()
+        // Every reference's GFF, repeat/exclude list and FASTA index, in reference order: the report draws
+        // each reference's own genes and masked regions under its own samples, placed on the axis their
+        // profiles are binned on (the index's contig order). Taking the first reference's for all drew one
+        // reference's genes under the other's samples.
+        def ref_files = ref_bundle
+            .map { rId, fa, idx, excl -> tuple(rId, file(refGffMap[rId]), excl, idx.find { it.name.endsWith('.fai') }) }
+            .toSortedList { a, b -> a[0] <=> b[0] }
+        def report_ref_ids = ref_files.map { l -> l.collect { it[0] } }
+        def report_gffs    = ref_files.map { l -> l.collect { it[1] } }
+        def report_masks   = ref_files.map { l -> l.collect { it[2] } }
+        def report_fais    = ref_files.map { l -> l.collect { it[3] } }
         // Provenance footer: pinned container digest + reference(s).
         // The footer records what produced the numbers. When the gene-conversion panel is
         // showing, its settings belong there too: its verdicts depend on them, and a report
@@ -127,9 +132,9 @@ workflow COHORT_REPORT {
         // Empty when the stage is off, and QC_REPORT only passes --gene-conversion for a non-empty
         // file, so the panel hides itself rather than rendering an empty table.
         def report_gconv = gconv_cohort.ifEmpty([])
-        QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
-                  report_meta, report_vcfs, report_vcfs_h37rv, pos_liftover, dr_report, report_gconv,
-                  report_kraken, depth_profiles, snp_dist, snp_matrix, provenance, tsv_name)
+        QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gffs, report_masks, report_fais,
+                  report_ref_ids, report_meta, report_vcfs, report_vcfs_h37rv, pos_liftover, dr_report,
+                  report_gconv, report_kraken, depth_profiles, snp_dist, snp_matrix, provenance, tsv_name)
     }
 
 }

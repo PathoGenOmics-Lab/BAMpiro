@@ -11,6 +11,7 @@ Everything here is pure in-memory logic over an already-parsed summary row.
 """
 from __future__ import annotations
 
+import os
 import re
 
 from .parsers import clean_str, parse_gene_locus, to_float
@@ -155,14 +156,17 @@ GENE_RV = {
 _RV_LOCUS_RE = re.compile(r'^(Rv\d|MTB\d)', re.I)   # H37Rv (Mycobrowser) locus-tag schemes
 
 
-def build_gene_map(gff_path):
+def build_gene_map(gff_paths):
     """{gene: Mycobrowser (H37Rv) locus tag}. Curated resistance-gene map, overlaid with any H37Rv-style
-    locus tags from the run's GFF (so an H37Rv reference contributes every gene; a non-H37Rv reference's
-    strain-specific tags are ignored in favour of the curated H37Rv equivalents)."""
+    locus tags from the run's GFF, or from each of its references' GFFs (so an H37Rv reference contributes
+    every gene; a non-H37Rv reference's strain-specific tags are ignored in favour of the curated H37Rv
+    equivalents)."""
     m = dict(GENE_RV)
-    for gene, locus in parse_gene_locus(gff_path).items():
-        if _RV_LOCUS_RE.match(locus):
-            m[gene] = locus
+    paths = [gff_paths] if (gff_paths is None or isinstance(gff_paths, (str, os.PathLike))) else gff_paths
+    for path in paths:
+        for gene, locus in parse_gene_locus(path).items():
+            if _RV_LOCUS_RE.match(locus):
+                m[gene] = locus
     return m
 
 

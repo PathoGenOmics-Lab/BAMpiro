@@ -27,6 +27,7 @@ import sys
 from datetime import datetime, timezone
 
 from qcreport.coverage import build_coverage, parse_depth_profiles, snp_per_kb, write_deletions
+from qcreport.genomes import build_genomes, pairs
 from qcreport.metrics import (ANC_DEF, DEF, DEFS, DIST, METRICS, build_gene_map, discover_extra_metrics,
                               flag_sample, het_frac, is_ancient, lineage_counts_parsed, lineage_fracs, robust)
 from qcreport.panels import build_dynamics, build_epistasis, build_snp_matrix
@@ -63,6 +64,14 @@ def build_parser():
                     help="TSV 'lineage<TAB>#hex' (e.g. mycolorsTB) to colour lineages with a canonical palette (optional).")
     ap.add_argument("--mask-bed", default=None,
                     help="BED of regions to mask (e.g. mtbc_mask.bed: PE/PPE, IS, DR, repeats) -> a 'mask regions' toggle.")
+    ap.add_argument("--ref-gff", nargs="*", default=[],
+                    help="REF=GFF3 for each reference of the run -> its own genes under its own samples (genome "
+                         "landscape, gene hotspots, go-to-gene). With these, --gff and --mask-bed are not used.")
+    ap.add_argument("--ref-mask", nargs="*", default=[],
+                    help="REF=BED for each reference: its repeat/exclude regions (the masked-regions toggle).")
+    ap.add_argument("--ref-fai", nargs="*", default=[],
+                    help="REF=FASTA index for each reference: its contigs' order and lengths, the axis its samples' "
+                         "profiles are binned on, where genes and masked regions are placed.")
     ap.add_argument("--gene-burden", default=None,
                     help="Cohort gene-burden TSV (collect_summary --gene-burden-out) -> the Functional gene burden panel (optional).")
     ap.add_argument("--dr-report", default=None,
@@ -370,8 +379,32 @@ def build_payload(args, thr, anc_thr):
 
     lineages = sorted({s["lineage"] for s in jsamples if s["lineage"]})
     n_ancient = sum(1 for s in jsamples if s["anc"])
-    mask_iv = parse_bed(args.mask_bed)
-    mask_bins, mask_pct = mask_profile(mask_iv, genome_len)
+    # Each reference's own genome (length, genes, masked regions), placed as its samples' profiles are
+    # binned. The top-level fields keep the reference most samples were mapped to, which is also what a
+    # single-reference run has always had there.
+    ref_gff, ref_mask, ref_fai = pairs(args.ref_gff), pairs(args.ref_mask), pairs(args.ref_fai)
+    genomes = {}
+    if ref_gff or ref_mask or ref_fai:
+        lengths = {}
+        for sid, m in summ.items():
+            v = to_float(m.get("length")) or to_float(m.get("genome_len"))
+            if v and ref_of.get(sid):
+                lengths[ref_of[sid]] = max(lengths.get(ref_of[sid], 0), int(v))
+        genomes = build_genomes(ref_gff, ref_mask, ref_fai, lengths, NBINS)
+    if genomes:
+        n_on = {}
+        for s in jsamples:
+            if s.get("ref"):
+                n_on[s["ref"]] = n_on.get(s["ref"], 0) + 1
+        main_ref = sorted(genomes, key=lambda r: (-n_on.get(r, 0), r))[0]
+        g0 = genomes[main_ref]
+        genome_len = g0["len"] or genome_len
+        genes, mask_bins, mask_pct, mask_iv = g0["genes"], g0["mask_bins"], g0["mask_pct"], g0["mask_iv"]
+        gene_map = build_gene_map(list(ref_gff.values()))
+    else:
+        genes, gene_map = parse_gff(args.gff), build_gene_map(args.gff)
+        mask_iv = parse_bed(args.mask_bed)
+        mask_bins, mask_pct = mask_profile(mask_iv, genome_len)
     provenance = {}
     for kv in (args.provenance or []):
         if "=" in kv:
@@ -407,8 +440,9 @@ def build_payload(args, thr, anc_thr):
     payload = {"generated": now, "version": clean_str(args.version) or "", "repo_url": REPO_URL,
                "counts": counts, "thresholds": thr, "dist": dist_keys,
                "genome_len": genome_len, "snp_density_ok": snp_density_ok, "defs": DEFS, "nbins": NBINS,
-               "genes": parse_gff(args.gff), "lin_colors": parse_lineage_colors(args.lineage_colors),
-               "gene_map": build_gene_map(args.gff), "aa2_label": args.aa2_label,
+               "genes": genes, "lin_colors": parse_lineage_colors(args.lineage_colors),
+               "gene_map": gene_map, "aa2_label": args.aa2_label,
+               "genomes": genomes or None,
                "ref_name": provenance.get('reference', ''),   # mapping reference name for the SNP tables' headers
                "section_info": SECTION_INFO,
                "gene_burden": parse_gene_burden(args.gene_burden) or None,

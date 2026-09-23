@@ -121,8 +121,10 @@ process QC_REPORT {
     path(summary)
     path(gene_burden)
     path(consensus)         // all masked consensus FASTAs (may be empty)
-    path(gff)               // reference GFF3 -> per-gene SNP-density hotspots panel
-    path(mask_bed)          // reference repeat/exclude BED -> masked-regions / callability panel
+    path(gffs, stageAs: 'ref_gff??/*')    // every reference's GFF3, in the order of ref_ids -> its genes under its samples
+    path(masks, stageAs: 'ref_mask??/*')  // every reference's repeat/exclude list, same order -> masked-regions panel
+    path(fais, stageAs: 'ref_fai??/*')    // every reference's FASTA index, same order -> the axis genes and masks are placed on
+    val(ref_ids)                          // the reference ids, in that order
     path(metadata)          // samplesheet/metadata TSV -> SNP dynamics panel (auto-detects time+group)
     path(vcfs)              // per-sample annotated VCFs -> per-SNP allele frequencies for dynamics
     path(vcfs_h37rv)        // per-sample VCFs annotated vs H37Rv -> dual amino-acid numbering (may be NO_FILE)
@@ -145,11 +147,14 @@ process QC_REPORT {
     def gate_arg = asBool(params.report_gate) ? "--gate" : ""
     def cons_arg = consensus ? "--consensus ${consensus}" : ""
     def palette  = "${projectDir}/assets/mycolorsTB_nature.tsv"
+    // REF=path for each reference, pairing the staged files with ref_ids by position. Read through their
+    // text, the blank-separated names of several files or the name of one, whichever Nextflow binds.
+    def per_ref  = { files -> [ref_ids, files.toString().tokenize(' ')].transpose()
+                                 .collect { r, f -> "'${r}=${f}'" }.join(' ') }
     """
     set -euo pipefail
-    # Optional inputs self-hide their panel when absent/empty (parse_gff & parse_bed are tolerant).
+    # Optional inputs self-hide their panel when absent/empty (the GFF, BED and index readers are tolerant).
     LC_ARG=""; [ -f "${palette}" ] && LC_ARG="--lineage-colors ${palette}"
-    MASK_ARG=""; [ -s "${mask_bed}" ] && MASK_ARG="--mask-bed ${mask_bed}"
     MD_ARG=""; [ -s "${metadata}" ] && MD_ARG="--metadata ${metadata}"
     VCF_ARG=""; [ -n "${vcfs}" ] && VCF_ARG="--vcfs ${vcfs}"
     # NO_FILE* are the per-input placeholders main.nf stages when a feature is off (assets/NO_FILE_*).
@@ -166,8 +171,10 @@ process QC_REPORT {
         --summary ${summary} \\
         ${cons_arg} \\
         --gene-burden ${gene_burden} \\
-        --gff ${gff} \\
-        \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$PL_ARG \$DR_ARG \$GC_ARG \$KRK_ARG \$DEL_ARG \$DIST_ARG \$MX_ARG \\
+        --ref-gff ${per_ref(gffs)} \\
+        --ref-mask ${per_ref(masks)} \\
+        --ref-fai ${per_ref(fais)} \\
+        \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$PL_ARG \$DR_ARG \$GC_ARG \$KRK_ARG \$DEL_ARG \$DIST_ARG \$MX_ARG \\
         --cluster-snps ${params.snp_cluster_threshold} \\
         --min-dp ${params.consensus_min_dp} \\
         --deletion-min-len ${params.deletion_min_len} \\
