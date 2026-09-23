@@ -1,4 +1,4 @@
-include { asBool; getSampleDir; getSavePath } from './utils'
+include { asBool; getSampleDir; getSavePath; refPairs } from './utils'
 nextflow.enable.dsl=2
 
 /* ====================================================================
@@ -147,10 +147,6 @@ process QC_REPORT {
     def gate_arg = asBool(params.report_gate) ? "--gate" : ""
     def cons_arg = consensus ? "--consensus ${consensus}" : ""
     def palette  = "${projectDir}/assets/mycolorsTB_nature.tsv"
-    // REF=path for each reference, pairing the staged files with ref_ids by position. Read through their
-    // text, the blank-separated names of several files or the name of one, whichever Nextflow binds.
-    def per_ref  = { files -> [ref_ids, files.toString().tokenize(' ')].transpose()
-                                 .collect { r, f -> "'${r}=${f}'" }.join(' ') }
     """
     set -euo pipefail
     # Optional inputs self-hide their panel when absent/empty (the GFF, BED and index readers are tolerant).
@@ -171,9 +167,9 @@ process QC_REPORT {
         --summary ${summary} \\
         ${cons_arg} \\
         --gene-burden ${gene_burden} \\
-        --ref-gff ${per_ref(gffs)} \\
-        --ref-mask ${per_ref(masks)} \\
-        --ref-fai ${per_ref(fais)} \\
+        --ref-gff ${refPairs(ref_ids, gffs)} \\
+        --ref-mask ${refPairs(ref_ids, masks)} \\
+        --ref-fai ${refPairs(ref_ids, fais)} \\
         \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$PL_ARG \$DR_ARG \$GC_ARG \$KRK_ARG \$DEL_ARG \$DIST_ARG \$MX_ARG \\
         --cluster-snps ${params.snp_cluster_threshold} \\
         --min-dp ${params.consensus_min_dp} \\

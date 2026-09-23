@@ -39,6 +39,15 @@ def asBool(v) {
 }
 
 /**
+ * 'REF=path' for each reference, pairing staged files with the reference ids by position. The files are
+ * read through their text: the blank-separated names of several, or the name of one, whichever Nextflow
+ * binds for the input.
+ */
+def refPairs(ids, files) {
+    return [ids, files.toString().tokenize(' ')].transpose().collect { r, f -> "'${r}=${f}'" }.join(' ')
+}
+
+/**
  * Sanitizes IDs by replacing non-alphanumeric characters with underscores
  */
 def sanitizeId(v) {
