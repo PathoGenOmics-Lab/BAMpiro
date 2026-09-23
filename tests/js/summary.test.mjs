@@ -220,4 +220,14 @@ describe("findGconv", () => {
     assert.match(f.head, /<b>0<\/b> gene-conversion events called in samples the QC does not fail/);
     assert.match(f.body, /^1 is only in samples the QC fails \(BAD\).*That event is backed/);
   });
+
+  it("names only the failed samples of events no kept sample shares", () => {
+    const t = (s, event) => ({ s, event, verdict: "gene_conversion", rep: 1, contig: "chr", start: 100, bp_reads: 0 });
+    const rep = report([sample("A", "L7"), sample("B", "L7", {}, { v: "FAIL", f: ["HIGH_MISSING"] }),
+                        sample("C", "L7", {}, { v: "FAIL", f: ["HIGH_MISSING"] })], {
+      gconv: { tracts: [t("A", "chr:1"), t("B", "chr:1"), t("C", "chr:2")] },
+    });
+    const g = load(["gconvSummary"], rep).gconvSummary();
+    assert.deepEqual(host(g.failSamples), ["C"], "B shares chr:1 with a kept sample");
+  });
 });

@@ -65,12 +65,15 @@ function gconvSummary(){
   var G=R.gconv; if(!(G&&G.tracts&&G.tracts.length))return null;
   var rep=G.tracts.some(function(t){return t.rep!=null;}), c={}, samp={};
   var qc={}; R.samples.forEach(function(s){qc[s.s]=s.v;});
-  var evPass={}, evFail={}, evBp={}, failSamp={};
+  var evPass={}, evFail={}, evBp={};
   G.tracts.forEach(function(t){if(rep&&t.rep!==1)return;c[t.verdict]=(c[t.verdict]||0)+1;
     if(t.verdict==='gene_conversion'){samp[t.s]=1;
       var key=t.event||(t.s+'|'+t.contig+'|'+t.start);
       if(t.bp_reads>0)evBp[key]=1;
-      if(qc[t.s]==='FAIL'){evFail[key]=1;failSamp[t.s]=1;}else evPass[key]=1;}});
+      if(qc[t.s]==='FAIL'){(evFail[key]=evFail[key]||{})[t.s]=1;}else evPass[key]=1;}});
+  // the failed samples named are those of the events only they carry; a failed sample sharing an
+  // event with a kept one is not what "only in samples the QC fails" is about
+  var failSamp={};Object.keys(evFail).forEach(function(k){if(!evPass[k])Object.keys(evFail[k]).forEach(function(s){failSamp[s]=1;});});
   var div={}; G.tracts.forEach(function(t){if(t.verdict==='divergent_sample')div[t.s]=1;});
   var nEv=Object.keys(evPass).length+Object.keys(evFail).filter(function(k){return !evPass[k];}).length;
   return {c:c,nCall:c.gene_conversion||0,nSamp:Object.keys(samp).length,bpEvents:Object.keys(evBp).length,nDiv:Object.keys(div).length,rep:rep,

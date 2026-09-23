@@ -460,6 +460,65 @@ def test_corroboration_says_what_the_sample_fell_short_of():
     assert "Bayes factor" not in out[1]["reason"]
 
 
+def test_an_older_reciprocal_exchange_on_a_trickle_is_demoted_like_the_caller_does():
+    """gene_conversion.py demotes a reciprocal_exchange its reads cannot carry; a per-sample file
+    written before that check still holds it, and re-running the cohort pass must correct it."""
+    rows = [tract("S0", verdict="reciprocal_exchange", donor_af_in="0.03")]
+
+    out, _ = gcc.annotate(rows, cohort(10))
+
+    assert out[0]["cohort_verdict"] == "ambiguous"
+
+
+def test_a_reason_that_already_says_why_keeps_its_notes():
+    """The per-sample caller writes the check followed by its copy-number notes."""
+    why = gcc.unreadable("5", "4", "0.9", 5)
+    rows = [tract("S0", verdict="ambiguous", n_sites="5", n_undetermined="4",
+                  reason=why + "; the locus is read at 3.0 copies")]
+
+    out, _ = gcc.annotate(rows, cohort(10))
+
+    assert out[0]["reason"].endswith("; the locus is read at 3.0 copies")
+
+
+def test_a_plasmid_does_not_make_a_clean_chromosome_look_divergent():
+    """The share of stretches is over every contig of the sample's reference, which its locus
+    rows name, not only the contigs it happens to call tracts on."""
+    rows = [tract("F", pair=f"c{p}", contig="chrom", start=10_000 + 1_000 * p, end=10_050 + 1_000 * p,
+                  verdict="ambiguous") for p in range(30)]
+    rows += [tract("F", pair=f"p{p}", contig="plasmid", start=10_000 + 1_000 * p, end=10_050 + 1_000 * p,
+                   verdict="ambiguous") for p in range(30)]
+    rows += [tract("S", pair=f"p{p}", contig="plasmid", start=10_000 + 1_000 * p, end=10_050 + 1_000 * p)
+             for p in range(5)]
+    loci = [locus("S", pair=f"c{p}", contig="chrom") for p in range(30)]
+    loci += [locus("S", pair=f"p{p}", contig="plasmid") for p in range(30)]
+
+    ev = gcc.group_events(rows)
+    assert gcc.divergent_samples(rows, 0.1, event_of=ev) == {"S": 5 / 30}, "counted on the plasmid alone"
+    assert gcc.divergent_samples(rows, 0.1, event_of=ev, locus_rows=loci) == {}, "5 of 60 is 8%"
+
+
+def test_a_sample_on_two_references_is_judged_on_each_separately(tmp_path):
+    """Its file names say which reference each row is from: divergent on refB, clean on refA."""
+    head = "\t".join(["sample", "pair_id", "contig", "verdict", "start", "end", "log10_bf", "n_sites",
+                      "n_undetermined", "donor_af_in", "tract_af"]) + "\n"
+    a = tmp_path / "X.refA.gene_conversion.tsv"
+    a.write_text(head + "X\tq1\tA\tgene_conversion\t100\t200\t9\t5\t0\t0.9\t1.0\n")
+    b = tmp_path / "X.refB.gene_conversion.tsv"
+    b.write_text(head + "".join(f"X\tp{p}\tB\tgene_conversion\t{1000 * p}\t{1000 * p + 50}\t9\t5\t0\t0.9\t1.0\n"
+                                for p in range(10)))
+    filler = tmp_path / "F.refB.gene_conversion.tsv"
+    filler.write_text(head + "".join(f"F\tp{p}\tB\tambiguous\t{1000 * p}\t{1000 * p + 50}\t1\t5\t0\t0.9\t1.0\n"
+                                     for p in range(10, 40)))
+
+    rows, _ = gcc.read_tsv([str(a), str(b), str(filler)])
+    out, _ = gcc.annotate(rows, [], cohort_size=10)
+
+    verdicts = {(r["contig"], r["verdict"]): r["cohort_verdict"] for r in out if r["sample"] == "X"}
+    assert verdicts[("A", "gene_conversion")] != "divergent_sample"
+    assert verdicts[("B", "gene_conversion")] == "divergent_sample"
+
+
 # ------------------------------------------------ the samples of one reference
 
 

@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import sys
 from collections import defaultdict
 
@@ -48,15 +49,35 @@ COHORT_COLUMNS = ["event_id", "event_samples", "event_frac", "cohort_verdict",
                   "donor_rank", "n_donors", "donor_margin", "donor_call", "is_representative"]
 
 
+def _file_unit(path):
+    """The sample and reference a per-sample file belongs to, from its name
+    (`<sample>.<ref>.gene_conversion.tsv` and `..._loci.tsv`), or None for another name."""
+    base = os.path.basename(str(path))
+    for suffix in (".gene_conversion_loci.tsv", ".gene_conversion.tsv"):
+        if base.endswith(suffix):
+            return base[:-len(suffix)]
+    return None
+
+
+def unit_of(row):
+    """What a divergence is judged on: the sample on one reference. A sample mapped against two
+    references is two genomes compared with two references, and one can be diverged from its
+    reference while the other is not."""
+    return row.get("_unit") or row.get("sample")
+
+
 def read_tsv(paths):
     """Rows, and the `#` provenance lines the per-sample files carry.
 
     Those lines say which settings produced the numbers being combined here. Dropping them would
     leave a cohort file that cannot be reproduced or compared with another run, and a cohort
     assembled from samples run with DIFFERENT settings is a thing a reader has to be able to see.
+    Each row remembers the sample and reference its file was written for (`_unit`), which the
+    output does not carry.
     """
     rows, notes = [], []
     for path in paths or []:
+        unit = _file_unit(path)
         try:
             with open(path) as fh:
                 for line in fh:
@@ -67,8 +88,10 @@ def read_tsv(paths):
                     else:
                         break
                 fh.seek(0)
-                rows.extend(r for r in csv.DictReader(
-                    (ln for ln in fh if not ln.startswith("#")), delimiter="\t"))
+                for r in csv.DictReader((ln for ln in fh if not ln.startswith("#")), delimiter="\t"):
+                    if unit:
+                        r["_unit"] = unit
+                    rows.append(r)
         except OSError:
             continue
     return rows, notes
@@ -224,7 +247,8 @@ def locus_background(locus_rows):
     return out
 
 
-def divergent_samples(tract_rows, max_locus_frac, min_loci=20, min_sample_loci=5, event_of=None):
+def divergent_samples(tract_rows, max_locus_frac, min_loci=20, min_sample_loci=5, event_of=None,
+                      locus_rows=()):
     """Samples calling tracts in so many loci at once that the reference is the problem.
 
     Gene conversion is a local event. A sample converting a quarter of every paralogous locus it
@@ -242,11 +266,16 @@ def divergent_samples(tract_rows, max_locus_frac, min_loci=20, min_sample_loci=5
     in pairs. One stretch scored against several donors yields a row per donor, and a gene family
     reports one stretch through a pair per relative: counted in pairs, a single conversion seen
     through eleven relatives put a clean sample exactly on the threshold. Rows without
-    coordinates fall back to their pair. The fraction is taken over the stretches of the
-    sample's own reference, since a sample can only call tracts in the genome it was mapped to.
+    coordinates fall back to their pair. The fraction is taken over the stretches of every contig
+    of the sample's own reference, which its per-locus rows name: counted over only the contigs
+    it has tracts on, five tracts on a plasmid made a sample with a clean chromosome divergent.
+
+    Keyed on the sample and its reference (see unit_of), not the sample alone.
     """
     event_of = event_of or {}
     units, contigs_of, by_sample = defaultdict(set), defaultdict(set), {}
+    for r in locus_rows or ():
+        contigs_of[unit_of(r)].add(r.get("contig") or "")
     for i, r in enumerate(tract_rows):
         pair = r.get("pair_id")
         if pair in (None, ""):
@@ -254,9 +283,9 @@ def divergent_samples(tract_rows, max_locus_frac, min_loci=20, min_sample_loci=5
         contig = r.get("contig") or ""
         unit = event_of.get(i) or ("pair", contig, pair)
         units[contig].add(unit)
-        contigs_of[r.get("sample")].add(contig)
+        contigs_of[unit_of(r)].add(contig)
         if readable_call(r):
-            by_sample.setdefault(r.get("sample"), set()).add(unit)
+            by_sample.setdefault(unit_of(r), set()).add(unit)
     # A fraction of a handful of loci says nothing: one tract out of three is 33% and means only
     # that the reference has three paralogous loci. Both floors are absolute for that reason, and
     # a cohort below them is left alone rather than judged on a ratio it cannot support.
@@ -288,7 +317,7 @@ def cohort_verdict(row, event, background, n_samples, min_bf, corroborated_bf,
     # corroboration rule below would otherwise let these samples vouch for each other: they share
     # a genotype, so they share their artefacts at identical coordinates, which reads as exactly
     # the independent recurrence that rule is looking for.
-    frac_div = (divergent or {}).get(row.get("sample"))
+    frac_div = (divergent or {}).get(unit_of(row))
     if frac_div is not None:
         return "divergent_sample", (
             f"this sample calls tracts in {frac_div:.0%} of its paralogous loci. Conversion is "
@@ -317,8 +346,14 @@ def cohort_verdict(row, event, background, n_samples, min_bf, corroborated_bf,
     # Both verdicts: an ambiguous row resting on a trickle still carries the reason the model
     # gave, "only 20% of the reads here carry the tract", which quotes the floor the fit was
     # parked on rather than the 3% the reads actually hold.
-    if why_not and verdict in ("gene_conversion", "ambiguous"):
-        return "ambiguous", why_not
+    # The same verdicts the per-sample caller demotes, reciprocal_exchange included, so re-running
+    # only this step corrects files written before the check. A reason that already starts with
+    # the check is such a file's own, with its copy-number and breakpoint notes after it: kept.
+    # Compared up to "read by", since this pass does not know --gconv_min_depth and writes
+    # "enough molecules" where the caller wrote "5 or more molecules".
+    if why_not and verdict in ("gene_conversion", "reciprocal_exchange", "ambiguous"):
+        reason = (row.get("reason") or "").strip()
+        return "ambiguous", reason if reason.startswith(why_not.split(" read by ")[0]) else why_not
 
     # A tract the sample alone could not commit to, corroborated by the same tract at the same
     # coordinates in a sample that could. Contamination and index hopping do not reproduce a
@@ -373,7 +408,11 @@ def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
     """
     event_of = group_events(tract_rows, slack)
     background = locus_background(locus_rows)
-    divergent = divergent_samples(tract_rows, max_locus_frac, event_of=event_of)
+    divergent = divergent_samples(tract_rows, max_locus_frac, event_of=event_of, locus_rows=locus_rows)
+    # The samples a divergence was found in, and on which contigs, since a sample on two
+    # references counts as diverged only on the one it is diverged from.
+    div_on = {(r.get("sample"), r.get("contig") or "") for r in list(tract_rows) + list(locus_rows)
+              if unit_of(r) in divergent}
 
     samples = {r.get("sample") for r in tract_rows} | {r.get("sample") for r in locus_rows}
     samples.discard(None)
@@ -391,18 +430,18 @@ def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
         contig = r.get("contig") or ""
         if contig in census:
             census[contig].add(r.get("sample"))
-    unscoped = None if n_samples is None else n_samples - len(set(divergent) & samples)
+    unscoped = None if n_samples is None else n_samples - len({s for s, _ in div_on} & samples)
 
     def cohort_of(contig):
         """(number of samples the event could have appeared in, whether that is per reference)"""
         if contig in census:
-            return len(census[contig] - set(divergent)), True
+            return len({s for s in census[contig] if (s, contig) not in div_on}), True
         return unscoped, False
 
     events = defaultdict(lambda: {"samples": set(), "called": set(), "bf": []})
     for i, r in enumerate(tract_rows):
         eid = event_of.get(i)
-        if eid is None or r.get("sample") in divergent:
+        if eid is None or unit_of(r) in divergent:
             continue
         e = events[eid]
         e["samples"].add(r.get("sample"))

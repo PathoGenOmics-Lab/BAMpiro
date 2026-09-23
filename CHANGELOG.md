@@ -47,8 +47,9 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
   A tract most of whose sites are under `--gconv_min_depth`, or whose reads carry the donor's
   bases below half the model's thinnest tract (10%), is now `ambiguous` with a reason that quotes
   the reads rather than the floor, and neither kind takes part in corroboration. The cohort pass
-  applies the same check, so re-running only that step corrects a run. On that cohort the calls
-  drop from 38 events to 4, two of them in the mixed cultures the QC also fails.
+  applies the same check, to reciprocal exchanges as well, so re-running only that step corrects
+  a run. On that cohort the calls drop from 38 events to 4, two of them in the mixed cultures the
+  QC also fails.
 
 - **The cohort's recurrence rule was measured against the wrong cohort.** It divided by every
   sample in the run, so on a cohort mapped against two references an artefact of one could never
@@ -57,7 +58,10 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
   The pooled locus statistics were keyed on the pair number alone, which pooled pair 61 of one
   reference with pair 61 of the other; they are keyed on the contig as well. The reason on a
   corroborated row quoted the Bayes factor as short of the threshold on rows at log10 BF 5.6 and a
-  threshold of 3; it now says what the row fell short of.
+  threshold of 3; it now says what the row fell short of. A diverged sample is judged on one
+  reference at a time and over every contig of it: a sample diverged from one of two references
+  lost its tracts on the other as well, and counted over only the contigs it had tracts on, five
+  tracts on a plasmid made a sample with a clean chromosome divergent.
 
 - **Kraken counted runs and read species, so a clean cohort looked contaminated.** One report
   per run became one row per run, so 185 samples gave 225 rows, and a sample's "primary taxon"
