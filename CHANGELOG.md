@@ -123,7 +123,7 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
   *Summary* that says what the run shows in sentences with their numbers (the samples to
   exclude and why, those that are another organism or were mapped to the wrong reference, the
   resistance mutations beyond each lineage's own, the alleles that swept, the gene conversion
-  called), each linking to the page that holds the evidence and saying what it does not prove.
+  called in the samples the QC keeps), each linking to the page that holds the evidence and saying what it does not prove.
   The rest is split into *Sample QC*, *Genome & genes*, *Variants over time*, *Resistance*,
   *Gene conversion* and *Diagnostics*, with a badge in the sidebar where a page needs attention.
 

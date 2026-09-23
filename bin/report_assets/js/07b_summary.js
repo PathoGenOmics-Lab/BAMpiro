@@ -57,13 +57,24 @@ function dynSummary(){
   return _dynSum;
 }
 // Gene-conversion verdicts, counting one row per event (rep===1) when the cohort step marked them.
+// Called events are also split by the QC verdict of the samples carrying them. A tract in a
+// sample the QC fails (a mixed culture, a contaminated one) is that sample's problem before it
+// is a conversion, and a summary that counts it with the rest overstates what the run found.
+// WARN counts with PASS: a sample to review is not a sample to exclude.
 function gconvSummary(){
   var G=R.gconv; if(!(G&&G.tracts&&G.tracts.length))return null;
-  var rep=G.tracts.some(function(t){return t.rep!=null;}), c={}, samp={}, bp=0;
+  var rep=G.tracts.some(function(t){return t.rep!=null;}), c={}, samp={};
+  var qc={}; R.samples.forEach(function(s){qc[s.s]=s.v;});
+  var evPass={}, evFail={}, evBp={}, failSamp={};
   G.tracts.forEach(function(t){if(rep&&t.rep!==1)return;c[t.verdict]=(c[t.verdict]||0)+1;
-    if(t.verdict==='gene_conversion'){samp[t.s]=1;if(t.bp_reads>0)bp++;}});
+    if(t.verdict==='gene_conversion'){samp[t.s]=1;
+      var key=t.event||(t.s+'|'+t.contig+'|'+t.start);
+      if(t.bp_reads>0)evBp[key]=1;
+      if(qc[t.s]==='FAIL'){evFail[key]=1;failSamp[t.s]=1;}else evPass[key]=1;}});
   var div={}; G.tracts.forEach(function(t){if(t.verdict==='divergent_sample')div[t.s]=1;});
-  return {c:c,nCall:c.gene_conversion||0,nSamp:Object.keys(samp).length,bp:bp,nDiv:Object.keys(div).length,rep:rep};
+  var nEv=Object.keys(evPass).length+Object.keys(evFail).filter(function(k){return !evPass[k];}).length;
+  return {c:c,nCall:c.gene_conversion||0,nSamp:Object.keys(samp).length,bpEvents:Object.keys(evBp).length,nDiv:Object.keys(div).length,rep:rep,
+          nEvents:nEv,nPassEvents:Object.keys(evPass).length,failOnly:nEv-Object.keys(evPass).length,failSamples:Object.keys(failSamp).sort()};
 }
 
 // ---- the finding cards ----
@@ -163,11 +174,14 @@ function findDynamics(){
 }
 function findGconv(){
   var g=gconvSummary(); if(!g)return null;
-  var head='<b>'+g.nCall+'</b> gene-conversion '+_plural(g.nCall,'event')+' called in '+g.nSamp+' '+_plural(g.nSamp,'sample');
+  var head='<b>'+g.nPassEvents+'</b> gene-conversion '+_plural(g.nPassEvents,'event')+' called in samples the QC does not fail';
   var body=[];
+  if(g.failOnly)body.push(g.failOnly+(g.nPassEvents?' more ':' ')+_plural(g.failOnly,'is','are')+' only in samples the QC fails ('+_list(g.failSamples.map(function(s){return esc(s);}),4)+'), where a mixed or contaminated culture explains donor bases first.');
+  // Counted in events like the headline: counted in calls, one event carried by two samples read
+  // as more backed events than there were events.
+  if(g.bpEvents)body.push((g.bpEvents===g.nEvents?(g.nEvents===1?'That event is':'All '+g.nEvents+' events are'):g.bpEvents+' of the '+g.nEvents+' events '+_plural(g.bpEvents,'is','are'))+' backed by a read crossing a breakpoint.');
   var rest=['ambiguous','coverage_shift','mismapping','reference_artifact'].filter(function(k){return g.c[k];}).map(function(k){return g.c[k]+' '+k.replace(/_/g,' ');});
   if(rest.length)body.push('Also '+rest.join(', ')+'.');
-  if(g.bp)body.push(g.bp+' '+_plural(g.bp,'is','are')+' backed by a read crossing a breakpoint.');
   if(g.nDiv)body.push('<b class="tone-warn">'+g.nDiv+'</b> '+_plural(g.nDiv,'sample was','samples were')+' left out because '+_plural(g.nDiv,'it calls','they call')+' tracts nearly everywhere: '+_plural(g.nDiv,'its genome differs','their genomes differ')+' from the reference as a whole.');
   return {k:'gconv',eyebrow:'Gene conversion',tone:'',head:head,body:body.join(' '),link:{href:'#gconv',t:'Inspect the tracts'},
     note:'Candidates to check in the reads, not confirmed events.'};
@@ -205,6 +219,6 @@ function renderNavBadges(){
   var c=R.counts;
   set('bdg-qc',c.FAIL?String(c.FAIL):(c.WARN?String(c.WARN):''),c.FAIL?'bad':'warn',c.FAIL?c.FAIL+' samples to exclude':(c.WARN?c.WARN+' samples to review':''));
   var d=drSummary(); set('bdg-drug',d&&d.nCarriers?String(d.nCarriers):'','bad',d&&d.nCarriers?d.nCarriers+' samples with resistance mutations beyond their lineage':'');
-  var g=gconvSummary(); set('bdg-gconv',g&&g.nCall?String(g.nCall):'','neu',g?g.nCall+' events called gene conversion':'');
+  var g=gconvSummary(); set('bdg-gconv',g&&g.nPassEvents?String(g.nPassEvents):'','neu',g?g.nPassEvents+' gene-conversion events in samples the QC does not fail':'');
   var y=dynSummary(); set('bdg-variants',y&&y.sweep.length?String(y.sweep.length):'','neu',y?y.sweep.length+' alleles sweeping toward fixation':'');
 }

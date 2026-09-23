@@ -191,3 +191,33 @@ describe("findQC", () => {
     assert.match(f.body, /more than 10% of the consensus missing/);
   });
 });
+
+describe("findGconv", () => {
+  it("counts the events of samples the QC keeps apart from those only failing samples carry", () => {
+    // A mixed or contaminated culture carries the donor's bases for reasons of its own; a summary
+    // counting its tracts with the rest overstates what the run found.
+    const t = (s, event, extra = {}) => ({ s, event, verdict: "gene_conversion", rep: 1, contig: "chr", start: 100, bp_reads: 1, ...extra });
+    const rep = report([sample("OK1", "L7"), sample("OK2", "L7"), sample("REV", "L7", {}, { v: "WARN", f: ["LOW_DEPTH"] }),
+                        sample("BAD", "L7", {}, { v: "FAIL", f: ["HIGH_MISSING"] })], {
+      gconv: { tracts: [t("OK1", "chr:1"), t("OK2", "chr:1"), t("REV", "chr:4", { bp_reads: 0 }), t("BAD", "chr:2"), t("BAD", "chr:3", { verdict: "ambiguous" })] },
+    });
+    const fn = load(["gconvSummary", "findGconv"], rep);
+    const g = fn.gconvSummary();
+    assert.equal(g.nPassEvents, 2, "a WARN sample is one to review, not one to exclude");
+    assert.equal(g.failOnly, 1);
+    const f = fn.findGconv();
+    assert.match(f.head, /<b>2<\/b> gene-conversion events called in samples the QC does not fail/);
+    assert.match(f.body, /1 more is only in samples the QC fails \(BAD\)/);
+    assert.match(f.body, /2 of the 3 events are backed by a read crossing a breakpoint/,
+      "counted in events like the headline, not in the calls of each sample");
+  });
+
+  it("does not say 'more' when no sample the QC keeps carries an event", () => {
+    const rep = report([sample("OK1", "L7"), sample("BAD", "L7", {}, { v: "FAIL", f: ["HIGH_MISSING"] })], {
+      gconv: { tracts: [{ s: "BAD", event: "chr:2", verdict: "gene_conversion", rep: 1, bp_reads: 1 }] },
+    });
+    const f = load(["gconvSummary", "findGconv"], rep).findGconv();
+    assert.match(f.head, /<b>0<\/b> gene-conversion events called in samples the QC does not fail/);
+    assert.match(f.body, /^1 is only in samples the QC fails \(BAD\).*That event is backed/);
+  });
+});
