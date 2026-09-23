@@ -335,9 +335,60 @@ def test_parse_dr_reads_the_calls_samples_and_drug_order(tmp_path):
     # drugs follow the curated first/second-line order, not alphabetical order
     assert dr["drugs"] == ["RIF", "INH", "EMB"]
     assert len(dr["calls"]) == 3
-    assert dr["calls"][0] == {"s": "S1", "drug": "INH", "gene": "katG", "mutation": "S315T",
-                              "grade": "1) Assoc w R", "gn": 1, "marker": "katG_S315T",
-                              "af": pytest.approx(0.98), "dp": 40}
+    assert dr["calls"][0] == {"s": "S1", "drug": "INH", "dr": ["INH"], "gene": "katG",
+                              "mutation": "S315T", "grade": "1) Assoc w R", "gn": 1,
+                              "marker": "katG_S315T", "af": pytest.approx(0.98), "dp": 40}
+
+
+# --------------------------------------------------------------------------- composite drug labels
+#
+# Catalogue v1.0.2 grades a variant per drug, so one marker can be established for several at once
+# and arrives under a joined label. Left whole it takes a column of its own and leaves the columns
+# of the drugs it actually names empty, which reads as "no mutation detected" for those drugs.
+
+DR_COMPOSITE = (
+    "sample\tdrug\tgene\tmutation\tgrade\tmarker_name\taf\tdp\n"
+    "S1\tINH_ETH\tinhA\tc.-777C>T\t2) Assoc w R - Interim\tinhA_c.-777C>T\t0.91\t30\n"
+    "S1\tAMI_KAN_CAP\trrs\tn.1401A>G\t1) Assoc w R\trrs_n.1401A>G\t0.99\t50\n"
+    "S2\tBDQ_CFZ\tmmpL5\tLoF\t2) Assoc w R - Interim\tmmpL5_LoF\t0.88\t25\n"
+)
+
+
+def test_a_composite_label_lands_in_every_drug_it_names(tmp_path):
+    dr = qc_parsers.parse_dr(write(tmp_path / "dr.tsv", DR_COMPOSITE))
+
+    assert dr["drugs"] == ["INH", "AMI", "KAN", "CAP", "ETH", "BDQ", "CFZ"]
+    assert [c["dr"] for c in dr["calls"]] == [["INH", "ETH"], ["AMI", "KAN", "CAP"], ["BDQ", "CFZ"]]
+
+
+def test_the_label_itself_survives_for_the_calls_table(tmp_path):
+    """The matrix expands a composite; the table and the TSV must still say what the file said,
+    because `INH_ETH` is the catalogue's own statement about that variant."""
+    calls = qc_parsers.parse_dr(write(tmp_path / "dr.tsv", DR_COMPOSITE))["calls"]
+
+    assert [c["drug"] for c in calls] == ["INH_ETH", "AMI_KAN_CAP", "BDQ_CFZ"]
+
+
+def test_amikacin_gets_a_column_of_its_own(tmp_path):
+    """v1.0.0 never used the AMI label at all, so no report built against it could show one. The
+    ordering list spelled it AMK, which the catalogue does not use, so even the placeholder missed."""
+    dr = qc_parsers.parse_dr(write(tmp_path / "dr.tsv", DR_COMPOSITE))
+
+    assert "AMI" in dr["drugs"]
+    assert dr["drugs"].index("AMI") < dr["drugs"].index("KAN")   # curated order, not alphabetical
+
+
+@pytest.mark.parametrize("label, expected", [
+    ("RIF", ["RIF"]),
+    ("INH_ETH", ["INH", "ETH"]),
+    ("AMI_KAN_CAP", ["AMI", "KAN", "CAP"]),
+    ("OTHER", ["OTHER"]),                    # a real label, and not a composite despite being plural
+    ("SOME_PANEL_CODE", ["SOME_PANEL_CODE"]),  # somebody else's naming, left alone rather than chopped
+    ("RIF_ZZZ", ["RIF_ZZZ"]),                # one unknown part is enough to leave the whole label be
+    ("", []),
+])
+def test_components_of(label, expected):
+    assert qc_parsers._dr_components(label) == expected
 
 
 def test_parse_dr_extracts_the_leading_who_grade_number(tmp_path):
@@ -554,8 +605,8 @@ def test_parse_kraken_summarises_the_species_composition(tmp_path):
     assert sample["s"] == "S1"
     assert sample["unclassified"] == 12.0
     assert sample["classified"] == 88.0
-    assert sample["primary"] == {"name": "Mycobacterium tuberculosis", "pct": 70.0}
-    assert sample["secondary"] == {"name": "Staphylococcus aureus", "pct": 10.0}
+    assert sample["primary"] == {"name": "Mycobacterium tuberculosis", "rank": "S", "pct": 70.0}
+    assert sample["secondary"] == {"name": "Staphylococcus aureus", "rank": "S", "pct": 10.0}
     assert len(sample["top"]) == 2
 
 
@@ -565,7 +616,7 @@ def test_parse_kraken_derives_the_sample_id_from_the_file_name(tmp_path):
     assert [s["s"] for s in qc_parsers.parse_kraken([a, b])["samples"]] == ["S1", "S2"]
 
 
-def test_parse_kraken_keeps_only_the_top_six_species(tmp_path):
+def test_parse_kraken_keeps_only_the_top_six_taxa(tmp_path):
     body = "".join(f"{i}.00\t10\t10\tS\t{i}\ttaxon{i}\n" for i in range(1, 12))
     path = write(tmp_path / "S1.kraken.report", body)
     sample = qc_parsers.parse_kraken([path])["samples"][0]
@@ -589,6 +640,112 @@ def test_parse_kraken_skips_an_uninformative_report(tmp_path):
 @pytest.mark.parametrize("paths", [None, [], [MISSING], ["", None]])
 def test_parse_kraken_without_any_readable_report_is_none(paths):
     assert qc_parsers.parse_kraken(paths) is None
+
+
+def kraken_report(tree, unclassified):
+    """A Kraken2 report laid out the way Kraken2 writes one: clade %, clade reads, own reads, rank,
+    taxid and a name indented two spaces per level. `tree` is (name, rank, taxid, own reads,
+    [children]), so the clade totals are always consistent with the reads under them."""
+    rows = []
+
+    def clade(node, depth):
+        name, rank, taxid, own, kids = node
+        at = len(rows)
+        rows.append(None)
+        total = own + sum(clade(k, depth + 1) for k in kids)
+        rows[at] = (total, own, rank, taxid, "  " * depth + name)
+        return total
+
+    classified = clade(tree, 0)
+    grand = classified + unclassified
+    lines = [f"{100 * unclassified / grand:6.2f}\t{unclassified}\t{unclassified}\tU\t0\tunclassified"]
+    lines += [f"{100 * t / grand:6.2f}\t{t}\t{o}\t{r}\t{x}\t{n}" for t, o, r, x, n in rows]
+    return "\n".join(lines) + "\n"
+
+
+def mtb_culture(mtbc=8900, avium=40, human=20, extra=()):
+    """An M. tuberculosis culture as Kraken2 sees it: most reads stop at the complex, a few reach a
+    species. `extra` adds whole clades under 'cellular organisms' (a contaminant, say)."""
+    myco = ("Mycobacterium", "G", "1763", 300, [
+        ("Mycobacterium tuberculosis complex", "G1", "77643", mtbc, [
+            ("Mycobacterium tuberculosis", "S", "1773", 450, []),
+            ("Mycobacterium bovis", "S", "1765", 50, [])]),
+        ("Mycobacterium avium", "S", "1764", avium, [])])
+    cellular = [("Bacteria", "D", "2", 15, [("Actinomycetota", "P", "201174", 10, [myco])] + list(extra))]
+    if human:
+        cellular.append(("Eukaryota", "D", "2759", 0, [("Homo sapiens", "S", "9606", human, [])]))
+    return ("root", "R", "1", 10, [("cellular organisms", "R1", "131567", 5, cellular)])
+
+
+def enterobacter(reads):
+    return ("Enterobacterales", "O", "91347", 30, [
+        ("Enterobacter cloacae complex", "G1", "354276", reads, [("Enterobacter hormaechei", "S", "158836", 60, [])])])
+
+
+def test_parse_kraken_names_the_clade_the_reads_sit_in_not_the_species(tmp_path):
+    # Most MTB reads stop at the complex, so the species holds 4.5%. Reading species-level called
+    # every clean culture contaminated; the complex holds 94% and is what the sample is.
+    path = write(tmp_path / "S1__R1.kraken.report", kraken_report(mtb_culture(), 200))
+    kraken = qc_parsers.parse_kraken([path])
+    sample = kraken["samples"][0]
+    assert sample["primary"] == {"name": "Mycobacterium tuberculosis complex", "rank": "G1", "pct": 94.0}
+    assert kraken["target"] == {"name": "Mycobacterium tuberculosis complex", "rank": "G1", "n": 1}
+    assert sample["target_pct"] == pytest.approx(100 * 9400 / 9800, abs=0.01)
+    assert sample["unclassified"] == 2.0
+
+
+def test_parse_kraken_lists_what_lies_outside_the_primary_lineage(tmp_path):
+    path = write(tmp_path / "S1.kraken.report", kraken_report(mtb_culture(), 200))
+    sample = qc_parsers.parse_kraken([path])["samples"][0]
+    assert sample["secondary"] == {"name": "Mycobacterium avium", "rank": "S", "pct": 0.4}
+    assert [t["name"] for t in sample["top"]] == [
+        "Mycobacterium tuberculosis complex", "Mycobacterium avium", "Homo sapiens"]
+
+
+def test_parse_kraken_merges_the_runs_of_one_sample_by_their_reads(tmp_path):
+    # One sample sequenced twice used to become two rows, so a cohort of 185 samples reported
+    # "225 possibly contaminated". The runs now add up, weighted by the reads each produced.
+    a = write(tmp_path / "S1__RUN1.kraken.report", kraken_report(mtb_culture(), 200))
+    b = write(tmp_path / "S1__RUN2.kraken.report", kraken_report(mtb_culture(mtbc=0, avium=0, human=0,
+                                                                            extra=[enterobacter(700)]), 100))
+    kraken = qc_parsers.parse_kraken([a, b])
+    assert len(kraken["samples"]) == 1
+    sample = kraken["samples"][0]
+    assert sample["runs"] == 2
+    assert sample["reads"] == 10000 + 1730
+    assert sample["primary"]["name"] == "Mycobacterium tuberculosis complex"
+    assert sample["secondary"]["name"] == "Enterobacter cloacae complex"
+    assert sample["target_pct"] < 90
+
+
+def test_parse_kraken_scores_every_sample_against_the_cohort_target(tmp_path):
+    # A culture of the wrong organism is not "a clean sample of Enterobacter": measured against
+    # what the cohort is, it carries almost none of the target.
+    paths = [write(tmp_path / f"S{i}.kraken.report", kraken_report(mtb_culture(), 200)) for i in (1, 2)]
+    paths.append(write(tmp_path / "S3.kraken.report",
+                       kraken_report(mtb_culture(mtbc=20, avium=0, human=0, extra=[enterobacter(7000)]), 100)))
+    kraken = qc_parsers.parse_kraken(paths)
+    by = {s["s"]: s for s in kraken["samples"]}
+    assert kraken["target"]["name"] == "Mycobacterium tuberculosis complex"
+    assert kraken["target"]["n"] == 2
+    assert by["S3"]["primary"]["name"] == "Enterobacter cloacae complex"
+    assert by["S3"]["target_pct"] < 50
+    assert by["S1"]["target_pct"] > 90
+
+
+def test_parse_kraken_keeps_a_mixed_culture_on_its_dominant_clade(tmp_path):
+    path = write(tmp_path / "S1.kraken.report", kraken_report(mtb_culture(mtbc=5500, avium=3500), 200))
+    sample = qc_parsers.parse_kraken([path])["samples"][0]
+    assert sample["primary"]["name"] == "Mycobacterium tuberculosis complex"
+    assert sample["secondary"]["name"] == "Mycobacterium avium"
+    assert sample["target_pct"] < 70
+
+
+def test_parse_kraken_never_names_a_strain(tmp_path):
+    strain = ("root", "R", "1", 0, [("Escherichia coli", "S", "562", 100, [
+        ("Escherichia coli O157:H7", "S1", "83334", 900, [])])])
+    path = write(tmp_path / "S1.kraken.report", kraken_report(strain, 0))
+    assert qc_parsers.parse_kraken([path])["samples"][0]["primary"]["name"] == "Escherichia coli"
 
 
 # --------------------------------------------------------------------------- parse_gff / parse_gene_locus
@@ -744,6 +901,28 @@ def test_parse_sample_meta_of_the_committed_samplesheet_is_none(data_dir):
 @pytest.mark.parametrize("path", [None, "", MISSING])
 def test_parse_sample_meta_of_an_absent_file_is_none(path):
     assert qc_parsers.parse_sample_meta(path) is None
+
+
+def test_parse_collection_dates_reads_the_samplesheet_date_column(tmp_path):
+    sheet = write(tmp_path / "sheet.tsv", "sampleId\trunId\tcollection_date\nA\tR1\t2019-03-01\n"
+                                          "A\tR2\t2019-03-01\nB\tR1\tNA\n")
+    assert qc_parsers.parse_collection_dates(sheet) == {"A": "2019-03-01"}
+
+
+@pytest.mark.parametrize("column", ["date", "year", "sampling_date", "Collection_Year", "fecha"])
+def test_parse_collection_dates_recognises_the_usual_names(tmp_path, column):
+    sheet = write(tmp_path / "sheet.tsv", f"sampleId\t{column}\nA\t2011\n")
+    assert qc_parsers.parse_collection_dates(sheet) == {"A": "2011"}
+
+
+def test_parse_collection_dates_without_a_date_column_is_empty(tmp_path):
+    # passage/timepoint columns order a series; they are not a date and must not be read as one
+    assert qc_parsers.parse_collection_dates(write(tmp_path / "s.tsv", "sampleId\tpassage\nA\t3\n")) == {}
+
+
+@pytest.mark.parametrize("path", [None, "", MISSING])
+def test_parse_collection_dates_of_an_absent_file_is_empty(path):
+    assert qc_parsers.parse_collection_dates(path) == {}
 
 
 def test_parse_sample_meta_without_rows_or_header_is_none(tmp_path):

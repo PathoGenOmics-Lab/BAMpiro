@@ -37,7 +37,8 @@ def _asset(name):
 
 # CSS split into ordered modules under report_assets/css/ (base tokens -> layout -> components ->
 # panels); concatenated in cascade order, so the result is identical to a single stylesheet.
-_CSS_MODULES = ["css/01_base.css", "css/02_layout.css", "css/03_components.css", "css/04_panels.css"]
+_CSS_MODULES = ["css/01_base.css", "css/02_layout.css", "css/03_components.css", "css/04_panels.css",
+                "css/05_pages.css"]
 CSS = "".join(_asset(m) for m in _CSS_MODULES)
 
 # The report front-end is one ES5 IIFE split into ordered modules under report_assets/js/ (one per
@@ -45,9 +46,9 @@ CSS = "".join(_asset(m) for m in _CSS_MODULES)
 # to a single file. Order matters: 01 opens the IIFE and sets up shared state; 14 wires events + closes it.
 _JS_MODULES = [
     "js/01_prelude.js", "js/02_qcspace.js", "js/03_state.js", "js/04_helpers.js",
-    "js/05_insights_qc.js", "js/06_insights_genome.js", "js/07_render_core.js", "js/08_curation.js",
-    "js/09_genome_genes.js", "js/10_dynamics.js", "js/11_epistasis.js", "js/12_snpmatrix.js",
-    "js/13_drug_kraken.js", "js/14_boot.js",
+    "js/05_insights_qc.js", "js/06_insights_genome.js", "js/07_render_core.js", "js/07b_summary.js",
+    "js/08_curation.js", "js/09_genome_genes.js", "js/10_dynamics.js", "js/11_epistasis.js",
+    "js/12_snpmatrix.js", "js/13_drug_kraken.js", "js/14_boot.js",
 ]
 JS = "".join(_asset(m) for m in _JS_MODULES)
 

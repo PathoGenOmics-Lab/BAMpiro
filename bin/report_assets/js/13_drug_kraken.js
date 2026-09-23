@@ -1,96 +1,144 @@
 function drGColor(gn){ return (gn===1||gn===2)?'#dc2626':(gn===3?'#d97706':((gn===4||gn===5)?'#94a3b8':'#b8c2cf')); }
 function drGInk(gn){ return (gn===1||gn===2||gn===3)?'#fff':'#1f2a37'; }   // dark ink on the pale grey (4-5 / unknown) badges so the label stays legible
-function drStatus(gns){ var r=false,u=false,n=false; for(var i=0;i<gns.length;i++){var g=gns[i]; if(g===1||g===2)r=true; else if(g===3)u=true; else if(g===4||g===5)n=true;} return r?{t:'R',c:'#dc2626'}:(u?{t:'?',c:'#d97706'}:(n?{t:'&#183;',c:'#94a3b8'}:{t:'',c:'var(--track)'})); }
-// ---- Kraken2 taxonomic composition (contamination / host check on the reads before mapping) ----
+// The last branch used to be reached two ways: no mutation at all, and a mutation whose grade is
+// not a WHO number. Both rendered as an empty cell, so a detected variant the catalogue does not
+// grade looked exactly like a clean drug. Catalogue v1.0.0 had 6,056 such rows and ten of them are
+// WHO grade 1-2 in v1.0.2. An ungraded call now gets a mark of its own; only a genuine no-call is blank.
+function drStatus(gns){ var r=false,u=false,x=false,n=false; for(var i=0;i<gns.length;i++){var g=gns[i]; if(g===1||g===2)r=true; else if(g===3)u=true; else if(g===4||g===5)n=true; else x=true;} return r?{t:'R',c:'#dc2626'}:(u?{t:'?',c:'#d97706'}:(x?{t:'!',c:'#7c6f9f'}:(n?{t:'&#183;',c:'#94a3b8'}:{t:'',c:'var(--track)'}))); }
+// ---- Kraken2: one row per sample, worst first; the flagged ones by default ----
+var krkView={all:false};
+var KRK_TAXPAL=['#e0544f','#e0a11f','#8a63c9','#d06fae','#26a0a0','#c98a3b','#3b7dd8','#7a8794'];
+var KRK_STATE={off:['other organism','bad'],mixed:['mixed','warn'],uncl:['many unclassified','warn'],ok:['clean','good']};
 function renderKraken(){
   var host=el('kraken_body'), sec=el('kraken'); if(!host)return;
   var K=R.kraken;
   if(!(K&&K.samples&&K.samples.length)){ if(sec)sec.style.display='none'; var nv=el('nav-kraken'); if(nv)nv.style.display='none'; return; }
-  var rows=K.samples.slice().sort(function(a,b){ return (a.primary?a.primary.pct:0)-(b.primary?b.primary.pct:0); });  // most-contaminated (lowest primary %) first
-  // ---- cohort stacked-composition plot: one bar per sample, full taxa breakdown ----
-  var agg={}; rows.forEach(function(s){ (s.top||[]).forEach(function(t){ agg[t.name]=(agg[t.name]||0)+t.pct; }); });
-  var taxa=Object.keys(agg).sort(function(a,b){ return agg[b]-agg[a]; }).slice(0,8);
-  var TAXPAL=['#3b7dd8','#e0544f','#2ea36b','#e0a11f','#8a63c9','#26a0a0','#d06fae','#c98a3b'], OTHERC='#9aa7b6';
-  var tcol={}; taxa.forEach(function(t,i){ tcol[t]=TAXPAL[i%TAXPAL.length]; });
-  var kW=Math.max(320,(host.clientWidth||760)), kLab=Math.min(150,Math.round(kW*0.28)), kRP=10, kBx=kLab, kBw=kW-kLab-kRP,
-      kRowH=Math.max(15,Math.min(22,Math.floor(340/rows.length))), kTop=6, kH=kTop+rows.length*kRowH+20;
-  var ksvg='<svg width="'+kW+'" height="'+kH+'" style="display:block;max-width:100%">';
-  [0,0.5,1].forEach(function(f){ var x=kBx+f*kBw; ksvg+='<line x1="'+x.toFixed(1)+'" y1="'+kTop+'" x2="'+x.toFixed(1)+'" y2="'+(kTop+rows.length*kRowH).toFixed(1)+'" stroke="'+TH.grid+'"/><text x="'+x.toFixed(1)+'" y="'+(kH-6)+'" text-anchor="'+(f===0?'start':f===1?'end':'middle')+'" font-size="9.5" fill="'+TH.mut+'">'+(f*100)+'%</text>'; });
-  rows.forEach(function(s,i){
-    var y=kTop+i*kRowH, cx=kBx, used=0, arr=s.top||[];
-    ksvg+='<g data-s="'+esc(s.s)+'" style="cursor:pointer"><text x="'+(kLab-6)+'" y="'+(y+kRowH/2+3).toFixed(1)+'" text-anchor="end" font-size="10" fill="'+TH.ink+'">'+esc(s.s.length>20?s.s.slice(0,19)+'…':s.s)+'</text>';
-    taxa.forEach(function(t){ var m=null; for(var j=0;j<arr.length;j++){ if(arr[j].name===t){ m=arr[j]; break; } }
-      if(m&&m.pct>0){ var w=m.pct/100*kBw; ksvg+='<rect x="'+cx.toFixed(1)+'" y="'+(y+2).toFixed(1)+'" width="'+Math.max(0.4,w).toFixed(1)+'" height="'+(kRowH-4)+'" fill="'+tcol[t]+'"><title>'+esc(s.s)+' · '+esc(t)+' '+m.pct.toFixed(1)+'%</title></rect>'; cx+=w; used+=m.pct; } });
-    var other=Math.max(0,(s.classified||0)-used); if(other>0.05){ var wo=other/100*kBw; ksvg+='<rect x="'+cx.toFixed(1)+'" y="'+(y+2).toFixed(1)+'" width="'+wo.toFixed(1)+'" height="'+(kRowH-4)+'" fill="'+OTHERC+'"><title>'+esc(s.s)+' · other classified '+other.toFixed(1)+'%</title></rect>'; cx+=wo; }
-    var unc=s.unclassified||0; if(unc>0.05){ var wu=unc/100*kBw; ksvg+='<rect x="'+cx.toFixed(1)+'" y="'+(y+2).toFixed(1)+'" width="'+wu.toFixed(1)+'" height="'+(kRowH-4)+'" fill="'+TH.track+'"><title>'+esc(s.s)+' · unclassified '+unc.toFixed(1)+'%</title></rect>'; }
-    ksvg+='</g>';
-  });
-  ksvg+='</svg>';
-  var kleg='<div class="krk-legend">'+taxa.map(function(t){ return '<span><i style="background:'+tcol[t]+'"></i>'+esc(t)+'</span>'; }).join('')+
-    '<span><i style="background:'+OTHERC+'"></i>other classified</span><span><i style="background:'+TH.track+'"></i>unclassified</span> <span class="krk-mut">- one bar per sample, worst first; hover a segment for the %. Click a bar/row to highlight the sample everywhere.</span></div>';
-  var body=rows.map(function(s){
-    var pri=s.primary?s.primary.pct:0, unc=s.unclassified||0, other=Math.max(0,100-pri-unc), lowPri=pri<90, hiUnc=unc>15;
-    var bar='<div class="krk-bar">'+
-      '<div class="krk-seg" style="width:'+pri.toFixed(1)+'%;background:'+(lowPri?'#e0a11f':'#2ea36b')+'" title="primary: '+esc(s.primary?s.primary.name:'-')+' '+pri.toFixed(1)+'%"></div>'+
-      '<div class="krk-seg" style="width:'+other.toFixed(1)+'%;background:#c0704f" title="other classified '+other.toFixed(1)+'%"></div>'+
-      '<div class="krk-seg" style="width:'+unc.toFixed(1)+'%;background:var(--track)" title="unclassified '+unc.toFixed(1)+'%"></div></div>';
-    return '<tr class="hit" data-s="'+esc(s.s)+'"'+(st.hi==s.s?' style="background:'+TH.hl+'"':'')+'><td class="s">'+esc(s.s)+'</td>'+
-      '<td style="text-align:left"><b>'+esc(s.primary?s.primary.name:'-')+'</b></td>'+
-      '<td'+(lowPri?' style="color:var(--fail);font-weight:600"':'')+'>'+pri.toFixed(1)+'</td>'+
-      '<td style="text-align:left">'+((s.secondary&&s.secondary.pct>=1)?esc(s.secondary.name)+' <span class="krk-mut">'+s.secondary.pct.toFixed(1)+'%</span>':'<span class="krk-mut">-</span>')+'</td>'+
-      '<td'+(hiUnc?' style="color:var(--warn)"':'')+'>'+unc.toFixed(1)+'</td>'+
-      '<td class="krk-barcell">'+bar+'</td></tr>';
-  }).join('');
-  host.innerHTML='<div class="krk-chart">'+kleg+'<div class="krk-plotscroll">'+ksvg+'</div></div>'+
-    '<div class="gtable" style="margin-top:14px"><table class="krktable"><thead><tr><th class="s">Sample</th><th style="text-align:left">Primary taxon</th><th>Primary %</th><th style="text-align:left">Top other</th><th>Unclass. %</th><th style="text-align:left">Composition</th></tr></thead><tbody>'+body+'</tbody></table></div>';
-  Array.prototype.forEach.call(host.querySelectorAll('[data-s]'),function(e){e.onclick=function(){setHi(e.getAttribute('data-s'));};});
+  var tgt=krkTarget();
+  var all=K.samples.slice().sort(function(a,b){return (krkPurity(a)-krkPurity(b))||(b.unclassified-a.unclassified)||(a.s<b.s?-1:1);});
+  var flagged=all.filter(function(k){return krkState(k)!=='ok';});
+  var showAll=krkView.all||!flagged.length, rows=showAll?all:flagged;
+  // one colour per taxon across every row: the target in the pass colour, then the most abundant others
+  var agg={}; rows.forEach(function(k){(k.top||[]).forEach(function(t){if(t.name!==tgt)agg[t.name]=(agg[t.name]||0)+t.pct;});});
+  var others=Object.keys(agg).sort(function(a,b){return agg[b]-agg[a];}).slice(0,KRK_TAXPAL.length);
+  var tcol={}; tcol[tgt]='var(--pass)'; others.forEach(function(t,i){tcol[t]=KRK_TAXPAL[i];});
+  function comp(k){var used=0,h='';
+    (k.top||[]).forEach(function(t){var c=tcol[t.name]; if(!c||!(t.pct>0))return; used+=t.pct;
+      h+='<span style="width:'+t.pct.toFixed(2)+'%;background:'+c+'" title="'+esc(t.name)+' '+t.pct.toFixed(1)+'% of reads"></span>';});
+    var other=Math.max(0,(k.classified||0)-used); if(other>0.05)h+='<span style="width:'+other.toFixed(2)+'%;background:#9aa7b6" title="other classified '+other.toFixed(1)+'%"></span>';
+    if(k.unclassified>0.05)h+='<span style="width:'+k.unclassified.toFixed(2)+'%;background:var(--track)" title="unclassified '+k.unclassified.toFixed(1)+'%"></span>';
+    return '<div class="krk-bar">'+h+'</div>';}
+  function taxon(t){return t?'<i>'+esc(t.name)+'</i> <span class="krk-mut">'+t.pct.toFixed(1)+'%</span>':'<span class="krk-mut">-</span>';}
+  var body=rows.map(function(k){var st0=krkState(k),lab=KRK_STATE[st0],p=krkPurity(k);
+    var next=(k.secondary&&k.secondary.pct>=0.5)?k.secondary:null;
+    return '<tr class="hit" data-s="'+esc(k.s)+'"'+(st.hi==k.s?' style="background:'+TH.hl+'"':'')+'><td class="s">'+esc(k.s)+'</td>'+
+      '<td style="text-align:left"><span class="tag '+lab[1]+'">'+lab[0]+'</span></td>'+
+      '<td class="num"><span class="krk-pur"><span class="krk-purbar"><span style="width:'+Math.max(0,Math.min(100,p)).toFixed(1)+'%;background:'+(st0==='off'?'var(--fail)':(st0==='mixed'?'var(--warn)':'var(--pass)'))+'"></span></span>'+p.toFixed(1)+'</span></td>'+
+      '<td style="text-align:left">'+taxon(k.primary)+'</td>'+
+      '<td style="text-align:left">'+taxon(next)+'</td>'+
+      '<td'+(k.unclassified>KRK_UNCL?' style="color:var(--warn);font-weight:600"':'')+'>'+k.unclassified.toFixed(1)+'</td>'+
+      '<td>'+(k.runs||1)+'</td>'+
+      '<td class="krk-barcell">'+comp(k)+'</td></tr>';}).join('');
+  var legend='<div class="krk-legend">'+[tgt].concat(others).map(function(t){return '<span><i style="background:'+tcol[t]+'"></i>'+esc(t)+'</span>';}).join('')+
+    '<span><i style="background:#9aa7b6"></i>other classified</span><span><i style="background:var(--track)"></i>unclassified</span></div>';
+  host.innerHTML='<div class="dr-controls">'+
+      '<span class="seg" id="krkseg"><button data-v="f"'+(!showAll?' class="on"':'')+(flagged.length?'':' disabled')+'>flagged <b>'+flagged.length+'</b></button><button data-v="a"'+(showAll?' class="on"':'')+'>all <b>'+all.length+'</b></button></span>'+
+      '<span class="c">sorted by the share of classified reads in <i>'+esc(tgt)+'</i>, lowest first; below '+KRK_PURE+'% is mixed, below '+KRK_OFF+'% another organism</span></div>'+
+    legend+
+    '<div class="gtable krk-table"><table class="krktable"><thead><tr><th class="s">Sample</th><th style="text-align:left">Status</th><th title="share of the classified reads in '+esc(tgt)+', the cohort target">In target %</th><th style="text-align:left">Dominant taxon</th><th style="text-align:left">Next taxon</th><th>Unclass. %</th><th title="Kraken2 reports merged for this sample">Runs</th><th style="text-align:left">Composition of all reads</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+  Array.prototype.forEach.call(host.querySelectorAll('#krkseg button'),function(b){b.onclick=function(){krkView.all=(b.getAttribute('data-v')==='a');renderKraken();};});
+  Array.prototype.forEach.call(host.querySelectorAll('tr[data-s]'),function(e){e.onclick=function(){setHi(e.getAttribute('data-s'));};});
 }
-var drState={q:''};
+// ---- Drug resistance: mutations first (grouped across samples), then the sample x drug matrix and every call ----
+var drState={q:'',view:'mut',g:{r:true,u:false,n:false,x:false},open:{}};
+var DR_GRADES=[['r','1–2 associated','#dc2626'],['u','3 uncertain','#d97706'],['n','4–5 not associated','#94a3b8'],['x','ungraded','#7c6f9f']];
+function drGClass(gn){return (gn===1||gn===2)?'r':(gn===3?'u':((gn===4||gn===5)?'n':'x'));}
 function renderDrug(){
   var host=el('drug_body'), sec=el('drug'); if(!host)return;
   var D=R.dr;
   if(!(D&&D.calls&&D.calls.length)){ if(sec)sec.style.display='none'; var nv=el('nav-drug'); if(nv)nv.style.display='none'; return; }
   if(sec)sec.style.display='';
-  var samples=D.samples, drugs=D.drugs, calls=D.calls;
-  var cell={}, cmut={};
-  calls.forEach(function(c){ (cell[c.s]=cell[c.s]||{}); (cell[c.s][c.drug]=cell[c.s][c.drug]||[]).push(c.gn); (cmut[c.s]=cmut[c.s]||{}); (cmut[c.s][c.drug]=cmut[c.s][c.drug]||[]).push(c); });
-  var mx='<div class="dr-mxwrap"><table class="drmx"><thead><tr><th class="dr-corner">sample \\ drug</th>'+
-    drugs.map(function(dr){return '<th class="dr-hcell" title="'+esc(dr)+'"><span class="dr-h">'+esc(dr)+'</span></th>';}).join('')+'</tr></thead><tbody>'+
-    samples.map(function(s){ return '<tr><th class="dr-row" title="'+esc(s)+'">'+esc(s)+'</th>'+drugs.map(function(dr){
-      var gns=(cell[s]||{})[dr];
-      if(!gns) return '<td class="drmx-cell" title="'+esc(s)+' &#183; '+esc(dr)+': no mutation detected"></td>';
-      var st=drStatus(gns);
-      var muts=((cmut[s]||{})[dr]||[]).map(function(c){return c.gene+' '+c.mutation+(c.gn?(' (WHO '+c.gn+')'):'');}).join('; ');
-      return '<td class="drmx-cell" style="background:'+st.c+'" title="'+esc(s)+' &#183; '+esc(dr)+' &#8212; '+esc(muts)+'"><b>'+st.t+'</b></td>';
-    }).join('')+'</tr>'; }).join('')+'</tbody></table></div>';
-  host.innerHTML=
-    '<div class="dr-legend">'+
-      '<span title="WHO groups 1-2: associated with resistance"><i style="background:#dc2626"></i>1&#8211;2 associated with R</span>'+
-      '<span title="WHO group 3: uncertain significance"><i style="background:#d97706"></i>3 uncertain</span>'+
-      '<span title="WHO groups 4-5: not associated with resistance"><i style="background:#94a3b8"></i>4&#8211;5 not associated</span>'+
-      '<span class="c">Cell = worst grade per drug (R / ? / &#183;). A genomic screen (pathotypr, WHO catalogue, H37Rv numbering), not a clinical DST result.</span></div>'+
-    mx+
-    '<div class="dr-controls"><input id="drq" class="dyn-search" type="search" placeholder="filter by sample / drug / gene / mutation..." value="'+esc(drState.q)+'"><button class="dyn-btn" id="drdl" title="Download every resistance call as a TSV">'+icon('download')+'download calls (TSV)</button><span class="dyn-count" id="drcount"></span></div>'+
-    '<div class="epitbl-wrap"><table class="epitbl" id="drtable"></table></div>';
-  function draw(){
-    var q=drState.q.toLowerCase();
-    var rows=calls.filter(function(c){ return !q||(c.s.toLowerCase().indexOf(q)>=0)||(c.drug.toLowerCase().indexOf(q)>=0)||(c.gene.toLowerCase().indexOf(q)>=0)||(c.mutation.toLowerCase().indexOf(q)>=0); });
+  var sum=drSummary(), calls=D.calls, drugs=D.drugs;
+  var linOf={}; R.samples.forEach(function(s){linOf[s.s]=untyped(s.lineage)?null:linMain(s.lineage);});
+  var wideKey={}; sum.wide.forEach(function(m){wideKey[m.key]=m.wide;});
+  function gradeOn(c){return !!drState.g[drGClass(c.gn)];}
+  function qOk(c){var q=drState.q.toLowerCase(); return !q||(c.s.toLowerCase().indexOf(q)>=0)||(c.drug.toLowerCase().indexOf(q)>=0)||(c.gene.toLowerCase().indexOf(q)>=0)||(c.mutation.toLowerCase().indexOf(q)>=0);}
+  var gradeBtns=DR_GRADES.map(function(g){var n=calls.filter(function(c){return drGClass(c.gn)===g[0];}).length;
+    return '<button data-g="'+g[0]+'"'+(drState.g[g[0]]?' class="on"':'')+(n?'':' disabled')+'><i style="background:'+g[2]+'"></i>'+g[1]+' <b>'+n+'</b></button>';}).join('');
+  host.innerHTML='<div class="dr-controls">'+
+      '<span class="seg" id="drview"><button data-v="mut"'+(drState.view==='mut'?' class="on"':'')+'>mutations</button><button data-v="mx"'+(drState.view==='mx'?' class="on"':'')+'>samples &#215; drugs</button><button data-v="calls"'+(drState.view==='calls'?' class="on"':'')+'>every call</button></span>'+
+      '<span class="seg dr-grades" id="drgrades" title="WHO confidence grades to show">'+gradeBtns+'</span>'+
+      '<input id="drq" class="dyn-search" type="search" placeholder="filter by sample / drug / gene / mutation..." value="'+esc(drState.q)+'">'+
+      '<button class="dyn-btn" id="drdl" title="Download every resistance call as a TSV">'+icon('download')+'download calls (TSV)</button>'+
+      '<span class="dyn-count" id="drcount"></span></div><div id="drview_body"></div>';
+  function mutView(){
+    var agg={},order=[];
+    calls.forEach(function(c){if(!gradeOn(c)||!qOk(c))return;var k=c.drug+'|'+c.gene+'|'+c.mutation,m=agg[k];
+      if(!m){m=agg[k]={key:k,drug:c.drug,gene:c.gene,mutation:c.mutation,gn:c.gn,grade:c.grade,samples:[],afs:[]};order.push(k);}
+      if(m.samples.indexOf(c.s)<0)m.samples.push(c.s); if(c.af!=null)m.afs.push(c.af);});   // a sample merged from several runs can list a mutation once per run
+    var list=order.map(function(k){return agg[k];});
+    list.sort(function(a,b){return ((wideKey[a.key]?1:0)-(wideKey[b.key]?1:0))||((a.gn||9)-(b.gn||9))||(b.samples.length-a.samples.length)||(a.key<b.key?-1:1);});
+    el('drcount').textContent=list.length+' mutation(s) in '+calls.filter(function(c){return gradeOn(c)&&qOk(c);}).length+' call(s)';
+    if(!list.length)return '<div class="nd pad">No mutation at the selected grades'+(drState.q?' matches the filter':'')+'.</div>';
+    var nLin=sum.nLin;
+    return '<div class="epitbl-wrap"><table class="epitbl drmut"><thead><tr><th>Drug</th><th>Gene</th><th>Mutation (H37Rv)</th><th>WHO grade</th><th class="num">Samples</th><th>By lineage</th><th class="num">AF (median)</th><th></th></tr></thead><tbody>'+
+      list.map(function(m){var per={}; m.samples.forEach(function(s){var l=linOf[s]||'untyped';per[l]=(per[l]||0)+1;});
+        var wl=wideKey[m.key], afm=m.afs.length?_median(m.afs):null, open=!!drState.open[m.key];
+        var lin=Object.keys(per).sort(function(a,b){return per[b]-per[a];}).map(function(l){return esc(l)+' '+per[l]+(nLin[l]?'/'+nLin[l]:'');}).join(' &#183; ');
+        return '<tr class="dr-mrow'+(open?' open':'')+'" data-k="'+esc(m.key)+'"><td><b>'+esc(m.drug)+'</b></td><td>'+esc(m.gene)+geneRvTag(m.gene)+'</td><td class="epitbl-r">'+esc(m.mutation)+'</td>'+
+          '<td><span class="dr-badge" style="background:'+drGColor(m.gn)+';color:'+drGInk(m.gn)+'">'+esc(m.grade||'?')+'</span></td>'+
+          '<td class="num"><b>'+m.samples.length+'</b></td><td class="dr-lin">'+lin+'</td><td class="num">'+(afm==null?'':afm.toFixed(2))+'</td>'+
+          '<td>'+(wl?'<span class="tag neu" title="carried by at least '+Math.round(DR_WIDE*100)+'% of the '+esc(wl)+' samples: the lineage\'s own, not something that arose here">'+esc(wl)+' marker</span>':'')+'</td></tr>'+
+          (open?'<tr class="dr-carriers"><td colspan="8">'+m.samples.slice().sort().map(function(s){return '<span class="dr-car" data-s="'+esc(s)+'">'+esc(s)+'</span>';}).join('')+'</td></tr>':'');}).join('')+
+      '</tbody></table></div><div class="krk-mut" style="padding:6px 2px">Click a mutation to list the samples that carry it. A lineage marker is a mutation at least '+Math.round(DR_WIDE*100)+'% of a lineage carries.</div>';
+  }
+  function mxView(){
+    var cell={}, cmut={}, dset={};
+    calls.forEach(function(c){ if(!gradeOn(c)||!qOk(c))return; var ds=(c.dr&&c.dr.length)?c.dr:[c.drug]; for(var i=0;i<ds.length;i++){ var d=ds[i]; dset[d]=1;
+      (cell[c.s]=cell[c.s]||{}); (cell[c.s][d]=cell[c.s][d]||[]).push(c.gn); (cmut[c.s]=cmut[c.s]||{}); (cmut[c.s][d]=cmut[c.s][d]||[]).push(c); } });
+    var cols=drugs.filter(function(d){return dset[d];});
+    // samples with a mutation their lineage does not share first, then any call, then the rest
+    var rank=function(s){return sum.carriers[s]?0:(cell[s]?1:2);};
+    var rows=(D.samples||[]).filter(function(s){return cell[s];}).sort(function(a,b){return rank(a)-rank(b)||(a<b?-1:1);});
+    el('drcount').textContent=rows.length+' sample(s) with a call at the selected grades';
+    if(!rows.length||!cols.length)return '<div class="nd pad">No call at the selected grades.</div>';
+    return '<div class="dr-legend"><span><i style="background:#dc2626"></i>R: grade 1&#8211;2</span><span><i style="background:#d97706"></i>?: grade 3</span><span><i style="background:#94a3b8"></i>&#183;: grade 4&#8211;5</span><span><i style="background:#7c6f9f"></i>!: ungraded</span>'+
+      '<span class="c">worst grade per drug; blank = no call. Samples with a mutation their lineage does not share come first.</span></div>'+
+      '<div class="dr-mxwrap"><table class="drmx"><thead><tr><th class="dr-corner">sample \\ drug</th>'+
+      cols.map(function(dr){return '<th class="dr-hcell" title="'+esc(dr)+'"><span class="dr-h">'+esc(dr)+'</span></th>';}).join('')+'</tr></thead><tbody>'+
+      rows.map(function(s){ return '<tr><th class="dr-row'+(sum.carriers[s]?' acq':'')+'" title="'+esc(s)+(linOf[s]?' · '+esc(linOf[s]):'')+'">'+esc(s)+'</th>'+cols.map(function(dr){
+        var gns=(cell[s]||{})[dr];
+        if(!gns) return '<td class="drmx-cell" title="'+esc(s)+' &#183; '+esc(dr)+': no call"></td>';
+        var st0=drStatus(gns);
+        var muts=((cmut[s]||{})[dr]||[]).map(function(c){return c.gene+' '+c.mutation+(c.gn?(' (WHO '+c.gn+')'):'');}).join('; ');
+        return '<td class="drmx-cell" style="background:'+st0.c+'" title="'+esc(s)+' &#183; '+esc(dr)+' &#8212; '+esc(muts)+'"><b>'+st0.t+'</b></td>';
+      }).join('')+'</tr>'; }).join('')+'</tbody></table></div>';
+  }
+  function callView(){
+    var rows=calls.filter(function(c){return gradeOn(c)&&qOk(c);});
     rows=rows.slice().sort(function(a,b){ if(a.s!==b.s) return a.s<b.s?-1:1; return (a.gn||9)-(b.gn||9); });
-    el('drcount').textContent=rows.length+' call(s)'+(rows.length>600?' · showing first 600 (download for all)':'');
-    var h='<thead><tr><th>Sample</th><th>Drug</th><th>Gene</th><th>Mutation (H37Rv)</th><th>WHO grade</th><th>AF</th><th>DP</th></tr></thead><tbody>';
+    el('drcount').textContent=rows.length+' call(s)'+(rows.length>600?' · showing the first 600 (download for all)':'');
+    var h='<div class="epitbl-wrap"><table class="epitbl"><thead><tr><th>Sample</th><th>Drug</th><th>Gene</th><th>Mutation (H37Rv)</th><th>WHO grade</th><th>AF</th><th>DP</th></tr></thead><tbody>';
     if(!rows.length) h+='<tr><td colspan="7" class="c" style="padding:18px;text-align:center">no call matches the filter.</td></tr>';
     h+=rows.slice(0,600).map(function(c){
       return '<tr><td>'+esc(c.s)+'</td><td><b>'+esc(c.drug)+'</b></td><td>'+esc(c.gene)+geneRvTag(c.gene)+'</td><td class="epitbl-r">'+esc(c.mutation)+'</td>'+
         '<td><span class="dr-badge" style="background:'+drGColor(c.gn)+';color:'+drGInk(c.gn)+'" title="'+esc(c.marker||'')+'">'+esc(c.grade||'?')+'</span></td>'+
         '<td>'+(c.af==null?'':c.af.toFixed(2))+'</td><td>'+(c.dp==null?'':c.dp)+'</td></tr>';
-    }).join('')+'</tbody>';
-    el('drtable').innerHTML=h;
+    }).join('')+'</tbody></table></div>';
+    return h;
+  }
+  function draw(){
+    var vb=el('drview_body'); vb.innerHTML=drState.view==='mx'?mxView():(drState.view==='calls'?callView():mutView());
+    Array.prototype.forEach.call(vb.querySelectorAll('.dr-mrow'),function(tr){tr.onclick=function(){var k=tr.getAttribute('data-k');drState.open[k]=!drState.open[k];draw();};});
+    Array.prototype.forEach.call(vb.querySelectorAll('.dr-car'),function(sp){sp.onclick=function(e){e.stopPropagation();openDetail(sp.getAttribute('data-s'));};});
   }
   el('drq').oninput=function(){ drState.q=this.value; draw(); };
+  Array.prototype.forEach.call(host.querySelectorAll('#drview button'),function(b){b.onclick=function(){drState.view=b.getAttribute('data-v');
+    Array.prototype.forEach.call(host.querySelectorAll('#drview button'),function(x){x.classList.toggle('on',x===b);});draw();};});
+  Array.prototype.forEach.call(host.querySelectorAll('#drgrades button'),function(b){b.onclick=function(){var g=b.getAttribute('data-g');drState.g[g]=!drState.g[g];b.classList.toggle('on',drState.g[g]);draw();};});
   el('drdl').onclick=function(){
-    var hdr=['sample','drug','gene','mutation_h37rv','who_grade','marker','af','dp'];
+    var hdr=['sample','drug','gene','mutation_h37rv','who_grade','marker','af','dp','lineage_marker'];
     var lines=[hdr.join('\t')];
-    calls.forEach(function(c){ lines.push([c.s,c.drug,c.gene,c.mutation,c.grade,c.marker,(c.af==null?'':c.af),(c.dp==null?'':c.dp)].join('\t')); });
+    calls.forEach(function(c){ lines.push([c.s,c.drug,c.gene,c.mutation,c.grade,c.marker,(c.af==null?'':c.af),(c.dp==null?'':c.dp),(wideKey[c.drug+'|'+c.gene+'|'+c.mutation]||'')].join('\t')); });
     dl(lines.join('\n')+'\n','drug_resistance.tsv','text/tab-separated-values');
   };
   draw();
@@ -242,7 +290,7 @@ function renderVarDose(){
 // fixed the donor allele is inside the tract (donor_af_in), whether it also turns up outside (
 // donor_af_outside), and whether one molecule carries donor alleles on one side of a breakpoint and
 // acceptor alleles on the other, in cis (breakpoint_reads) - the piece a mismapping cannot fake.
-var gconvState={q:'',v:'',sk:'bf',asc:false,oneper:true};
+var gconvState={q:'',v:'',sk:'verdict',asc:true,oneper:true};   // called events first, and within a verdict the strongest (BF) first
 var GCONV_MAXROWS=400;
 var GCONV_V=[{k:'gene_conversion',lab:'gene conversion',c:'#2ea36b',r:0,
               tip:'a tract explains the reads far better than an independent substitution or reads arriving from the donor'},
@@ -253,11 +301,16 @@ var GCONV_V=[{k:'gene_conversion',lab:'gene conversion',c:'#2ea36b',r:0,
              {k:'coverage_shift',lab:'coverage shift',c:'#8b6fd6',r:3,
               tip:'the acceptor lost its reads to the donor over a run of sites. Consistent with a conversion longer than the library insert, and equally with a deletion. Not a conversion call'},
              {k:'reference_artifact',lab:'reference artifact',c:'#7a8794',r:4,
-              tip:'present in nearly every sample of the cohort. The reference being wrong here, or the aligner doing this to everybody, explains that more simply than the same conversion arising in every isolate. In a CLONAL cohort it may instead be shared ancestry, which recurrence alone cannot distinguish. Only a cohort can make this call at all'},
+              tip:'present in nearly every sample mapped to the same reference. The reference being wrong here, or the aligner doing this to everybody, explains that more simply than the same conversion arising in every isolate. In a CLONAL cohort it may instead be shared ancestry, which recurrence alone cannot distinguish. Only a cohort can make this call at all'},
              {k:'reciprocal_exchange',lab:'reciprocal exchange',c:'#c77d3a',r:6,
               tip:'the donor carries the ACCEPTOR\'s bases over the same stretch, so both copies changed. That is an exchange between them rather than one being overwritten, and gene conversion is non-reciprocal by definition'},
              {k:'reference_derived',lab:'reference derived',c:'#4a90b8',r:5,
-              tip:'an outgroup says the REFERENCE carries the derived base over this stretch and the reads carry the ancestral one. The sample changed nothing; the finding belongs to the reference. Without an outgroup this is the same picture as a conversion'}];
+              tip:'an outgroup says the REFERENCE carries the derived base over this stretch and the reads carry the ancestral one. The sample changed nothing; the finding belongs to the reference. Without an outgroup this is the same picture as a conversion'},
+             // The cohort step sets this for every tract of a sample that calls tracts at too many loci
+             // for them to be local events. It was missing here, so the most common verdict of a run
+             // had no chip and every one of its rows read "verdict not recognised".
+             {k:'divergent_sample',lab:'divergent sample',c:'#6b7280',r:7,
+              tip:'the sample calls tracts at too many loci for them to be local events: its genome differs from the reference as a whole (often a sample mapped to the wrong lineage), so none of its tracts is read as conversion'}];
 // The settings that produced these verdicts, shown beside them. A panel that displays a verdict
 // without saying under which rules cannot be checked against another run, and the global run
 // header only carries the reference and the container.
@@ -350,8 +403,8 @@ function renderGconv(){
     var ord=sel.slice().sort(function(a,b){
       var ka=keyof(a,gconvState.sk),kb=keyof(b,gconvState.sk),d;
       if(typeof ka=='string'||typeof kb=='string'){ka=''+ka;kb=''+kb;d=ka<kb?-1:(ka>kb?1:0);} else d=ka-kb;
-      if(!d)d=(b.bp_reads||0)-(a.bp_reads||0)||(a.s<b.s?-1:(a.s>b.s?1:0));
-      return gconvState.asc?d:-d;});
+      if(d)return gconvState.asc?d:-d;
+      return ((b.bf==null?-1e9:b.bf)-(a.bf==null?-1e9:a.bf))||((b.bp_reads||0)-(a.bp_reads||0))||(a.s<b.s?-1:(a.s>b.s?1:0));});
     function th(k,lbl,cls,tip){var on=(gconvState.sk===k),ar=on?(gconvState.asc?' &#9650;':' &#9660;'):'';
       return '<th class="gcv-sortable'+(cls?' '+cls:'')+'" data-sk="'+k+'"'+(tip?' title="'+esc(tip)+'"':'')+
         (on?' style="color:var(--accent)"':'')+'>'+lbl+ar+'</th>';}
@@ -377,7 +430,7 @@ function renderGconv(){
         '<td class="gcv-num"><b'+(bp>0?' class="gcv-bp"':'')+'>'+bp+'</b></td>'+
         '<td class="gcv-num">'+(t.cis_reads==null?'':t.cis_reads)+'</td>'+
         '<td class="gcv-num">'+gconvNum(t.depth,0)+'</td>'+
-        '<td><span class="gcv-reason">'+esc(t.reason||'')+'</span></td></tr>';}).join('');
+        '<td><span class="gcv-reason" title="'+esc(t.reason||'')+'">'+esc(t.reason||'')+'</span></td></tr>';}).join('');
     if(!ord.length)body='<tr><td colspan="15" class="c" style="padding:18px;text-align:center">'+
       (rows.length?'no tract matches the filter.':'no tract in the samples currently in view.')+'</td></tr>';
     host.innerHTML='<div class="gcv-verdicts">'+chips+'</div>'+
@@ -389,8 +442,8 @@ function renderGconv(){
       '<div class="epitbl-wrap gcv-tablewrap"><table class="epitbl gcv-table"><thead><tr>'+
         th('s','Sample')+th('locus','Locus','','the acceptor locus and the donor its alleles came from')+th('verdict','Verdict')+
         th('bf','BF','gcv-num','log10 Bayes factor for a conversion tract over the best alternative: an independent substitution at the same sites, or reads that arrived from the donor. 3 is decisive')+
-        th('n_ev','Samples','gcv-num','how many samples of the cohort carry this event, and what fraction that is. One or two is a finding; nearly all of them means the reference or the aligner, not the isolates')+
-        th('tract_af','Carried by','gcv-num','fraction of the reads that carry the tract. Below 1 means either a mixed infection or a third copy of the family contributing unconverted reads; nothing in short reads tells those apart')+
+        th('n_ev','Samples','gcv-num','how many samples carry this event, and what fraction that is of the samples mapped to the same reference. One or two is a finding; nearly all of them means the reference or the aligner, not the isolates')+
+        th('tract_af','Carried by','gcv-num','fraction of the reads that carry the tract. Below 1 means either a mixed infection or a third copy of the family contributing unconverted reads; nothing in short reads tells those apart. The model does not go below 20%, so a thinner share is shown as 20%: AF in is what the reads themselves carry')+
         th('mismap','Donor reads','gcv-num','fraction of reads at this locus the model had to assume came from the donor')+
         th('start','Tract','gcv-num','start position and length of the tract')+
         th('n_sites','Sites','gcv-num','diagnostic sites inside the tract / outside it. No site outside means boundedness cannot be tested')+

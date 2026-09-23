@@ -34,8 +34,24 @@ marker_name, af, dp`.
     depth (`dp`) matter, and absence of a marker is not proof of susceptibility. When
     filtering, restrict to grades 1–2 for "resistant".
 
-The marker panels and pre-trained model (Zenodo v1.0.0, DOI
-[10.5281/zenodo.19210044](https://doi.org/10.5281/zenodo.19210044)) and the
+!!! warning "Catalogue version matters, and the results do not record it"
+    The resistance catalogue is versioned separately from BAMpiro. Images built before
+    catalogue **v1.0.2** bundled v1.0.0, which assigned each variant a single drug inherited
+    from its gene instead of grading each variant-drug pair the way the WHO catalogue does.
+    Amikacin did not occur anywhere in v1.0.0, so it could never be reported; the *rrs*
+    aminoglycoside determinants were attributed to streptomycin, the *inhA* promoter variants
+    to isoniazid alone, and 15,969 rows carried a grade belonging to a different drug. The
+    upgrade moves 9,439 rows into grades 1-2 and none out of them.
+
+    Detection is unchanged: the same variants are found either way, and MDR and pre-XDR
+    assignment is identical. Results that report **amikacin, kanamycin, capreomycin,
+    ethionamide, linezolid, streptomycin or delamanid** from an older image should be
+    regenerated. Which catalogue a run used is printed in
+    `pipeline_info/software_versions.txt` as `pathotypr markers`, together with the
+    SHA-256 of the file actually read.
+
+The marker panels and pre-trained model (Zenodo v1.0.2, DOI
+[10.5281/zenodo.21915539](https://doi.org/10.5281/zenodo.21915539)) and the
 MTBC-ancestor reference are **bundled in the image** under `/opt/pathotypr/`;
 override the reference or marker panels with `--pathotypr_ref` / `--pathotypr_markers`
 / `--pathotypr_dr_markers` if you supply your own. (BAMpiro types lineage by k-mer

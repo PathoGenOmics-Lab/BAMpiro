@@ -11,6 +11,7 @@ workflow LINEAGE_TYPING {
 
     take:
     pe_reads   // (sId, runId, r1, r2, refId, taxId) from FASTP_PE
+    pe_orphans // (sId, runId, rSE, refId, taxId) from FASTP_PE: merged pairs + unpaired mates
     se_reads   // (sId, runId, rSE, refId, taxId) from FASTP_SE
 
     main:
@@ -21,22 +22,34 @@ workflow LINEAGE_TYPING {
 
     if (asBool(params.run_pathotypr)) {
         // Reshape channels for Pathotypr
-        def patho_pe_ch = pe_reads.map { sId, runId, r1, r2, refId, taxId -> tuple(refId, sId, runId, r1, r2) }
+        // Pair each PE run with its own orphan stream before typing. FastP --merge puts the
+        // overlapping fragments there, and they are most of a typical library, so r1+r2 alone is a
+        // minority of the reads. MAP_READS has taken all three streams from the start; this is the
+        // same read set, reaching the typer.
+        //
+        // failOnMismatch, because the failure this replaces was silent. FASTP_PE always emits an
+        // se_combined file, so a run with no partner here means the assumption has changed, and a
+        // plain join would answer that by dropping the sample from lineage typing without a word.
+        def orphan_by_run = pe_orphans.map { sId, runId, rSE, refId, taxId -> tuple(tuple(sId, runId), rSE) }
+        def patho_pe_ch = pe_reads
+            .map { sId, runId, r1, r2, refId, taxId -> tuple(tuple(sId, runId), refId, sId, runId, r1, r2) }
+            .join(orphan_by_run, failOnMismatch: true, failOnDuplicate: true)
+            .map { key, refId, sId, runId, r1, r2, rSE -> tuple(refId, sId, runId, r1, r2, rSE) }
         def patho_se_ch = se_reads.map { sId, runId, rSE, refId, taxId -> tuple(refId, sId, runId, rSE) }
 
         def run_pe = RUN_PATHOTYPR_PE(
             patho_pe_ch,
-            file(params.pathotypr_ref),
-            file(params.pathotypr_markers),
-            file(params.pathotypr_dr_markers),
+            params.pathotypr_ref,
+            params.pathotypr_markers,
+            params.pathotypr_dr_markers,
             params.pathotypr_bin
         )
 
         def run_se = RUN_PATHOTYPR_SE(
             patho_se_ch,
-            file(params.pathotypr_ref),
-            file(params.pathotypr_markers),
-            file(params.pathotypr_dr_markers),
+            params.pathotypr_ref,
+            params.pathotypr_markers,
+            params.pathotypr_dr_markers,
             params.pathotypr_bin
         )
 

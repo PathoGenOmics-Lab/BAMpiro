@@ -261,8 +261,38 @@ def parse_pnps(path):
     return rows[:300]
 
 
-_DR_DRUG_ORDER = ["RIF", "INH", "EMB", "PZA", "STR", "STM", "FQ", "LFX", "MFX", "OFX", "KAN", "AMK",
-                  "CAP", "ETH", "PTO", "LZD", "BDQ", "CFZ", "BDQ_CFZ", "DLM", "PAS", "CS"]
+# Roughly clinical order: first line, then the injectables and the rest. AMI is the catalogue's
+# spelling of amikacin; AMK is kept beside it because other panels use that one. No composite label
+# appears here, because `_dr_components` splits every composite into the drugs it names before the
+# matrix is built.
+_DR_DRUG_ORDER = ["RIF", "INH", "EMB", "PZA", "STR", "STM", "FQ", "LFX", "MFX", "OFX", "AMI", "AMK",
+                  "KAN", "CAP", "ETH", "PTO", "LZD", "BDQ", "CFZ", "DLM", "PAS", "CS", "OTHER"]
+
+# The single-drug codes the WHO catalogue uses, which is what makes a composite recognisable.
+_DR_KNOWN = {"RIF", "INH", "EMB", "PZA", "STR", "STM", "FQ", "LFX", "MFX", "OFX", "AMI", "AMK",
+             "KAN", "CAP", "ETH", "PTO", "LZD", "BDQ", "CFZ", "DLM", "PAS", "CS"}
+
+
+def _dr_components(label):
+    """The drugs a label names. `AMI_KAN_CAP` is three drugs, `RIF` is one.
+
+    The WHO catalogue grades every variant-drug pair separately, so one variant can be an
+    established marker for several drugs at once. Catalogue v1.0.2 writes that as an
+    underscore-joined label, and a variant graded 1 for amikacin and kanamycin arrives as
+    `AMI_KAN`. Left whole it would get a column of its own and contribute nothing to either drug,
+    so a sample whose only isoniazid evidence is an inhA promoter variant, now labelled `INH_ETH`,
+    would read as clean in the INH column. The calls table and the TSV keep the label as written;
+    only the matrix expands it.
+
+    Split only when EVERY part is a drug code we recognise. A label from somebody else's panel
+    that happens to contain an underscore is left alone rather than chopped into nonsense.
+    """
+    if not label:
+        return []
+    if label in _DR_KNOWN or "_" not in label:
+        return [label]
+    parts = label.split("_")
+    return parts if all(p in _DR_KNOWN for p in parts) else [label]
 
 
 def parse_dr(path):
@@ -293,7 +323,9 @@ def parse_dr(path):
                     dp = int(float(dp)) if dp not in (None, "", "NA", ".") else None
                 except ValueError:
                     dp = None
-                calls.append({"s": s, "drug": (d.get("drug") or "").strip(), "gene": (d.get("gene") or "").strip(),
+                drug = (d.get("drug") or "").strip()
+                calls.append({"s": s, "drug": drug, "dr": _dr_components(drug),
+                              "gene": (d.get("gene") or "").strip(),
                               "mutation": (d.get("mutation") or "").strip(), "grade": grade,
                               "gn": (int(mg.group(1)) if mg else None),
                               "marker": (d.get("marker_name") or d.get("marker") or "").strip(),
@@ -304,7 +336,7 @@ def parse_dr(path):
         return None
     if not calls:
         return None
-    drugs = sorted({c["drug"] for c in calls if c["drug"]},
+    drugs = sorted({d for c in calls for d in c["dr"] if d},
                    key=lambda x: (_DR_DRUG_ORDER.index(x) if x in _DR_DRUG_ORDER else 99, x))
     return {"samples": samples, "drugs": drugs, "calls": calls}
 
@@ -413,46 +445,169 @@ def parse_gene_conversion(path):
     return {"samples": samples, "counts": counts, "tracts": tracts}
 
 
+# A child clade holding at least this share of its parent's reads is where the reads really sit, so
+# the dominant-clade walk steps into it; below it the reads are spread over several children (or
+# assigned to the parent itself) and the walk stops.
+KRAKEN_DOMINANT = 0.5
+KRAKEN_TOP = 6
+
+
+def _kraken_read(path, nodes, children):
+    """Add one Kraken2 report to a sample's tree -> the unclassified reads it carried, or None when
+    the file cannot be read. `nodes` is {taxid: {name, rank, reads, pct}} and `children` is
+    {parent taxid (None for the top level): [taxid]}; both are shared by the reports of one sample,
+    so the reads of several runs add up on the same taxa.
+
+    The report records the tree only through the indentation of its name column (two spaces per
+    level), so a node's parent is the nearest line above it that sits one level shallower."""
+    unclass, stack = 0, []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                c = line.rstrip("\n").split("\t")
+                if len(c) < 6:
+                    continue
+                try:
+                    pct, reads = float(c[0]), int(float(c[1]))
+                except ValueError:
+                    continue
+                rank, raw = c[3].strip(), c[5]
+                if rank == "U":
+                    unclass += reads
+                    continue
+                name = raw.strip()
+                depth = (len(raw) - len(raw.lstrip(" "))) // 2
+                key = c[4].strip() or name
+                while stack and stack[-1][0] >= depth:
+                    stack.pop()
+                parent = stack[-1][1] if stack else None
+                stack.append((depth, key))
+                if key not in nodes:
+                    nodes[key] = {"name": name, "rank": rank, "reads": 0, "pct": 0.0}
+                    children.setdefault(parent, []).append(key)
+                nodes[key]["reads"] += reads
+                nodes[key]["pct"] += pct
+    except OSError:
+        return None
+    return unclass
+
+
+def _kraken_walk(start, nodes, children, parent_reads):
+    """Follow the most abundant child down from `start` while it holds at least KRAKEN_DOMINANT of its
+    parent's reads -> the taxon the reads actually sit in.
+
+    For an M. tuberculosis culture that is the complex, not the species: Kraken2 leaves most reads on
+    the complex node (the members are too alike for k-mers to split), so the species clade holds a
+    few percent and a species-level reading would call every clean sample contaminated. The walk
+    always steps out of the top level and through the root ranks ('root', 'cellular organisms'),
+    which say nothing about what is in the tube, and never goes below a species: Kraken2's strain
+    assignments are too unreliable to name what a sample is."""
+    key = start
+    while children.get(key):
+        if key is not None and nodes[key]["rank"].startswith("S"):
+            break
+        best = max(children[key], key=lambda k: (nodes[k]["reads"], nodes[k]["pct"]))
+        here = parent_reads if key is None else nodes[key]["reads"]
+        forced = key is None or nodes[key]["rank"].startswith("R")
+        if not forced and nodes[best]["reads"] < KRAKEN_DOMINANT * here:
+            break
+        key = best
+    return key
+
+
 def parse_kraken(paths):
     """Per-sample Kraken2 `.report` files (6 columns: clade%, clade reads, taxon reads, rank, taxid,
-    name) -> {'samples':[{s, unclassified, classified, primary, secondary, top}]} or None. The sample id
-    is the filename up to the first '__' (the pipeline writes '<sampleId>__<runId>.kraken.report'). The
-    'primary' taxon is the top species-level clade; contamination shows as a low primary% / large
-    secondary taxon / high unclassified%."""
-    out = []
+    name) -> {'samples': [...], 'target': {...}} or None.
+
+    The sample id is the filename up to the first '__' (the pipeline writes one
+    '<sampleId>__<runId>.kraken.report' per run), and every report of a sample is merged by summing
+    its reads, so a sample sequenced over five runs is one row weighted by what each run produced,
+    not five rows. Per sample:
+      primary     the dominant clade (see _kraken_walk) and its share of all reads
+      secondary   the most abundant taxon outside the primary's lineage, e.g. a contaminant or host
+      top         the primary and the next taxa outside its lineage, for the composition bar
+      target_pct  share of the CLASSIFIED reads that fall in the cohort's target clade
+    The target is the clade most samples have as their primary, so a culture of the wrong organism
+    reads as ~0% target rather than as a clean sample of something else."""
+    trees, order = {}, []
     for p in paths or []:
         if not p or not os.path.exists(p):
             continue
         sid = os.path.basename(p).split("__")[0].split(".")[0]
-        unclass, species = 0.0, []
-        try:
-            with open(p, encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    c = line.rstrip("\n").split("\t")
-                    if len(c) < 6:
-                        continue
-                    try:
-                        pct = float(c[0])
-                    except ValueError:
-                        continue
-                    rank, name = c[3].strip(), c[5].strip()
-                    if rank == "U":
-                        unclass = pct
-                    elif rank == "S":            # species-level clades = the interpretable composition
-                        species.append((pct, name))
-        except OSError:
+        tree = trees.get(sid) or {"nodes": {}, "children": {}, "unclass": 0, "runs": 0}
+        unclass = _kraken_read(p, tree["nodes"], tree["children"])
+        if unclass is None:
             continue
-        if not species and unclass == 0.0:
+        tree["unclass"] += unclass
+        tree["runs"] += 1
+        if sid not in trees:
+            trees[sid] = tree
+            order.append(sid)
+
+    out = []
+    for sid in order:
+        t = trees[sid]
+        nodes, children = t["nodes"], t["children"]
+        classified = sum(nodes[k]["reads"] for k in children.get(None, []))
+        total = classified + t["unclass"]
+        below_root = any(children.get(k) for k in children.get(None, [])) or \
+            any(not nodes[k]["rank"].startswith("R") for k in children.get(None, []))
+        if not total or (not below_root and not t["unclass"]):
             continue
-        species.sort(key=lambda x: -x[0])
-        top = [{"name": n, "pct": round(p, 2)} for p, n in species[:6]]
-        out.append({"s": sid, "unclassified": round(unclass, 2),
-                    "classified": round(100.0 - unclass, 2),
-                    "primary": (top[0] if top else None),
-                    "secondary": (top[1] if len(top) > 1 else None), "top": top})
+
+        def share(k, _total=total):
+            return round(100.0 * nodes[k]["reads"] / _total, 2) if _total else 0.0
+
+        def taxon(k, _share=share):
+            return {"name": nodes[k]["name"], "rank": nodes[k]["rank"], "pct": _share(k)}
+
+        prim = _kraken_walk(None, nodes, children, classified) if below_root else None
+        # Everything off the primary's lineage: at each ancestor, the sibling clades not on the path.
+        path, k = [], prim
+        parent_of = {c: par for par, cs in children.items() for c in cs}
+        while k is not None:
+            path.append(k)
+            k = parent_of.get(k)
+        on_path = set(path)
+        others = [c for anc in [None] + path[1:] for c in children.get(anc, []) if c not in on_path]
+        others.sort(key=lambda c: (nodes[c]["reads"], nodes[c]["pct"]), reverse=True)
+        described = []
+        for c in others:
+            if not nodes[c]["reads"] and not nodes[c]["pct"]:
+                continue
+            d = _kraken_walk(c, nodes, children, nodes[c]["reads"])
+            described.append(taxon(d))
+            if len(described) >= KRAKEN_TOP - 1:
+                break
+        top = ([taxon(prim)] if prim is not None else []) + described
+        out.append({"s": sid, "runs": t["runs"], "reads": total, "taxid": prim,
+                    "unclassified": round(100.0 * t["unclass"] / total, 2),
+                    "classified": round(100.0 * classified / total, 2),
+                    "primary": taxon(prim) if prim is not None else None,
+                    "secondary": described[0] if described else None,
+                    "top": top, "_tree": t, "_classified": classified})
     if not out:
         return None
-    return {"samples": out}
+
+    # The target: the clade most samples are dominated by (ties go to the most reads).
+    votes = {}
+    for s in out:
+        if s["taxid"] is not None:
+            v = votes.setdefault(s["taxid"], [0, 0, s["primary"]])
+            v[0] += 1
+            v[1] += s["_tree"]["nodes"][s["taxid"]]["reads"]
+    target = max(votes.items(), key=lambda kv: (kv[1][0], kv[1][1]))[0] if votes else None
+    for s in out:
+        nodes, classified = s["_tree"]["nodes"], s.pop("_classified")
+        s.pop("_tree")
+        s.pop("taxid")
+        hit = nodes.get(target)
+        s["target_pct"] = (round(100.0 * hit["reads"] / classified, 2) if hit and classified else
+                           (0.0 if classified else None))
+    tgt = None
+    if target is not None:
+        tgt = {"name": votes[target][2]["name"], "rank": votes[target][2]["rank"], "n": votes[target][0]}
+    return {"samples": out, "target": tgt}
 
 
 def _gff_attr(attrs, key):
@@ -655,6 +810,42 @@ def parse_sample_meta(path):
     tx_field = next((h for _, h in fields if _TX_RE.search(h.replace(' ', '_'))), None)
     return {'fields': [h for _, h in fields], 'rows': out,
             'time_field': time_field, 'group_field': group_field, 'tx_field': tx_field}
+
+
+_DATE_RE = re.compile(r'^(collection|sampling|isolation|sample)?[_ ]?(date|year)$|^fecha$', re.I)
+
+
+def parse_collection_dates(path):
+    """{sample: date string} from the samplesheet column that says when a sample was COLLECTED
+    ('collection_date', 'sampling_date', 'date', 'year'...). {} when there is no such column.
+
+    This is the only source of a sampling date. The summary TSV carries a 'date' too, but it is
+    DAT_OUT, the day the pipeline processed the sample: read as a collection date it put a whole
+    cohort in one year and the temporal panel reported a sampling span of zero years."""
+    if not path or not os.path.exists(path):
+        return {}
+    header, out = None, {}
+    try:
+        with _dyn_open(path) as fh:
+            for line in fh:
+                if not line.strip() or line.startswith('#'):
+                    continue
+                cells = line.rstrip('\n').split('\t')
+                if header is None:
+                    header = [c.strip() for c in cells]
+                    si = next((i for i, h in enumerate(header) if _DYN_SAMPLE_RE.match(h)), 0)
+                    di = next((i for i, h in enumerate(header) if _DATE_RE.match(h)), None)
+                    if di is None:
+                        return {}
+                    continue
+                if max(si, di) >= len(cells):
+                    continue
+                s, d = cells[si].strip(), clean_str(cells[di])
+                if s and d and s not in out:
+                    out[s] = d
+    except OSError:
+        return {}
+    return out
 
 
 def parse_dose(path):

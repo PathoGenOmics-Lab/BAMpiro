@@ -64,7 +64,10 @@ process PARALOG_MAP {
     // The outgroup delta is optional and arrives as assets/NO_FILE_OUTGROUP when absent. With it
     // each diagnostic site says which copy the difference is on, so a sample carrying the donor's
     // base can be told from a reference that carries a derived one.
-    tuple val(refId), path(delta), path(outgroup_delta)
+    // The reference FASTA is staged even though nothing here reads it directly: nucmer wrote its
+    // absolute path into the delta header and show-snps opens it, so with scratch = true that
+    // path belonged to another task's scratch and is gone. paralog_map.py rewrites the header.
+    tuple val(refId), path(delta), path(outgroup_delta), path(ref_fa)
 
     output:
     tuple val(refId), path("${refId}.paralog_pairs.tsv"), emit: pairs
@@ -80,6 +83,7 @@ process PARALOG_MAP {
         --out-sites ${refId}.paralog_sites.tsv \\
         --min-identity ${params.gconv_min_identity} \\
         --min-length ${params.gconv_min_paralog_length} \\
+        --reference ${ref_fa} \\
         \$ANC_ARG
     """
 
@@ -174,6 +178,7 @@ process COLLECT_GENE_CONVERSION {
         --loci ${loci} \\
         --output ${basename}_gene_conversion.tsv \\
         --min-bf ${params.gconv_min_bf} \\
+        --min-tract-af ${params.gconv_min_tract_af} \\
         --corroborated-bf ${params.gconv_corroborated_bf} \\
         --ubiquitous ${params.gconv_ubiquitous} \\
         --min-samples ${params.gconv_cohort_min_samples} \\

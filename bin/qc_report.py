@@ -30,7 +30,8 @@ from qcreport.metrics import (ANC_DEF, DEF, DEFS, DIST, METRICS, build_gene_map,
                               flag_sample, het_frac, is_ancient, lineage_counts_parsed, lineage_fracs, robust)
 from qcreport.panels import build_dynamics, build_epistasis, build_snp_matrix
 from qcreport.parsers import (NBINS, clean_str, consensus_stats, mapdamage_stats, mask_profile, parse_bed,
-                              parse_dose, parse_dr, parse_gene_burden, parse_gene_conversion, parse_gff,
+                              parse_collection_dates, parse_dose, parse_dr, parse_gene_burden,
+                              parse_gene_conversion, parse_gff,
                               parse_kraken, parse_lineage_colors, parse_metadata, parse_pnps, parse_profile,
                               parse_sample_meta, parse_summary, parse_vcfs, to_float)
 from qcreport.render import REPO_URL, SECTION_INFO, build_html
@@ -219,11 +220,29 @@ def build_payload(args, thr, anc_thr):
     if dose_map:
         extra_metrics = extra_metrics + [{"key": "dose", "label": "Dose", "kind": "float", "dir": "neu"}]
     extra_keys = [e["key"] for e in extra_metrics]
+    # The lineage the samples sharing a reference agree on. A reference is chosen per sample, so a
+    # sample whose reads type as something else was routed to the wrong one; the majority is what
+    # "should have been here" without needing to know the reference's own lineage.
+    # The reference comes from the SAMPLESHEET, because the summary does not carry one. It used to
+    # be read from summ[sid]["reference"], a key that never exists, so the majority below was
+    # always empty and LINEAGE_MISMATCH could never fire: on the cohort it was written for it
+    # flagged nothing, while 18 samples sat on the wrong reference. The unit test passed the
+    # majority in directly and never exercised this lookup.
+    ref_of = sample_references(args.metadata)
+    by_ref = {}
+    for sid, m in summ.items():
+        ref, lin = ref_of.get(sid), clean_str(m.get("lineage"))
+        if ref and lin and lin.lower() not in ("unclassified", "nan"):
+            by_ref.setdefault(ref, []).append(lin.split(";")[0])
+    ref_major = {r: max(set(v), key=v.count) for r, v in by_ref.items() if len(v) >= 3}
+    dates = parse_collection_dates(args.metadata)
+
     jsamples, counts = [], {"PASS": 0, "WARN": 0, "FAIL": 0}
     for sid, m in summ.items():
         anc = is_ancient(m)
         dmg = dmg_by_sample.get(sid)
-        verdict, flags = flag_sample(m, thr, snp_med, snp_sig, ancient=anc, anc_thr=anc_thr, dmg=dmg)
+        verdict, flags = flag_sample(m, thr, snp_med, snp_sig, ancient=anc, anc_thr=anc_thr, dmg=dmg,
+                                     ref_lineage=ref_major.get(ref_of.get(sid)))
         counts[verdict] += 1
         jsamples.append({"s": sid, "v": verdict, "f": flags,
                          "lineage": clean_str(m.get("lineage")),
@@ -233,7 +252,13 @@ def build_payload(args, thr, anc_thr):
                          "dr": clean_str(m.get("drug_resistance")),
                          "anc": anc,
                          "dmg": dmg,
-                         "date": clean_str(m.get("date")),
+                         # the samplesheet's collection date; the summary's own 'date' is the day
+                         # the pipeline ran, which says nothing about when the sample was taken
+                         "date": dates.get(sid),
+                         # the reference the sample was mapped to and the lineage its other samples
+                         # type as: what a LINEAGE_MISMATCH flag compares, so the report can say so
+                         "ref": ref_of.get(sid),
+                         "ref_lin": ref_major.get(ref_of.get(sid)),
                          "miss": miss_by_sample.get(sid),
                          "trk": ({k: v for k, v in (("snp", parse_profile(m.get("snp_profile"))),
                                                     ("het", parse_profile(m.get("het_profile"))),
@@ -297,6 +322,29 @@ def write_flags(path, jsamples):
             fh.write("\t".join([s["s"], s["v"], g("mean_depth"), g("breadth_pct"), g("mapped_pct"),
                                 g("missing_pct"), g("iupac_pct"), g("snps"), g("ti_tv"),
                                 ",".join(s["f"]) or "."]) + "\n")
+
+
+def sample_references(path):
+    """{sampleId: refId} from the samplesheet. Empty when there is no samplesheet or no refId column.
+
+    Read here rather than through parse_sample_meta, which drops refId on purpose because it is a
+    pipeline column and not an annotation to display. A sample merged from several runs appears
+    once per run with the same refId, so the first row per sample is enough.
+    """
+    import csv
+    out = {}
+    if not path:
+        return out
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for r in csv.DictReader((l for l in fh if not l.startswith("#")), delimiter="\t"):
+                sid = (r.get("sampleId") or r.get("sample") or "").strip()
+                ref = (r.get("refId") or "").strip()
+                if sid and ref:
+                    out.setdefault(sid, ref)
+    except OSError:
+        return {}
+    return out
 
 
 def main():

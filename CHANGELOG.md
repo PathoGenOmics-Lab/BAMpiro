@@ -8,6 +8,279 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Added
 
+- **Two guards against a sample mapped to a genome it does not belong to.** In a 185-sample
+  cohort, 22 samples annotated as one lineage were really another, were routed to that lineage's
+  reference, carried about 2,000 SNPs where their line mates carried 5, and produced 507 of the
+  run's 522 gene-conversion tracts. Tracts per sample against genome-wide SNP count correlated at
+  r = 0.98. Nothing failed: the reference was a valid genome, the reads mapped to it, and every
+  metric was computed correctly about the wrong comparison.
+
+  `LINEAGE_MISMATCH` flags a sample whose k-mer lineage call disagrees with the rest of the
+  samples sharing its reference. K-mer typing does not use the reference, so the two are
+  independent evidence, and the majority stands in for what should have been there without
+  needing to know the reference's own lineage.
+
+  `divergent_sample` is a cohort verdict that refuses to read a sample's tracts as conversion when
+  it calls them in too many loci at once, since conversion is local and a diverged genotype
+  carries the donor base at every paralogous locus by inheritance. The threshold is
+  `--max-locus-frac`, default 0.1: on the cohort that surfaced this the mislabelled samples called
+  tracts in 16 to 29 percent of the stretches their reference reports anything in, and every
+  correctly mapped sample in at most 1 percent. It is counted in distinct stretches of the
+  acceptor rather than in rows or pairs, because one tract is emitted once per candidate donor
+  and a gene family reports one stretch through a pair per relative, and it takes precedence over
+  the corroboration rule, which diverged samples would otherwise satisfy by sharing their
+  artefacts with each other at identical coordinates.
+
+### Fixed
+
+- **Gene conversion was called from reads that could not carry it, and the cohort multiplied
+  it.** On a 185-sample cohort, 1,520 of the 1,579 calls were rows the samples themselves had
+  left `ambiguous`, promoted because another sample had called the same stretch outright. Those
+  rows carried the donor's bases in 2 to 5% of the reads; the model's tract fraction stops at
+  20%, so it fitted 20% to all of them and reported Bayes factors for a fraction the reads did not
+  have. The outright calls vouching for them came from samples at 0.2x to 2x depth, contaminated
+  cultures the QC fails outright, whose tracts were read by one to four molecules: one read with
+  the donor's bases at four sites is log10 BF 7 on base quality alone. Reads from a third copy of
+  a gene family reproduce the same stretch in every library mapped to the same reference, which is
+  exactly what the corroboration rule took for independent confirmation.
+
+  A tract most of whose sites are under `--gconv_min_depth`, or whose reads carry the donor's
+  bases below half the model's thinnest tract (10%), is now `ambiguous` with a reason that quotes
+  the reads rather than the floor, and neither kind takes part in corroboration. The cohort pass
+  applies the same check, to reciprocal exchanges as well, so re-running only that step corrects
+  a run. On that cohort the calls drop from 38 events to 4, two of them in the mixed cultures the
+  QC also fails.
+
+- **The cohort's recurrence rule was measured against the wrong cohort.** It divided by every
+  sample in the run, so on a cohort mapped against two references an artefact of one could never
+  reach the 90% that marks a `reference_artifact`: 113 of 185 samples is 61%. It now divides by
+  the samples mapped to the same reference, leaving out the samples that are diverged from it.
+  The pooled locus statistics were keyed on the pair number alone, which pooled pair 61 of one
+  reference with pair 61 of the other; they are keyed on the contig as well. The reason on a
+  corroborated row quoted the Bayes factor as short of the threshold on rows at log10 BF 5.6 and a
+  threshold of 3; it now says what the row fell short of. A diverged sample is judged on one
+  reference at a time and over every contig of it: a sample diverged from one of two references
+  lost its tracts on the other as well, and counted over only the contigs it had tracts on, five
+  tracts on a plasmid made a sample with a clean chromosome divergent.
+
+- **Kraken counted runs and read species, so a clean cohort looked contaminated.** One report
+  per run became one row per run, so 185 samples gave 225 rows, and a sample's "primary taxon"
+  was its top species: Kraken2 leaves most *M. tuberculosis* reads on the complex, so the
+  species held about 5% and every sample fell under the 90% line. The report summarised 225 of
+  185 samples as possibly contaminated, while the cultures that were really another organism sat
+  unnoticed among them. A sample's reports are now merged by their reads, each sample is placed
+  in the clade its reads actually sit in, and contamination is measured as the share of the
+  classified reads in the clade most samples are dominated by: below 90% a sample is mixed,
+  below 50% it is another organism.
+
+- **The lineage read-out called every typed sample mixed.** It counted the samples carrying a
+  lineage breakdown, which every typed sample does, and reported 176 mixed-lineage samples
+  above a table that correctly counted none. It now counts the `MIXED` flag.
+
+- **The report dropped `LINEAGE_MISMATCH` as soon as it loaded.** Loading the page, and every
+  threshold change, rebuilt the flags from the thresholds alone, so a flag decided from evidence
+  the page does not hold vanished: the report never showed a wrong-reference sample and its
+  verdicts could disagree with `qc_flags.tsv`. Flags the page cannot recompute are now kept, and
+  the report says what was compared (*types as A4; the rest of E1ASM0035 types as L7*).
+
+- **A sample's collection date was the day the pipeline ran.** The summary's `date` is
+  `DAT_OUT`, stamped at processing, and the temporal panel read it as a collection date: a whole
+  cohort "sampled in 2026, a span of 0 years". The date now comes only from a samplesheet column
+  that names one (`collection_date`, `sampling_date`, `date`, `year`...).
+
+- **The reference-bias screen accused samples mapped to their own ancestor.** Its cut is
+  relative to the cohort median, and where that median is a handful of SNPs, 2 SNPs against 5
+  made 18 passing samples "reference-bias suspects". Below 10 SNPs per callable Mb (50 SNPs when
+  there is no density) the screen is off, and the panel says so and points at the samples far
+  above the rest instead.
+
+- **The resistance read-out counted lineage markers as resistance.** pncA H57D is in every
+  *M. bovis*, so every A4 sample of a cohort was "resistant to PZA" and the mutations that
+  arose during the experiment were a minority of what the panel reported. A grade 1-2 mutation
+  carried by at least 90% of a lineage's samples is now listed as that lineage's marker, apart
+  from the rest.
+
+- **Smaller read-out and drawing faults.** The correlation read-outs headlined pairs that are one
+  quantity measured twice (*Mapped %* against *Unmapped %* at r = -1); the gene-conversion panel
+  had no verdict for `divergent_sample`, the most common one on the cohort that introduced it, so
+  its 2,430 rows read "verdict not recognised"; the metric scatter drew its top values above the
+  axis; the genome landscape carried a fixed purple key over a red heatmap; and a printed report
+  came out under the grey backdrop of the mobile sidebar.
+
+- **A GFF attribute spelled `nan` was read as a gene name.** A GFF built from a table writes
+  pandas' NaN as four ordinary characters, and the attribute cascade in `gconv_annotate` only
+  asked whether a key was PRESENT. On a real MTBC reference 3,001 CDS lines carry `Name=nan`
+  beside a perfectly good `ID=Rv0001_1-1524`, and none of them carry `locus_tag` at all, so
+  `Name` won: every tract in a 185-sample cohort came out labelled `nan`, with amino-acid changes
+  reported as `nan:P1443A`. Nothing downstream could tell it from a gene really called that.
+
+  `_attr` now treats a placeholder value as an absent one, so the cascade falls through to the
+  ID. `nan`, `NaN`, `NA`, `None`, `null`, `n/a`, `.`, `-` and the empty string are all compared
+  case-insensitively, and a real symbol such as `dnaN` still wins over the ID.
+
+### Changed
+
+- **The QC report reads as seven pages, starting from what the run found.** On a 185-sample
+  cohort it was one scroll of 27 panels about 150,000 pixels long: the SNP dynamics alone drew
+  800 trajectory cards, the resistance panel listed all 4,986 calls, the table of all samples
+  had 48 columns with a bar in every cell, and the flags were codes. It now opens on a
+  *Summary* that says what the run shows in sentences with their numbers (the samples to
+  exclude and why, those that are another organism or were mapped to the wrong reference, the
+  resistance mutations beyond each lineage's own, the alleles that swept, the gene conversion
+  called in the samples the QC keeps), each linking to the page that holds the evidence and saying what it does not prove.
+  The rest is split into *Sample QC*, *Genome & genes*, *Variants over time*, *Resistance*,
+  *Gene conversion* and *Diagnostics*, with a badge in the sidebar where a page needs attention.
+
+  A flag reads as what went wrong and the value against its rule (*Low depth 2.2x, needs 10x*),
+  and the codes stay in every export. The table of all samples opens on the 14 metrics a
+  verdict is made of and colours only the cells that tripped a flag. The resistance panel groups
+  the calls by mutation and opens on grades 1-2; the contamination panel is one row per sample,
+  flagged ones first. The big panels draw a first screenful and keep the rest one click away:
+  24 trajectory cards at a time, 40 gene chips, 12 parallel genes. Printing lays out every page.
+
+- **Garnatxa submits four times faster.** `submitRateLimit` goes from 50 to 200 jobs a minute,
+  because it binds whenever the tasks are shorter than the interval between submissions. A
+  185-sample cohort instantiates about 4,300 tasks, 740 of them `ANNOTATE_LEGACY_VCF` at two or
+  three seconds each, so at the old rate those alone spent a quarter of an hour doing nothing but
+  calling sbatch. It is a courtesy limit toward the scheduler rather than a correctness one, and
+  the comment says to lower it again if submissions start being refused.
+
+### Fixed
+
+- **The dedup pipe asked for 160 percent of its own memory, and the resulting OOM was invisible.**
+  `samtools sort -m` is per thread and `MERGE_AND_MARKDUP` keeps two sorts alive at once, a name
+  sort feeding fixmate and a coordinate sort feeding markdup. Each was sized at 80 percent of the
+  task's allocation, so together they asked for 13.1 GB of an 8 GB request. A single sequencing
+  run produces a BAM too small to fill those buffers, which is why it stayed hidden until the
+  first merged sample, whose four input BAMs gave a 2.8 GB stream.
+
+  The second half was worse. The kernel kills one stage of a pipe, its stdout closes mid-BGZF
+  block, and the next stage reports a short read and exits 1, so an out-of-memory is
+  indistinguishable from a corrupt file and `errorStrategy` retried nothing. The pipe's
+  PIPESTATUS is now inspected and a signal death re-raised as 137, which the existing policy
+  already retries with double the memory. A genuine non-zero exit still fails fast.
+
+### Changed
+
+- **Kraken's memory is a parameter and scales with the attempt.** It was the one fixed `memory`
+  directive left in the pipeline, at 56 GB, and on a 185-sample cohort that put 61 of these jobs
+  behind SLURM's `QOSMaxMemoryPerUser` while the cluster itself had room. The right number is a
+  property of the database, not of the pipeline: with `--memory-mapping` the resident set is the
+  part of the index actually probed, measured at 34.7-39.7 GB against a 133 GB standard database
+  and well under 20 GB against the capped 16 GB one. `--kraken_memory` now sets it, defaulting to
+  24 GB, and it doubles on each retry like every other memory directive here, so an underestimate
+  costs one retry rather than the run.
+
+
+- **Every task on Garnatxa goes to the same QoS by default, and the queue is a parameter.** Two
+  of the three steps that asked for a longer QoS were measured at about twenty seconds each, so
+  they never needed it; the third only did because Kraken was reading a 133 GB database. `--qos`
+  and `--qos_heavy` now set the queue for the ordinary and the long steps, both defaulting to
+  `short`, and the long steps' walltime comes down from two hours to one. Declared in the root
+  config rather than in the profile, because `main.nf` validates command-line parameters against
+  that block and one declared only in a profile is rejected.
+
+
+- **Kraken filtering compresses with threads and asks for what it uses.** The step ended with two
+  sequential `gzip` calls, which are single-threaded: on a 1.5 million pair sample that is 72
+  seconds spent compressing 480 MB per mate while eleven of the twelve reserved cores sit idle.
+  `bgzip -@` does the same work in 2.8 seconds. BGZF is valid gzip, the decompressed bytes are
+  identical and the file is slightly smaller, and fastp reads it whole, which is the check that
+  matters because BGZF is a multi-member gzip and a reader that stops at the first member would
+  truncate silently. All of it measured against the pinned container.
+
+  The reservation is sized from the same measurements: three tasks averaged 102 percent CPU over
+  ten minutes on a 12-CPU request and peaked at 39.7 GB against an 80 GB one, so they now ask for
+  8 CPUs and 56 GB. A smaller reservation is scheduled sooner, which is most of what a run waits
+  for on a shared queue.
+
+- **Tasks on Garnatxa declare a walltime.** No process set `time`, so every job inherited the QoS
+  default of six hours, and SLURM's backfill scheduler can only place a job in a gap longer than
+  the walltime it asked for. A 200 ms collection step therefore queued behind everything rather
+  than filling the next gap. The default is now 30 minutes and the long steps get two hours, both
+  scaled by `task.attempt` so a timeout is retried with more rather than failing the run.
+
+### Fixed
+
+- **Lineage and drug-resistance typing ran on a fraction of each library.** FastP is run with
+  `--merge`, so a pair whose mates overlap leaves as a single merged fragment in the orphan
+  stream rather than as r1/r2. `MAP_READS` has taken all three read streams from the start;
+  `LINEAGE_TYPING` took two, so pathotypr typed only whatever happened to stay unmerged. How
+  much that is depends on the insert size, not on the pipeline: 8-19 percent in the cohort that
+  surfaced it, and on a purpose-built fully overlapping library r1 and r2 reached the typer
+  holding zero reads each while the merged stream held 3,000.
+
+  Nothing failed and no count read zero anywhere: a sample typed on nothing reports
+  `Unclassified`, which is also what a genuinely unclassifiable sample reports. Any lineage
+  call or resistance panel from an earlier run was computed on a subset of the evidence and is
+  worth regenerating.
+
+  The three streams are now concatenated and typed as one sample. They cannot be passed as
+  three `-i` arguments, because `--paired` requires an even number of files and without it the
+  names collapse to one duplicate sample. Both risks of concatenating were measured against the
+  pinned binary rather than assumed: pathotypr reads multi-member gzip (r1 alone falls below
+  `--min-depth` and yields no call, while the concatenation yields the same counts as
+  `--paired`, which it could not if it read only the first member), and `--paired` only groups
+  files, so the same pair passed as one concatenated file gives identical ref and alt counts.
+
+### Changed
+
+- **Drug-resistance catalogue upgraded to Zenodo v1.0.2, which corrects v1.0.0.** The WHO
+  catalogue grades every variant-drug pair separately; v1.0.0 instead gave each variant a
+  single drug inherited from its gene and took the grade from whichever catalogue row it
+  found first. Amikacin therefore did not occur anywhere in v1.0.0 and could never be
+  reported, the *rrs* aminoglycoside determinants were attributed to streptomycin, and the
+  *inhA* promoter variants to isoniazid alone. Beyond the 89 relabelled rows, 15,969 rows
+  carried the wrong grade: the upgrade moves 9,439 into grades 1-2 and none out of them,
+  growing the reportable marker set by 59 percent.
+
+  Detection is unchanged, and so are MDR and pre-XDR assignment. Results reporting
+  amikacin, kanamycin, capreomycin, ethionamide, linezolid, streptomycin or delamanid from
+  an image built before this change should be regenerated. An image ships v1.0.0 if
+  `pipeline_info/software_versions.txt` records the `dr_markers` SHA-256
+  `9769864774a11ed325d05b0543932782f6cd8c6ee444998c616e44c5763576c2`.
+
+  v1.0.2 publishes two coordinate frames; the bundled one is the MTBC-ancestor frame, which
+  is the frame of the reference bundled beside it. All 102,216 of its REF alleles match that
+  reference and the H37Rv file mismatches 609 of them at identical coordinates, so the wrong
+  choice would have dropped those markers with no error. The lineage markers and the
+  pre-trained model are byte-identical to v1.0.0.
+
+### Added
+
+- **Every run records which resistance catalogue produced its calls.** `DUMP_VERSIONS` now
+  emits the pathotypr binary version, the catalogue version and the SHA-256 of the marker
+  file actually read. Which catalogue a set of calls came from was not recoverable from the
+  calls themselves, and two catalogues that disagree on 15,969 rows can produce reports that
+  look identical.
+
+- **A composite drug label now counts towards every drug it names.** Catalogue v1.0.2 writes
+  a variant graded for several drugs as `AMI_KAN_CAP` or `INH_ETH`. The resistance matrix
+  used to give such a label a column of its own, leaving the columns of the drugs it covers
+  empty, so a sample whose only isoniazid evidence was an *inhA* promoter variant read as
+  clean under INH. The calls table and the TSV still carry the label as the catalogue wrote it.
+
+### Fixed
+
+- **A detected variant with no WHO grade no longer looks like a clean drug.** Both an
+  ungraded call and a genuine no-call rendered as an empty cell in the resistance matrix.
+  v1.0.0 contained 6,056 ungraded rows, ten of which are grade 1-2 under v1.0.2. Ungraded
+  calls now carry a mark and a legend entry of their own; only a no-call is blank.
+
+- **The container build verifies its Zenodo assets by checksum.** The comment claimed it
+  failed loudly on a truncated download, but the only guard was `test -s`, which a partial
+  9 MB file passes. `sha256sum --strict` is used rather than plain `-c`, because without
+  `--strict` a malformed digest line is skipped with a warning and the build still succeeds,
+  which was confirmed by building with one.
+
+- **The pathotypr binary is pinned alongside its data.** It was installed unpinned while its
+  marker files were pinned to a Zenodo record, so a rebuild paired whichever binary bioconda
+  served that day with a fixed catalogue. The image published before this change carries
+  binary 1.0.2 against catalogue v1.0.0, which is exactly the skew v1.0.2 renumbered the data
+  files to prevent.
+
+### Added
+
 - **Whether the donor kept its own bases.** Gene conversion is non-reciprocal by
   definition, and until now that was only asserted in the definition. The donor's
   reads are read as alleles over the same sites, and `donor_swap_af` says how much

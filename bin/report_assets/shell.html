@@ -6,25 +6,36 @@
 <div id="tocscrim" aria-hidden="true"></div>
 <nav id="toc" aria-label="Contents">
 <div class="toc-brand"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</div>
-<div class="toc-group"><div class="toc-gh">Overview<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#exec">Summary</a><a class="toc-link" href="#gstats">Stats</a><a class="toc-link" href="#flagged">Flagged</a><a class="toc-link" href="#linsum" id="nav-lin">Lineages</a><a class="toc-link" href="#dist">Distributions</a><a class="toc-link" href="#kraken" id="nav-kraken">Kraken</a></div></div>
-<div class="toc-group"><div class="toc-gh">Correlation &amp; structure<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#corr">Correlations</a><a class="toc-link" href="#corrmatrix">Corr matrix</a><a class="toc-link" href="#qcpca" id="nav-pca">QC space</a><a class="toc-link" href="#divcomp" id="nav-divcomp">Divergence</a><a class="toc-link" href="#dosetx" id="nav-dosetx">Dose &#215; Tx</a></div></div>
-<div class="toc-group"><div class="toc-gh">Genome &amp; genes<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#cons">Consensus</a><a class="toc-link" href="#genome" id="nav-genome">Genome</a><a class="toc-link" href="#function" id="nav-function">Function</a><a class="toc-link" href="#geneburden" id="nav-geneburden">Gene burden</a><a class="toc-link" href="#hotspots" id="nav-hot">Variable genes</a></div></div>
-<div class="toc-group"><div class="toc-gh">Evolution<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#temporal" id="nav-temporal">Temporal</a><a class="toc-link" href="#pnps" id="nav-pnps">pN/pS</a><a class="toc-link" href="#adna" id="nav-adna">aDNA</a></div></div>
-<div class="toc-group"><div class="toc-gh">Variants over time<span class="toc-chev" data-ic="chevronDown"></span></div><div class="toc-items"><a class="toc-link" href="#dynamics" id="nav-dyn">SNP dynamics</a><a class="toc-link" href="#epistasis" id="nav-epi">Epistasis</a><a class="toc-link" href="#snpmatrix" id="nav-snpmx">SNP matrix</a><a class="toc-link" href="#vardose" id="nav-vardose">Variant &#215; dose</a><a class="toc-link" href="#drug" id="nav-drug">Drug resistance</a><a class="toc-link" href="#gconv" id="nav-gconv">Gene conversion</a></div></div>
+<div class="toc-group" data-page="summary"><a class="toc-gh" href="#p-summary"><span class="toc-n">1</span>Summary</a></div>
+<div class="toc-group" data-page="qc"><a class="toc-gh" href="#p-qc"><span class="toc-n">2</span>Sample QC<span class="toc-badge" id="bdg-qc"></span></a><div class="toc-items"><a class="toc-link" href="#flagged">Flagged samples</a><a class="toc-link" href="#gstats">All samples</a><a class="toc-link" href="#linsum" id="nav-lin">Lineages</a><a class="toc-link" href="#kraken" id="nav-kraken">Contamination</a><a class="toc-link" href="#dist">Distributions</a><a class="toc-link" href="#adna" id="nav-adna">aDNA damage</a></div></div>
+<div class="toc-group" data-page="genome"><a class="toc-gh" href="#p-genome"><span class="toc-n">3</span>Genome &amp; genes</a><div class="toc-items"><a class="toc-link" href="#cons">Consensus</a><a class="toc-link" href="#genome" id="nav-genome">Genome landscape</a><a class="toc-link" href="#function" id="nav-function">Functional impact</a><a class="toc-link" href="#geneburden" id="nav-geneburden">Gene burden</a><a class="toc-link" href="#hotspots" id="nav-hot">Variable genes</a><a class="toc-link" href="#pnps" id="nav-pnps">Selection (dN/dS)</a></div></div>
+<div class="toc-group" data-page="variants"><a class="toc-gh" href="#p-variants"><span class="toc-n">4</span>Variants over time<span class="toc-badge" id="bdg-variants"></span></a><div class="toc-items"><a class="toc-link" href="#dynamics" id="nav-dyn">SNP dynamics</a><a class="toc-link" href="#epistasis" id="nav-epi">Co-varying pairs</a><a class="toc-link" href="#snpmatrix" id="nav-snpmx">SNP matrix</a><a class="toc-link" href="#vardose" id="nav-vardose">Variant &#215; dose</a></div></div>
+<div class="toc-group" data-page="drug"><a class="toc-gh" href="#p-drug"><span class="toc-n">5</span>Resistance<span class="toc-badge" id="bdg-drug"></span></a><div class="toc-items"><a class="toc-link" href="#drug" id="nav-drug">Resistance mutations</a></div></div>
+<div class="toc-group" data-page="gconv"><a class="toc-gh" href="#p-gconv"><span class="toc-n">6</span>Gene conversion<span class="toc-badge" id="bdg-gconv"></span></a><div class="toc-items"><a class="toc-link" href="#gconv" id="nav-gconv">Candidate tracts</a></div></div>
+<div class="toc-group" data-page="diag"><a class="toc-gh" href="#p-diag"><span class="toc-n">7</span>Diagnostics</a><div class="toc-items"><a class="toc-link" href="#corr">Metric pairs</a><a class="toc-link" href="#corrmatrix">Correlation matrix</a><a class="toc-link" href="#qcpca" id="nav-pca">QC space</a><a class="toc-link" href="#divcomp" id="nav-divcomp">Divergence</a><a class="toc-link" href="#dosetx" id="nav-dosetx">Dose &#215; treatment</a><a class="toc-link" href="#temporal" id="nav-temporal">Sampling dates</a></div></div>
 </nav>
-<header><span class="logo"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</span><span class="ver" id="hver"></span><span class="meta" id="meta"></span><a id="ghlink" class="hbtn" href="__REPO__" target="_blank" rel="noopener noreferrer" title="BAMpiro source on GitHub" aria-label="BAMpiro source on GitHub" style="margin-left:auto"><span data-ic="github"></span></a><button id="insightToggle" class="hbtn hbtn-lbl" title="Show / hide the analytical read-out at the top of each panel" aria-label="Toggle analytical read-outs" aria-pressed="true"><span data-ic="spark"></span> insights</button><button id="allSitesBtn" class="hbtn hbtn-lbl" style="display:none" title="Show everything at once - every SNP trajectory, every epistasis pair and every matrix site - and jump to the SNP dynamics"><span data-ic="grid"></span> <span id="allSitesLbl">show all</span></button><button id="themeToggle" class="hbtn" title="Toggle dark / light theme" aria-label="Toggle dark / light theme"></button></header>
-<div class="wrap">
-<p class="lede">Short-read bacterial / MTBC cohort QC. Review <a href="#flagged">flagged samples</a>, tick any to drop, then export <b>keep_list.txt</b> / <b>exclusion.tsv</b>. Thresholds below are live; the pipeline gate itself is unchanged.</p>
+<header><span class="logo"><img class="brandlogo" src="__LOGO__" alt="BAMpiro logo"><b>BAMpiro</b> QC</span><span class="ver" id="hver"></span><span class="meta" id="meta"></span><a id="ghlink" class="hbtn" href="__REPO__" target="_blank" rel="noopener noreferrer" title="BAMpiro source on GitHub" aria-label="BAMpiro source on GitHub" style="margin-left:auto"><span data-ic="github"></span></a><button id="insightToggle" class="hbtn hbtn-lbl" title="Show / hide the written read-out at the top of each panel" aria-label="Toggle the written read-outs" aria-pressed="true"><span data-ic="spark"></span> read-outs</button><button id="allSitesBtn" class="hbtn hbtn-lbl" style="display:none" title="Show everything at once - every SNP trajectory, every co-varying pair and every matrix site"><span data-ic="grid"></span> <span id="allSitesLbl">show all</span></button><button class="hbtn" id="printBtn" title="Print or save the whole report as PDF (every page)" aria-label="Print"><span data-ic="printer"></span></button><button id="themeToggle" class="hbtn" title="Toggle dark / light theme" aria-label="Toggle dark / light theme"></button></header>
+<main class="wrap">
+
+<div class="page" id="p-summary" data-page="summary">
+<div class="page-h"><div class="eyebrow">1 &#183; Summary</div><h1 id="sum_title">What this run shows</h1><p class="page-lede" id="sum_lede"></p></div>
+<section id="exec"><div id="exec_body"></div></section>
+<section id="about"><h2>About this run</h2><div class="provbar"><div class="prov" id="prov"></div></div></section>
+</div>
+
+<div class="page" id="p-qc" data-page="qc">
+<div class="page-h"><div class="eyebrow">2 &#183; Sample QC</div><h1>Which samples can be trusted</h1><p class="page-lede">Each sample is judged against the thresholds below, which you can change here: every panel re-flags at once, while the pipeline's own gate and <code>qc_flags.tsv</code> keep the defaults. Samples that fail start in the exclusion list; review the rest and export the list for the downstream analysis.</p></div>
 <section class="hero"><div class="summary" id="summary"></div><div class="chips" id="chips"></div></section>
-<section id="exec"><h2>Executive summary <span class="c">- cohort health and headline findings at a glance</span></h2>
-<div class="panel pad" id="exec_body"></div></section>
-<div class="provbar"><div class="prov" id="prov"></div><button class="btn" id="printBtn" title="expand + print / save as PDF"><span data-ic="printer"></span> print</button></div>
-<section><details class="dd" style="display:inline-block"><summary><span data-ic="sliders"></span> Live thresholds &amp; presets - adjust and everything re-flags<span class="ddcaret" data-ic="chevronDown" data-ic-cls="sort"></span></summary>
+<section class="thsec"><details class="dd"><summary><span data-ic="sliders"></span> Thresholds &amp; presets<span class="ddcaret" data-ic="chevronDown" data-ic-cls="sort"></span></summary>
 <div class="menu" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;min-width:min(520px,calc(100vw - 28px))">
   <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;flex-basis:100%" id="thbox"></div>
   <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;flex-basis:100%" id="athbox"></div>
 </div></details></section>
-<section id="gstats"><h2>General statistics <span class="c">- tick a box to basket a sample for exclusion; click a sample name for its full profile; a header to sort</span><button class="exp-h" data-panel="gstatsPanel" data-render="table" style="margin-left:auto"><span data-ic="maximize"></span>full</button></h2>
+<section id="flagged"><h2>Flagged samples <span class="c"><span id="nflag"></span> samples fail or need a look; worst first, each with the value that tripped the check</span>
+<button class="btn" id="basketFlagged" style="margin-left:auto"><span data-ic="basket"></span> add all to the exclusion list</button></h2>
+<div class="panel gtable flagpanel"><table id="flagtable"></table></div></section>
+<section id="curation-sec"><div class="curation" id="curation"></div></section>
+<section id="gstats"><h2>All samples <span class="c">the key metrics per sample; a value outside its acceptable range is coloured. Click a name for the full profile, a header to sort</span><button class="exp-h" data-panel="gstatsPanel" data-render="table" style="margin-left:auto"><span data-ic="maximize"></span>full</button></h2>
 <div class="controls">
   <input id="q" type="search" placeholder="filter samples…">
   <label><input id="of" type="checkbox"> only flagged</label>
@@ -35,62 +46,39 @@
   <details class="dd"><summary>columns <span data-ic="chevronDown" data-ic-cls="sort"></span></summary><div class="menu" id="colmenu"></div></details>
   <details class="dd"><summary><span data-ic="help"></span> metric help</summary><div class="menu" id="helpmenu"></div></details>
   <button class="btn" id="csv"><span data-ic="download"></span> export TSV</button>
-  <a class="hint" id="nbasket" href="#curation" title="samples in the exclusion basket - click to jump to it" style="text-decoration:none;color:var(--accent);cursor:pointer"></a>
+  <a class="hint" id="nbasket" href="#curation" title="samples in the exclusion list - click to jump to it" style="text-decoration:none;color:var(--accent);cursor:pointer"></a>
   <span class="hint"><span id="nshown"></span></span>
 </div>
 <div class="panel gtable" id="gstatsPanel"><table id="gstable"></table></div></section>
-<section id="flagged"><h2>Flagged samples <span class="c">- <span id="nflag"></span> to review; the margin is shown under each flag; click a flag to filter the cohort</span>
-<button class="btn" id="basketFlagged" style="margin-left:auto"><span data-ic="basket"></span> basket all flagged</button></h2>
-<div class="panel gtable" style="max-height:50vh"><table id="flagtable"></table></div></section>
-<section id="curation-sec"><div class="curation" id="curation"></div></section>
-<section id="linsum"><h2>Per-lineage summary <span class="c">- medians per lineage; # MIXED = samples with &gt;1 lineage above the mixture cut-off; click a row to filter</span></h2>
+<section id="linsum"><h2>Lineages <span class="c">medians per lineage; click a row to filter every panel to it</span></h2>
 <div class="panel"><div id="lincomp"></div><div class="gtable"><table id="linsumtable"></table></div></div></section>
-<section id="dist"><h2>Distributions <span class="c">- one mark per sample; shaded band = acceptable range (modern gate); hover for detail</span>
+<section id="kraken"><h2>Contamination <span class="c">how much of each sample's reads belong to the organism the cohort is about (Kraken2, before mapping)</span></h2>
+<div class="panel pad" id="kraken_body"></div></section>
+<section id="dist"><h2>Distributions <span class="c">one mark per sample; the shaded band is the acceptable range</span>
 <span class="seg" id="colorby" style="margin-left:auto"><button class="on" data-cb="qc">colour: QC</button><button data-cb="lineage">lineage</button></span>
 <span class="seg" id="ptype"><button class="on" data-t="beeswarm">beeswarm</button><button data-t="bar">bar</button><button data-t="histogram">histogram</button></span>
 <label class="dyn-zoom" title="Resize the plots - taller rows spread the marks"><span><span data-ic="search" data-ic-cls="sort"></span>&#8211;/+</span><input type="range" id="plotszoom" min="24" max="72" step="4" value="30"></label>
 <button class="exp-h" data-panel="plotsPanel" data-render="plots"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="plotsPanel"><div id="plots" class="pad" style="padding-top:6px;padding-bottom:6px"></div>
-<div class="legend" id="leg-qc"><span><i style="background:#94a3b8"></i>PASS</span><span><i style="background:#d97706"></i>WARN</span><span><i style="background:#dc2626"></i>FAIL</span><span style="margin-left:auto">beeswarm dashed line = median</span></div>
+<div class="legend" id="leg-qc"><span><i style="background:#94a3b8"></i>PASS</span><span><i style="background:#d97706"></i>WARN</span><span><i style="background:#dc2626"></i>FAIL</span><span style="margin-left:auto">dashed line = median</span></div>
 <div class="legend" id="leg-lin" style="display:none"></div></div></section>
-<section id="kraken"><h2>Taxonomic composition <span class="c">- Kraken2 classification of the reads before mapping: the dominant (primary) taxon, the top other taxon, and the unclassified fraction. A low primary % or a large secondary taxon flags possible contamination / a mixed sample.</span></h2>
-<div class="panel pad" id="kraken_body"></div></section>
-<section id="corr"><h2>Correlations <span class="c">- pick two metrics, coloured by QC; drag a box to basket the enclosed samples</span>
-<span id="scbrushinfo" style="margin-left:auto;font-size:11px;color:var(--accent)"></span>
-<select class="msel" id="sx"></select><span style="color:#94a3b8">vs</span><select class="msel" id="sy"></select>
-<button class="exp-h" data-panel="scatter" data-render="scatter"><span data-ic="maximize"></span>full</button></h2>
-<div class="panel pad" id="scatter"></div></section>
-<section id="corrmatrix"><h2>Metric correlation <span class="c">- Spearman rank correlation across the core metrics, over the samples in view; click a cell to load that pair into the scatter above</span>
-<button class="exp-h" data-panel="corrmatrix" data-render="corr" style="margin-left:auto"><span data-ic="maximize"></span>full</button></h2>
-<div class="panel pad" id="corr_body"></div></section>
-<section id="qcpca"><h2>QC-metric space <span class="c">- samples ordinated in standardized QC-metric space (PCA on robust z-scores); a descriptive map of how quality profiles co-vary, not phylogeny and not a test</span>
-<span class="seg" id="pcacb" style="margin-left:auto"><button class="on" data-cb="qc">colour: QC</button><button data-cb="lineage">lineage</button></span>
-<button class="exp-h" data-panel="qcpcaPanel" data-render="pca"><span data-ic="maximize"></span>full</button></h2>
-<div class="panel" id="qcpcaPanel"><div id="qcpca_body" class="pad"></div>
-<div class="hot-note" id="qcpca_caption"></div>
-<div class="dsub" style="margin:14px 16px 4px">Most unusual samples <span style="font-weight:400;color:#94a3b8">(robust Mahalanobis rank + top deviating metrics)</span></div>
-<div class="gtable" style="max-height:34vh"><table id="pca_outtable"></table></div></div></section>
-<section id="divcomp"><h2>Divergence vs completeness <span class="c">- separates reference-bias suspects (low divergence at low missingness) from honest low-coverage (low divergence explained by high missingness); a screen to inspect, not an automatic flag</span>
-<span class="seg" id="divx" style="margin-left:auto"><button class="on" data-x="missing_pct">x: missing %</button><button data-x="callable_inv">100 - callable %</button></span>
-<button class="exp-h" data-panel="divcompPanel" data-render="divcomp"><span data-ic="maximize"></span>full</button></h2>
-<div class="panel" id="divcompPanel"><div id="divcomp_body" class="pad"></div>
-<div class="legend" id="divcomp_quadn"></div>
-<div class="hot-note" id="divcomp_caption"></div></div></section>
-<section id="dosetx"><h2>Dose &#215; treatment <span class="c">- per-treatment dose distribution and a Kruskal&#8211;Wallis test of whether dose differs across treatment groups (whole cohort)</span>
-<button class="exp-h" data-panel="dosetxPanel" data-render="dosetx" style="margin-left:auto"><span data-ic="maximize"></span>full</button></h2>
-<div class="panel" id="dosetxPanel"><div id="dosetx_body" class="pad"></div>
-<div class="hot-note" id="dosetx_caption"></div></div></section>
-<section id="cons"><h2>Consensus completeness <span class="c">- callable / IUPAC / missing per sample, worst first</span>
+<section id="adna"><h2>aDNA damage authentication <span class="c">terminal deamination per ancient sample; a screen, not a proof of authenticity</span></h2>
+<div class="panel"><div id="adna_body" class="pad"></div></div></section>
+</div>
+
+<div class="page" id="p-genome" data-page="genome">
+<div class="page-h"><div class="eyebrow">3 &#183; Genome &amp; genes</div><h1>How much of the genome each sample recovers, and where its variants fall</h1><p class="page-lede">Completeness of each consensus, where along the reference calls are missing or variants concentrate, and which genes carry them.</p></div>
+<section id="cons"><h2>Consensus completeness <span class="c">callable / ambiguous (IUPAC) / missing share of each consensus, worst first</span>
 <label class="dyn-zoom" title="Resize the per-sample bars" style="margin-left:auto"><span><span data-ic="search" data-ic-cls="sort"></span>&#8211;/+</span><input type="range" id="conszoom" min="18" max="56" step="2" value="26"></label></h2>
 <div class="panel"><div id="stacks" style="max-height:60vh;overflow:auto"></div>
 <div class="legend"><span><i style="background:#22a06b"></i>callable</span><span><i style="background:#e6b25a"></i>IUPAC</span><span><i style="background:#cbd5e1"></i>missing (- / N)</span></div></div></section>
-<section id="genome"><h2>Genome landscape <span class="c">- a signal along the reference; rows = samples (grouped by lineage). A contiguous block = a localised feature (e.g. an RD deletion, a variant cluster). Missing = consensus callability (coverage proxy); SNPs/Het/Indels = VCF variant density. Drag across the track to zoom a region</span>
+<section id="genome"><h2>Genome landscape <span class="c">one row per sample along the reference, grouped by lineage; drag across the plot to zoom into a region</span>
 <input class="gsearch" id="genegoto" type="search" placeholder="go to gene" style="margin-left:auto"><span id="gselreadout" style="font-size:11px;color:var(--accent)"></span><button class="btn" id="maskbtn"><span data-ic="ban"></span>mask regions</button><span class="seg" id="gtrack"></span>
 <label class="dyn-zoom" title="Row height - taller rows per sample"><span><span data-ic="search" data-ic-cls="sort"></span>&#8211;/+</span><input type="range" id="genzoom" min="3" max="22" step="1" value="9"></label>
 <button class="exp-h" data-panel="genomePanel" data-render="genome"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="genomePanel"><div class="genome-scroll"><div id="genome_body" class="pad"></div></div>
-<div class="legend"><span><i style="background:rgb(238,244,240)"></i>none / callable</span><span><i style="background:rgb(160,120,150)"></i>&#8594;</span><span><i style="background:rgb(120,70,90)"></i>high</span><span style="margin-left:auto">top strip = cohort mean; hover a cell for the position + value</span></div></div></section>
-<section id="function"><h2>Functional annotation <span class="c">- snpEff impact + effect classes per sample; the missense/silent ratio is a pN/pS PROXY, not a selection test</span>
+<div class="legend" id="genome_legend"></div></div></section>
+<section id="function"><h2>Functional impact <span class="c">snpEff impact classes per sample; the missense/silent ratio is a proxy, not a selection test</span>
 <label class="dyn-zoom" title="Resize the per-sample bars" style="margin-left:auto"><span><span data-ic="search" data-ic-cls="sort"></span>&#8211;/+</span><input type="range" id="fnzoom" min="18" max="56" step="2" value="26"></label>
 <button class="exp-h" data-panel="functionPanel" data-render="function"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="functionPanel">
@@ -99,39 +87,80 @@
   <div class="legend" id="fn_legend"></div>
   <div class="hot-note" id="fn_caption"></div>
 </div></section>
-<section id="geneburden"><h2>Functional gene burden <span class="c">- genes carrying the most HIGH+MODERATE variants across the cohort, with the dominant effect class; a functional companion to Variable genes below, not a selection test</span>
+<section id="geneburden"><h2>Gene burden <span class="c">genes carrying the most HIGH + MODERATE variants across the cohort</span>
 <input class="gsearch" id="gbq" type="search" placeholder="search gene" style="margin-left:auto"><button class="exp-h" data-panel="geneburdenPanel" data-render="geneburden"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="geneburdenPanel"><div id="gb_body"><div class="hot-note" id="gb_note"></div><div class="gtable" style="max-height:44vh"><table id="gbtable"></table></div></div></div></section>
-<section id="hotspots"><h2>Variable genes <span class="c">- genes/regions with the most SNPs across the cohort; click a row to mark it on the SNP track</span>
+<section id="hotspots"><h2>Variable genes <span class="c">genes in the regions with the most SNPs across the cohort; click a row to show it in the landscape</span>
 <input class="gsearch" id="hotq" type="search" placeholder="search gene" style="margin-left:auto"><button class="exp-h" data-panel="hotspotsPanel" data-render="hotspots"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="hotspotsPanel"><div id="hot_body"><div class="hot-note" id="hot_note"></div><div class="gtable" style="max-height:44vh"><table id="hottable"></table></div></div></div></section>
-<section id="dynamics"><h2>SNP dynamics <span class="c">- search &amp; select genes to see the allele-frequency trajectories of their variants over time; events flag emergence / fixation / loss / non-synonymous</span></h2>
+<section id="pnps"><h2>Selection: dN/dS <span class="c">per-gene dN/dS across the cohort (eskaks); population genetics, not per-sample QC</span>
+<input class="gsearch" id="pnpsq" type="search" placeholder="search gene" style="margin-left:auto"><button class="exp-h" data-panel="pnpsPanel" data-render="pnps"><span data-ic="maximize"></span>full</button></h2>
+<div class="panel" id="pnpsPanel"><div id="pnps_body"><div class="hot-note" id="pnps_note"></div><div class="gtable" style="max-height:48vh"><table id="pnpstable"></table></div></div></div></section>
+</div>
+
+<div class="page" id="p-variants" data-page="variants">
+<div class="page-h"><div class="eyebrow">4 &#183; Variants over time</div><h1>How allele frequencies change along each series</h1><p class="page-lede">Every variant followed through the time points of its series (a patient, a passage line), the pairs that move together, and the full site &#215; sample matrix.</p></div>
+<section id="dynamics"><h2>SNP dynamics <span class="c">allele-frequency trajectories per gene; the screen at the top ranks what is changing</span></h2>
 <div class="panel pad" id="dyn_body"></div></section>
-<section id="epistasis"><h2>Epistasis <span class="c">- pairs of variants whose allele-frequency trajectories move together (concordant) or in opposition (discordant) within a connected series; candidate linked / co-selected / competing SNPs</span></h2>
+<section id="epistasis"><h2>Co-varying pairs <span class="c">variants whose trajectories move together (concordant) or against each other (discordant) within a series</span></h2>
 <div class="panel pad" id="epi_body"></div></section>
-<section id="snpmatrix"><h2>SNP matrix <span class="c">- every SNP site (rows) &#215; sample (columns); each cell is the allele frequency (hover for AF &amp; depth), a striped cell = not called. Filter by gene / position, then download the full matrix as a TSV.</span></h2>
+<section id="snpmatrix"><h2>SNP matrix <span class="c">every SNP site &#215; sample, as allele frequency; filter by gene or position and download the full matrix</span></h2>
 <div class="panel pad" id="snpmx_body"></div></section>
-<section id="vardose"><h2>Variant &#215; dose <span class="c">- per-variant allele frequency correlated with dose across the cohort (Spearman &#961; + Benjamini&#8211;Hochberg FDR); click a row to plot it</span>
+<section id="vardose"><h2>Variant &#215; dose <span class="c">per-variant allele frequency against dose (Spearman &#961; with Benjamini&#8211;Hochberg FDR); click a row to plot it</span>
 <input class="gsearch" id="vardoseq" type="search" placeholder="search gene / position / AA" style="margin-left:auto"><button class="exp-h" data-panel="vardosePanel" data-render="vardose"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="vardosePanel"><div id="vardose_body" class="pad"></div>
 <div class="hot-note" id="vardose_caption"></div></div></section>
-<section id="drug"><h2>Drug resistance <span class="c">- resistance-associated mutations detected by pathotypr (WHO catalogue, H37Rv numbering). A genomic screen, NOT a clinical result; grade 1&#8211;2 = associated with resistance, 3 = uncertain, 4&#8211;5 = not associated.</span></h2>
+</div>
+
+<div class="page" id="p-drug" data-page="drug">
+<div class="page-h"><div class="eyebrow">5 &#183; Resistance</div><h1>Resistance-associated mutations</h1><p class="page-lede">Mutations in the WHO catalogue called by pathotypr straight from the reads (H37Rv numbering). Those every sample of a lineage shares are separated from those only some samples carry. A genomic screen, not a drug-susceptibility result.</p></div>
+<section id="drug"><h2>Resistance mutations <span class="c">grade 1&#8211;2 = associated with resistance, 3 = uncertain, 4&#8211;5 = not associated</span></h2>
 <div class="panel pad" id="drug_body"></div></section>
-<section id="gconv"><h2>Gene conversion <span class="c">- candidate tracts where one paralog has been copied onto another, and the evidence that decides whether to believe each one. Two other things produce the same bases: an ordinary substitution that happens to match the paralog, and a read that arrived from the donor. BF is how much better a conversion explains the reads than either of them.</span>
+</div>
+
+<div class="page" id="p-gconv" data-page="gconv">
+<div class="page-h"><div class="eyebrow">6 &#183; Gene conversion</div><h1>Candidate gene conversion between paralogs</h1><p class="page-lede">Stretches where one copy of a gene family seems to have been overwritten by another, and the evidence that decides whether to believe each one: an ordinary substitution matching the paralog and reads that came from the donor produce the same bases, and the Bayes factor (BF) says how much better a conversion explains the reads.</p></div>
+<section id="gconv"><h2>Candidate tracts <span class="c">one row per event; filter by verdict, search a sample, locus or donor</span>
 <input class="gsearch" id="gconvq" type="search" placeholder="search sample / locus / donor" style="margin-left:auto"><button class="exp-h" data-panel="gconvPanel" data-render="gconv"><span data-ic="maximize"></span>full</button></h2>
 <div class="panel" id="gconvPanel"><div id="gconv_body" class="pad"></div>
 <div class="hot-note" id="gconv_caption"></div></div></section>
-<section id="adna"><h2>aDNA damage authentication <span class="c">- terminal deamination per ancient sample; a screen, not a proof of authenticity</span></h2>
-<div class="panel"><div id="adna_body" class="pad"></div></div></section>
-<section id="temporal"><h2>Temporal sampling overview <span class="c">- per-lineage year span parsed from dates + an informative-site proxy; a readiness check for downstream time-resolved analysis, NOT a clock estimate</span></h2>
+</div>
+
+<div class="page" id="p-diag" data-page="diag">
+<div class="page-h"><div class="eyebrow">7 &#183; Diagnostics</div><h1>How the QC metrics relate</h1><p class="page-lede">Views for digging into a problem once you have seen it elsewhere. None of them flags a sample on its own.</p></div>
+<section id="corr"><h2>Metric pairs <span class="c">any two metrics against each other; drag a box to add the enclosed samples to the exclusion list</span>
+<span id="scbrushinfo" style="margin-left:auto;font-size:11px;color:var(--accent)"></span>
+<select class="msel" id="sx"></select><span style="color:#94a3b8">vs</span><select class="msel" id="sy"></select>
+<button class="exp-h" data-panel="scatter" data-render="scatter"><span data-ic="maximize"></span>full</button></h2>
+<div class="panel pad" id="scatter"></div></section>
+<section id="corrmatrix"><h2>Correlation matrix <span class="c">Spearman rank correlation between the core metrics over the samples in view; click a cell to plot that pair above</span>
+<button class="exp-h" data-panel="corrmatrix" data-render="corr" style="margin-left:auto"><span data-ic="maximize"></span>full</button></h2>
+<div class="panel pad" id="corr_body"></div></section>
+<section id="qcpca"><h2>QC space <span class="c">samples placed by their whole QC profile (PCA on robust z-scores); a map, not a test and not a phylogeny</span>
+<span class="seg" id="pcacb" style="margin-left:auto"><button class="on" data-cb="qc">colour: QC</button><button data-cb="lineage">lineage</button></span>
+<button class="exp-h" data-panel="qcpcaPanel" data-render="pca"><span data-ic="maximize"></span>full</button></h2>
+<div class="panel" id="qcpcaPanel"><div id="qcpca_body" class="pad"></div>
+<div class="hot-note" id="qcpca_caption"></div>
+<div class="dsub" style="margin:14px 16px 4px">Most unusual samples <span style="font-weight:400;color:#94a3b8">(robust Mahalanobis rank + top deviating metrics)</span></div>
+<div class="gtable" style="max-height:34vh"><table id="pca_outtable"></table></div></div></section>
+<section id="divcomp"><h2>Divergence vs completeness <span class="c">separates reference-bias suspects from honest low coverage; a screen to inspect, not a flag</span>
+<span class="seg" id="divx" style="margin-left:auto"><button class="on" data-x="missing_pct">x: missing %</button><button data-x="callable_inv">100 - callable %</button></span>
+<button class="exp-h" data-panel="divcompPanel" data-render="divcomp"><span data-ic="maximize"></span>full</button></h2>
+<div class="panel" id="divcompPanel"><div id="divcomp_body" class="pad"></div>
+<div class="legend" id="divcomp_quadn"></div>
+<div class="hot-note" id="divcomp_caption"></div></div></section>
+<section id="dosetx"><h2>Dose &#215; treatment <span class="c">dose per treatment group and a Kruskal&#8211;Wallis test of whether it differs between groups</span>
+<button class="exp-h" data-panel="dosetxPanel" data-render="dosetx" style="margin-left:auto"><span data-ic="maximize"></span>full</button></h2>
+<div class="panel" id="dosetxPanel"><div id="dosetx_body" class="pad"></div>
+<div class="hot-note" id="dosetx_caption"></div></div></section>
+<section id="temporal"><h2>Sampling dates <span class="c">collection years per lineage from the samplesheet; whether the cohort spans enough time for a dated analysis, not a clock estimate</span></h2>
 <div class="panel"><div id="temporal_body" class="pad"></div>
 <div class="legend"><span><i style="background:var(--accent)"></i>sample year</span><span>bar = sampling span</span><span style="margin-left:auto">informative-site proxy = median SNPs</span></div>
 <div class="hot-note" id="temporal_caption"></div></div></section>
-<section id="pnps"><h2>Selection: pN/pS and dN/dS <span class="c">- alignment-based per-gene dN/dS from eskaks; a cohort selection screen, not a per-sample QC metric</span>
-<input class="gsearch" id="pnpsq" type="search" placeholder="search gene" style="margin-left:auto"><button class="exp-h" data-panel="pnpsPanel" data-render="pnps"><span data-ic="maximize"></span>full</button></h2>
-<div class="panel" id="pnpsPanel"><div id="pnps_body"><div class="hot-note" id="pnps_note"></div><div class="gtable" style="max-height:48vh"><table id="pnpstable"></table></div></div></div></section>
-<div class="footer" id="foot"></div>
 </div>
+
+<div class="footer" id="foot"></div>
+</main>
 <button id="expClose" class="exp-close" aria-label="exit fullscreen"><span data-ic="x"></span>close (Esc)</button>
 <div id="modal" class="modal"><div class="modalcard" role="dialog" aria-modal="true" aria-label="Sample detail"><button class="modalx" id="modalx" aria-label="close"><span data-ic="x"></span></button><div id="modalbody"></div></div></div>
 <div id="tt"></div><div id="toast" role="status" aria-live="polite"></div>

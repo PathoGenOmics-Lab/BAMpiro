@@ -117,6 +117,16 @@ function renderQCspace(){var host=el('qcpca_body'),cap=el('qcpca_caption'),ot=el
       :'<tr><td colspan="4" style="text-align:left;color:#94a3b8;padding:8px">no samples in view</td></tr>')+'</tbody>';
     Array.prototype.forEach.call(ot.querySelectorAll('tbody tr[data-s]'),function(tr){tr.onclick=function(){setHi(tr.getAttribute('data-s'));};});}}
 // ---- Panel 2: divergence vs completeness (reference-bias screen) ----
+// Reference-bias screen: a sample whose divergence is ANOMALOUSLY low for how completely it mapped.
+// It only means something when the reference is a different strain, so that every sample is expected
+// to differ from it. Mapped to their own ancestor, a cohort sits near zero and "lower than the rest"
+// is two SNPs against five; below the floor the screen is switched off and the panel says why.
+var DIV_FLOOR_DENS=10, DIV_FLOOR_SNPS=50;
+function divScreen(ys){var so=ys.slice().sort(function(a,b){return a-b;}),dmed=med2(so);
+  var dmad=med2(so.map(function(v){return Math.abs(v-dmed);}).sort(function(a,b){return a-b;}));
+  var ylo=dmed-2.5*1.4826*dmad; if(!(dmad>0)||!(ylo>0))ylo=0.5*dmed;   // robust low cut (guard MAD=0 ties + wide spread)
+  var floor=R.snp_density_ok?DIV_FLOOR_DENS:DIV_FLOOR_SNPS;
+  return {med:dmed,lo:ylo,on:dmed>=floor,floor:floor};}
 function renderRefBias(){var host=el('divcomp_body'),cap=el('divcomp_caption'),qn=el('divcomp_quadn');if(!host)return;
   st.divx=st.divx||'missing_pct';
   var yk=(R.snp_density_ok?'snp_density':'snps'),ylabel=(R.snp_density_ok?'SNPs per callable Mb':'SNPs vs reference');
@@ -127,9 +137,7 @@ function renderRefBias(){var host=el('divcomp_body'),cap=el('divcomp_caption'),q
   var xs=pool.map(xof),ys=pool.map(function(s){return s.m[yk];});
   var xhi=Math.max.apply(null,xs)*1.06||1,yhi=Math.max.apply(null,ys)*1.06||1;
   function sx(v){return pad+v/(xhi||1)*(W-pad-14);}function sy(v){return H-pad-v/(yhi||1)*(H-pad-16);}
-  var gx=thr.missing_max,divs=ys.slice().sort(function(a,b){return a-b;});
-  var dmed=med2(divs),dmad=med2(divs.map(function(v){return Math.abs(v-dmed);}).sort(function(a,b){return a-b;}));
-  var ylo=dmed-2.5*1.4826*dmad;if(!(dmad>0)||!(ylo>0))ylo=0.5*dmed;   // robust low cut (guard MAD=0 ties + wide spread): only ANOMALOUSLY low divergence is called out (not just below median)
+  var gx=thr.missing_max,scr=divScreen(ys),ylo=scr.on?scr.lo:0;   // screen off -> no low-divergence zone at all
   var GX=sx(Math.min(gx,xhi)),GY=sy(Math.max(0,ylo));
   var rects='<rect x="'+pad+'" y="14" width="'+Math.max(0,W-14-pad).toFixed(1)+'" height="'+Math.max(0,GY-14).toFixed(1)+'" fill="var(--pass)" opacity="0.04"/>'
     +'<rect x="'+pad+'" y="'+GY.toFixed(1)+'" width="'+Math.max(0,GX-pad).toFixed(1)+'" height="'+Math.max(0,H-pad-GY).toFixed(1)+'" fill="var(--fail)" opacity="0.07"/>'
@@ -143,11 +151,12 @@ function renderRefBias(){var host=el('divcomp_body'),cap=el('divcomp_caption'),q
     return ring+'<circle cx="'+cx+'" cy="'+cy+'" r="'+(big?5.4:3.4)+'" fill="'+dotColor(s)+'" opacity="0.82"'+((s.v=='FAIL'||big)?' stroke="'+TH.ink+'" stroke-width="'+(big?1.4:0.6)+'"':'')+' data-s="'+esc(s.s)+'" data-lin="'+esc(s.lineage||'')+'" data-x="'+xv+'" data-y="'+yv+'" data-xl="'+(st.divx=='callable_inv'?'100 - callable %':'Missing %')+'" data-yl="'+esc(ylabel)+'" data-xk="pct" data-yk="'+(R.snp_density_ok?'float':'int')+'"/>';}).join('');
   var frame='<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(W-14)+'" y2="'+(H-pad)+'" stroke="'+TH.axis+'"/><line x1="'+pad+'" y1="14" x2="'+pad+'" y2="'+(H-pad)+'" stroke="'+TH.axis+'"/>';
   var titles='<text x="'+((pad+W-14)/2)+'" y="'+(H-6)+'" text-anchor="middle" font-size="11" fill="'+TH.mut+'">'+(st.divx=='callable_inv'?'100 - callable % (incompleteness)':'Missing % (incompleteness)')+'</text><text transform="rotate(-90 13 '+((14+H-pad)/2)+')" x="13" y="'+((14+H-pad)/2)+'" text-anchor="middle" font-size="11" fill="'+TH.mut+'">'+esc(ylabel)+'</text>';
-  var labs='<text x="'+(pad+6)+'" y="'+(H-pad-6)+'" font-size="8.5" font-weight="600" fill="var(--fail)">reference-bias suspect</text>'
+  var labs=(scr.on?'<text x="'+(pad+6)+'" y="'+(H-pad-6)+'" font-size="8.5" font-weight="600" fill="var(--fail)">reference-bias suspect</text>':'')
     +'<text x="'+(pad+6)+'" y="24" font-size="8.5" font-weight="600" fill="#3f7d55">typical divergence</text>'
     +'<text x="'+(W-16)+'" y="'+(H-pad-6)+'" text-anchor="end" font-size="8.5" font-weight="600" fill="var(--warn)">low coverage</text>';
   host.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;cursor:crosshair">'+rects+guides+frame+titles+labs+dots+'</svg>'+colorLegend();
-  if(qn)qn.innerHTML=[['refbias','reference-bias suspect','var(--fail)'],['lowcov','honest low-coverage','var(--warn)'],['typical','typical divergence','var(--pass)']].map(function(q){return '<span><i style="background:'+q[2]+'"></i>'+q[1]+' <b>'+quad[q[0]]+'</b></span>';}).join('');
+  if(qn)qn.innerHTML=scr.on?[['refbias','reference-bias suspect','var(--fail)'],['lowcov','honest low-coverage','var(--warn)'],['typical','typical divergence','var(--pass)']].map(function(q){return '<span><i style="background:'+q[2]+'"></i>'+q[1]+' <b>'+quad[q[0]]+'</b></span>';}).join('')
+    :'<span class="c">Screen off: the cohort median is '+shortv(scr.med,R.snp_density_ok?'float':'int')+' '+esc(ylabel)+', below the '+scr.floor+' needed for "fewer SNPs than the rest" to mean anything.</span>';
   if(cap)cap.innerHTML=REFBIAS_CAPTION;
   var dxb=el('divx');if(dxb)Array.prototype.forEach.call(dxb.querySelectorAll('button'),function(b){b.onclick=function(){st.divx=b.getAttribute('data-x');Array.prototype.forEach.call(dxb.querySelectorAll('button'),function(x){x.classList.toggle('on',x==b);});renderRefBias();};});}
 // ---- Panel 3: temporal sampling overview (per lineage) ----

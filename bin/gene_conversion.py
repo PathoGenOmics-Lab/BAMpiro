@@ -413,6 +413,50 @@ def tract_evidence(tract, positions, counts, per_read, in_any_tract=None, min_de
     }
 
 
+# Half the thinnest tract the model entertains. A tract's reads carrying the donor's bases below
+# this are not a diluted tract: the model has no fraction that low to fit, so it parks the tract
+# on the grid's floor and the Bayes factor measures the stretch against a model that cannot
+# describe it.
+TRICKLE_AF = min(gm.TRACT_AF_GRID) / 2
+
+
+def unreadable(n_sites, n_undetermined, donor_af_in, min_depth=None):
+    """Why the reads cannot carry a call on this tract, whatever the model made of them, or None.
+
+    Two ways the Bayes factor can be high while the reads say nothing about the genome, and both
+    were behind every mass call on a 185-sample cohort:
+
+    * **Most of the tract was not read.** A few molecules at Q30 buy a large Bayes factor on their
+      own: one read carrying the donor's bases at four sites came out at log10 BF 10. At 0.2x to
+      2x depth that read was all there was, and the samples it came from were contaminated
+      cultures that the QC fails outright. A tract whose sites are mostly under `min_depth` is a
+      claim about a stretch of genome the reads never reached.
+    * **A trickle, not a tract.** 2 to 5% of the reads carrying the donor's bases over a short
+      stretch, in dozens of samples mapped to the same reference, is what reads arriving from a
+      third copy of the family look like. The model's tract fraction bottoms out at 20%, so it
+      fitted 20% to all of them and reported a Bayes factor for a fraction the reads do not have.
+    """
+    try:
+        n, und = int(n_sites), int(n_undetermined)
+    except (TypeError, ValueError):
+        n = und = None
+    if n and und is not None and 2 * und > n:
+        depth = f"{min_depth} or more" if min_depth else "enough"
+        read = f"only {n - und} of the tract's {n} sites are" if n > und else \
+            f"none of the tract's {n} sites is"
+        return (f"{read} read by {depth} molecules, so the call would rest on a handful of reads "
+                "over a stretch the sequencing never reached")
+    try:
+        af = float(donor_af_in)
+    except (TypeError, ValueError):
+        return None
+    if af < TRICKLE_AF:
+        return (f"only {af:.0%} of the reads over the tract carry the donor's bases, under half "
+                f"the thinnest tract the model considers ({min(gm.TRACT_AF_GRID):.0%}): the "
+                "trace reads from another copy of the family leave, not a conversion")
+    return None
+
+
 def depleted_runs(positions, counts, donor_counts, min_depth=5, max_ratio=0.4, min_sites=3,
                   exclude=None, max_local=0.6, min_enrichment=1.25):
     """Runs of diagnostic sites where the acceptor has lost its reads to the donor.
@@ -733,8 +777,9 @@ def main(argv=None) -> int:
             covers_locus = fit["map_i"] == 0 and fit["map_j"] == len(positions) - 1
             verdict, reason = gm.verdict(fit, covers_locus, a.min_bf, a.min_mismap,
                                          a.min_tract_af)
-            reason += dilution_notes(fit.get("tract_af"), a.min_tract_af, cn_ratio, copies,
-                                     expected_af, a.het_fraction)
+            notes = dilution_notes(fit.get("tract_af"), a.min_tract_af, cn_ratio, copies,
+                                   expected_af, a.het_fraction)
+            reason += notes
             # Which copy the change is on, where an outgroup was given to say so. The model has
             # no view on this: it sees the acceptor carrying the donor's base and that is the
             # same picture whether the sample changed or the reference did.
@@ -759,6 +804,14 @@ def main(argv=None) -> int:
                     "ancestral base in the reads and a derived one in the reference, so it is the "
                     "REFERENCE's copy that was converted or mutated and this sample retains what "
                     "the outgroup has. Not a conversion in this sample")
+            # Last, because it overrides every positive reading above: the model weighed the reads
+            # it was given, and here they are too few, or carry too little of the donor, for any
+            # reading of them to be a statement about the genome. A reference_derived verdict
+            # already says "not a conversion in this sample" and is left as it is.
+            why_not = unreadable(ev["n_sites"], ev["n_undetermined"], ev["donor_af_in"],
+                                 a.min_depth)
+            if why_not and verdict in ("gene_conversion", "reciprocal_exchange", "ambiguous"):
+                verdict, reason = "ambiguous", why_not + notes
             if fit["stride"] > 1:
                 reason += (f"; breakpoints resolved to every {fit['stride']} diagnostic sites "
                            "because the locus has too many to search exhaustively")

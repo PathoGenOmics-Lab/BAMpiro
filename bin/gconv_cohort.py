@@ -18,9 +18,12 @@ The per-sample caller refuses to speak below `--gconv_min_tract_af`, because und
 of the reads a minority conversion, index hopping and a contaminating sample are the same picture.
 That floor cost two of the twenty-three tracts in the benchmark, at 25% and 40% frequency. A weak
 signal is a different proposition when the SAME tract, at the SAME coordinates, is unambiguous in
-another sample: the alternatives do not reproduce a specific tract across independent libraries.
-So a sub-threshold call can be corroborated, and the recurrence check above is what stops that
-from rescuing an artefact instead.
+another sample: contamination and index hopping do not reproduce a specific tract across
+independent libraries. So a sub-threshold call can be corroborated, and the recurrence check above
+is what stops that from rescuing an artefact instead. Reads from a third copy of a gene family DO
+reproduce a stretch in every library mapped to the same reference, at a few percent of the reads,
+so neither a trickle like that nor a call read by a handful of molecules takes part, on either
+side (`gene_conversion.unreadable`).
 
     gconv_cohort.py --tracts s1.tsv s2.tsv ... --loci s1.loci.tsv ... -o cohort.tsv
 
@@ -33,15 +36,34 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import sys
 from collections import defaultdict
 
 from gene_conversion import COLUMNS as TRACT_COLUMNS
+from gene_conversion import unreadable
 
 # Added to every row of the cohort file. The per-sample columns pass through untouched.
 COHORT_COLUMNS = ["event_id", "event_samples", "event_frac", "cohort_verdict",
                   "cohort_mismap", "cohort_bf_median",
                   "donor_rank", "n_donors", "donor_margin", "donor_call", "is_representative"]
+
+
+def _file_unit(path):
+    """The sample and reference a per-sample file belongs to, from its name
+    (`<sample>.<ref>.gene_conversion.tsv` and `..._loci.tsv`), or None for another name."""
+    base = os.path.basename(str(path))
+    for suffix in (".gene_conversion_loci.tsv", ".gene_conversion.tsv"):
+        if base.endswith(suffix):
+            return base[:-len(suffix)]
+    return None
+
+
+def unit_of(row):
+    """What a divergence is judged on: the sample on one reference. A sample mapped against two
+    references is two genomes compared with two references, and one can be diverged from its
+    reference while the other is not."""
+    return row.get("_unit") or row.get("sample")
 
 
 def read_tsv(paths):
@@ -50,9 +72,12 @@ def read_tsv(paths):
     Those lines say which settings produced the numbers being combined here. Dropping them would
     leave a cohort file that cannot be reproduced or compared with another run, and a cohort
     assembled from samples run with DIFFERENT settings is a thing a reader has to be able to see.
+    Each row remembers the sample and reference its file was written for (`_unit`), which the
+    output does not carry.
     """
     rows, notes = [], []
     for path in paths or []:
+        unit = _file_unit(path)
         try:
             with open(path) as fh:
                 for line in fh:
@@ -63,8 +88,10 @@ def read_tsv(paths):
                     else:
                         break
                 fh.seek(0)
-                rows.extend(r for r in csv.DictReader(
-                    (ln for ln in fh if not ln.startswith("#")), delimiter="\t"))
+                for r in csv.DictReader((ln for ln in fh if not ln.startswith("#")), delimiter="\t"):
+                    if unit:
+                        r["_unit"] = unit
+                    rows.append(r)
         except OSError:
             continue
     return rows, notes
@@ -178,8 +205,28 @@ def rank_donors(rows, indices, margin=1.0):
     return out
 
 
+def locus_key(row):
+    """A paralog pair is named by its contig as well as its number.
+
+    `pair_id` numbers the pairs of ONE reference's paralog map. A cohort mapped against two
+    references has a pair 61 in each, and they are different loci: keyed on the number alone, the
+    medians below mixed a locus of one genome with an unrelated locus of the other.
+    """
+    return (row.get("contig") or "", row.get("pair_id") or "")
+
+
+def readable_call(row):
+    """A per-sample conversion call whose reads can carry it (see gene_conversion.unreadable).
+
+    Checked here as well as where the call is made, so a cohort pass over per-sample files written
+    before that check still refuses to count a call resting on a handful of reads.
+    """
+    return ((row.get("verdict") or "").strip() == "gene_conversion"
+            and not unreadable(row.get("n_sites"), row.get("n_undetermined"), row.get("donor_af_in")))
+
+
 def locus_background(locus_rows):
-    """Per (pair_id) cohort statistics from the per-locus files.
+    """Per locus (contig and pair) cohort statistics from the per-locus files.
 
     The mismapping rate and the substitution rate are properties of the reference and the
     aligner, not of the sample: the same locus produces the same trouble in everybody. Measured
@@ -188,7 +235,7 @@ def locus_background(locus_rows):
     """
     by_pair = defaultdict(list)
     for r in locus_rows:
-        by_pair[r.get("pair_id", "")].append(r)
+        by_pair[locus_key(r)].append(r)
     out = {}
     for pair, rs in by_pair.items():
         out[pair] = {
@@ -200,15 +247,83 @@ def locus_background(locus_rows):
     return out
 
 
+def divergent_samples(tract_rows, max_locus_frac, min_loci=20, min_sample_loci=5, event_of=None,
+                      locus_rows=()):
+    """Samples calling tracts in so many loci at once that the reference is the problem.
+
+    Gene conversion is a local event. A sample converting a quarter of every paralogous locus it
+    has is not converting: it is a different genotype from the one the reads were mapped to, and
+    at every paralogous locus it carries the donor's base by inheritance, which is exactly the
+    pattern the model scores as a tract.
+
+    This is not hypothetical. In a 185-sample cohort, 22 samples labelled as one lineage were
+    really another, were therefore mapped against a reference 2,000 SNPs away, and produced 507 of
+    the 522 tracts. Tracts per sample against genome-wide SNP count correlated at r = 0.98. The
+    separation is not subtle: those samples called tracts in 16 to 29 percent of the stretches
+    their reference reports anything in, and every other sample in at most 1 percent.
+
+    Counted in distinct STRETCHES of the acceptor (the events of `event_of`), not in rows and not
+    in pairs. One stretch scored against several donors yields a row per donor, and a gene family
+    reports one stretch through a pair per relative: counted in pairs, a single conversion seen
+    through eleven relatives put a clean sample exactly on the threshold. Rows without
+    coordinates fall back to their pair. The fraction is taken over the stretches of every contig
+    of the sample's own reference, which its per-locus rows name: counted over only the contigs
+    it has tracts on, five tracts on a plasmid made a sample with a clean chromosome divergent.
+
+    Keyed on the sample and its reference (see unit_of), not the sample alone.
+    """
+    event_of = event_of or {}
+    units, contigs_of, by_sample = defaultdict(set), defaultdict(set), {}
+    for r in locus_rows or ():
+        contigs_of[unit_of(r)].add(r.get("contig") or "")
+    for i, r in enumerate(tract_rows):
+        pair = r.get("pair_id")
+        if pair in (None, ""):
+            continue
+        contig = r.get("contig") or ""
+        unit = event_of.get(i) or ("pair", contig, pair)
+        units[contig].add(unit)
+        contigs_of[unit_of(r)].add(contig)
+        if readable_call(r):
+            by_sample.setdefault(unit_of(r), set()).add(unit)
+    # A fraction of a handful of loci says nothing: one tract out of three is 33% and means only
+    # that the reference has three paralogous loci. Both floors are absolute for that reason, and
+    # a cohort below them is left alone rather than judged on a ratio it cannot support.
+    out = {}
+    for s, called in by_sample.items():
+        n = sum(len(units[c]) for c in contigs_of[s])
+        if n >= min_loci and len(called) >= min_sample_loci and len(called) / n > max_locus_frac:
+            out[s] = len(called) / n
+    return out
+
+
 def cohort_verdict(row, event, background, n_samples, min_bf, corroborated_bf,
-                   ubiquitous, min_samples):
+                   ubiquitous, min_samples, divergent=None, min_tract_af=0.25, scoped=False):
     """Revise a per-sample verdict in the light of the rest of the cohort.
 
     Only two revisions are made, in opposite directions, and both need the cohort to be possible.
-    Everything else is left exactly as the per-sample caller decided it.
+    Everything else is left exactly as the per-sample caller decided it, except a call its own
+    reads cannot carry, which per-sample files written before that check still hold.
+
+    `n_samples` is the cohort the event could have appeared in: the samples mapped to the same
+    reference (`scoped`), or the whole cohort when the per-locus files cannot say which those are.
     """
     verdict = (row.get("verdict") or "").strip()
     bf = num(row, "log10_bf")
+    why_not = unreadable(row.get("n_sites"), row.get("n_undetermined"), row.get("donor_af_in"))
+
+    # Before anything else: if the SAMPLE is diverged from the reference, none of its tracts mean
+    # what they say, however good each one looks on its own. This one comes first because the
+    # corroboration rule below would otherwise let these samples vouch for each other: they share
+    # a genotype, so they share their artefacts at identical coordinates, which reads as exactly
+    # the independent recurrence that rule is looking for.
+    frac_div = (divergent or {}).get(unit_of(row))
+    if frac_div is not None:
+        return "divergent_sample", (
+            f"this sample calls tracts in {frac_div:.0%} of its paralogous loci. Conversion is "
+            "local; a sample converting that many loci at once is a different genotype from the "
+            "reference it was mapped to, and carries the donor base at each of them by "
+            "inheritance. Check the sample's lineage against the reference before reading this")
     # None means the cohort size is unknown, which is not the same as small. A fraction cannot be
     # formed at all, so the recurrence rule below is skipped rather than fed a stand-in.
     frac = event["n_samples"] / n_samples if n_samples else 0.0
@@ -222,25 +337,52 @@ def cohort_verdict(row, event, background, n_samples, min_bf, corroborated_bf,
     # the count so a reader who knows their isolates are related can read it that way.
     if n_samples is not None and n_samples >= min_samples and frac >= ubiquitous:
         return "reference_artifact", (
-            f"present in {event['n_samples']} of {n_samples} samples ({frac:.0%}): at that "
+            f"present in {event['n_samples']} of {n_samples} samples"
+            f"{' mapped to this reference' if scoped else ''} ({frac:.0%}): at that "
             "recurrence the reference or the aligner explains it more simply than the same "
             "conversion arising in every isolate. In a clonal cohort it may instead be shared "
             "ancestry, which recurrence alone cannot distinguish")
 
+    # Both verdicts: an ambiguous row resting on a trickle still carries the reason the model
+    # gave, "only 20% of the reads here carry the tract", which quotes the floor the fit was
+    # parked on rather than the 3% the reads actually hold.
+    # The same verdicts the per-sample caller demotes, reciprocal_exchange included, so re-running
+    # only this step corrects files written before the check. A reason that already starts with
+    # the check is such a file's own, with its copy-number and breakpoint notes after it: kept.
+    # Compared up to "read by", since this pass does not know --gconv_min_depth and writes
+    # "enough molecules" where the caller wrote "5 or more molecules".
+    if why_not and verdict in ("gene_conversion", "reciprocal_exchange", "ambiguous"):
+        reason = (row.get("reason") or "").strip()
+        return "ambiguous", reason if reason.startswith(why_not.split(" read by ")[0]) else why_not
+
     # A tract the sample alone could not commit to, corroborated by the same tract at the same
     # coordinates in a sample that could. Contamination and index hopping do not reproduce a
     # specific tract across independent libraries; a real minority conversion does.
-    if verdict == "ambiguous" and bf is not None and bf >= corroborated_bf \
+    #
+    # Reads from a third copy of the family DO reproduce one, in every library mapped to the same
+    # reference, because they are a property of the reference and the aligner. That is why a row
+    # its own reads cannot carry is never promoted: on a 185-sample cohort, 1,520 of 1,579 calls
+    # were rows of 2 to 5% donor reads that a single thinly read sample had "called outright".
+    if verdict == "ambiguous" and not why_not and bf is not None and bf >= corroborated_bf \
             and event["n_called"] >= 1:
+        taf = num(row, "tract_af")
+        short = []
+        if bf < min_bf:
+            short.append(f"log10 Bayes factor {bf:.1f} on its own, below the {min_bf:.1f} needed")
+        if taf is not None and taf < min_tract_af:
+            short.append(f"carried by {taf:.0%} of the reads, under the {min_tract_af:.0%} one "
+                         "sample needs on its own")
         return "gene_conversion", (
-            f"log10 Bayes factor {bf:.1f} on its own, below the {min_bf:.1f} needed, but the same "
-            f"tract is called outright in {event['n_called']} other sample(s) of the cohort")
+            ("; ".join(short) or "not called on its own") +
+            f", but the same tract is called outright in {event['n_called']} other sample(s) of "
+            "the cohort")
 
     return verdict, (row.get("reason") or "").strip()
 
 
 def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
-             ubiquitous=0.9, min_samples=5, slack=0, donor_margin=1.0, cohort_size=None):
+             ubiquitous=0.9, min_samples=5, slack=0, donor_margin=1.0, cohort_size=None,
+             max_locus_frac=0.1, min_tract_af=0.25):
     """Add the cohort columns to every tract row, revising the verdict where the cohort speaks.
 
     `cohort_size` is how many samples were RUN. It matters because the ubiquity rule is a
@@ -254,9 +396,23 @@ def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
     evaluated whether or not anything came of it. Without them, and without an explicit size, the
     cohort is genuinely unknown and the rule is left unapplied rather than applied to a number
     that only looks like an answer.
+
+    The census is kept per contig. A cohort mapped against two references splits into the samples
+    of each, and an event on one reference can only ever appear in that reference's samples:
+    measured against the whole cohort, an artefact of a reference carrying 113 of 185 samples
+    could never reach more than 61% and was never demoted.
+
+    Samples diverged from their reference count towards neither side of the fraction. They carry
+    the donor's base at every paralogous locus by inheritance, so they would add themselves to
+    every event on the reference and nothing about how often the reference misleads.
     """
     event_of = group_events(tract_rows, slack)
     background = locus_background(locus_rows)
+    divergent = divergent_samples(tract_rows, max_locus_frac, event_of=event_of, locus_rows=locus_rows)
+    # The samples a divergence was found in, and on which contigs, since a sample on two
+    # references counts as diverged only on the one it is diverged from.
+    div_on = {(r.get("sample"), r.get("contig") or "") for r in list(tract_rows) + list(locus_rows)
+              if unit_of(r) in divergent}
 
     samples = {r.get("sample") for r in tract_rows} | {r.get("sample") for r in locus_rows}
     samples.discard(None)
@@ -267,15 +423,30 @@ def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
     else:
         n_samples = None
 
+    census = defaultdict(set)
+    for r in locus_rows:
+        census[r.get("contig") or ""].add(r.get("sample"))
+    for r in tract_rows:                         # a sample with a tract on a contig was run on it
+        contig = r.get("contig") or ""
+        if contig in census:
+            census[contig].add(r.get("sample"))
+    unscoped = None if n_samples is None else n_samples - len({s for s, _ in div_on} & samples)
+
+    def cohort_of(contig):
+        """(number of samples the event could have appeared in, whether that is per reference)"""
+        if contig in census:
+            return len({s for s in census[contig] if (s, contig) not in div_on}), True
+        return unscoped, False
+
     events = defaultdict(lambda: {"samples": set(), "called": set(), "bf": []})
     for i, r in enumerate(tract_rows):
         eid = event_of.get(i)
-        if eid is None:
+        if eid is None or unit_of(r) in divergent:
             continue
         e = events[eid]
         e["samples"].add(r.get("sample"))
         e["bf"].append(num(r, "log10_bf"))
-        if (r.get("verdict") or "").strip() == "gene_conversion":
+        if readable_call(r):
             e["called"].add(r.get("sample"))
 
     # Donor resolution is per event PER SAMPLE: the several relationships are one sample's
@@ -296,21 +467,23 @@ def annotate(tract_rows, locus_rows, min_bf=3.0, corroborated_bf=2.0,
         # A sample does not corroborate itself.
         info = {"n_samples": len(e["samples"]),
                 "n_called": len(e["called"] - {r.get("sample")})}
-        verdict, reason = cohort_verdict(r, info, background, n_samples, min_bf,
-                                         corroborated_bf, ubiquitous, min_samples)
-        bg = background.get(r.get("pair_id"), {})
+        n_here, scoped = cohort_of(r.get("contig") or "")
+        verdict, reason = cohort_verdict(r, info, background, n_here, min_bf,
+                                         corroborated_bf, ubiquitous, min_samples, divergent,
+                                         min_tract_af=min_tract_af, scoped=scoped)
+        bg = background.get(locus_key(r), {})
         row = dict(r)
         row.update({
             "event_id": eid or "",
             "event_samples": info["n_samples"],
-            "event_frac": round(info["n_samples"] / n_samples, 3) if n_samples else "",
+            "event_frac": round(info["n_samples"] / n_here, 3) if n_here else "",
             "cohort_verdict": verdict,
             "cohort_mismap": "" if bg.get("mismap") is None else round(bg["mismap"], 4),
             "cohort_bf_median": "" if bg.get("bf") is None else round(bg["bf"], 2),
         })
         row.update(donors.get(i, {"donor_rank": "", "n_donors": "", "donor_margin": "",
                                   "donor_call": "", "is_representative": ""}))
-        if verdict != (r.get("verdict") or "").strip():
+        if verdict != (r.get("verdict") or "").strip() or reason != (r.get("reason") or "").strip():
             row["reason"] = reason
         out.append(row)
     return out, n_samples
@@ -325,11 +498,21 @@ def parse_args(argv=None):
     p.add_argument("-o", "--output", required=True)
     p.add_argument("--min-bf", type=float, default=3.0,
                    help="the per-sample calling threshold, quoted back in the reasons")
+    p.add_argument("--min-tract-af", type=float, default=0.25,
+                   help="the per-sample read-fraction floor, quoted back in the reasons")
     p.add_argument("--corroborated-bf", type=float, default=2.0,
                    help="Bayes factor a sub-threshold tract needs before another sample's "
                         "outright call is allowed to corroborate it")
+    p.add_argument("--max-locus-frac", type=float, default=0.1,
+                   help="A sample calling tracts in more than this FRACTION of its paralogous "
+                        "loci is diverged from the reference rather than converting, and all of "
+                        "its tracts are marked divergent_sample. Counted in distinct stretches of "
+                        "its reference. Measured on a real cohort the two groups do not overlap: "
+                        "mislabelled samples called tracts in 16-29%% of the stretches and every "
+                        "correctly mapped sample in at most 1%%.")
     p.add_argument("--ubiquitous", type=float, default=0.9,
-                   help="fraction of the cohort at which an event is called a reference artifact")
+                   help="fraction of the samples mapped to the same reference at which an event "
+                        "is called a reference artifact")
     p.add_argument("--min-samples", type=int, default=5,
                    help="cohort size below which recurrence says too little to act on")
     p.add_argument("--donor-margin", type=float, default=1.0,
@@ -338,8 +521,10 @@ def parse_args(argv=None):
     p.add_argument("--slack", type=int, default=0,
                    help="bases of tolerance when deciding two tracts are the same event")
     p.add_argument("--cohort-size", type=int, default=None,
-                   help="how many samples were run, when --loci is not available to say so; "
-                        "without either, recurrence has no denominator and is left alone")
+                   help="how many samples were run, when --loci is not available to say so. "
+                        "It is counted against every reference alike, which is right only when "
+                        "the run has one; without either, recurrence has no denominator and is "
+                        "left alone")
     return p.parse_args(argv)
 
 
@@ -354,7 +539,8 @@ def main(argv=None) -> int:
     columns = (list(tracts[0].keys()) if tracts else list(TRACT_COLUMNS)) + COHORT_COLUMNS
     rows, n_samples = annotate(tracts, loci, a.min_bf, a.corroborated_bf,
                                a.ubiquitous, a.min_samples, a.slack, a.donor_margin,
-                               a.cohort_size)
+                               a.cohort_size, max_locus_frac=a.max_locus_frac,
+                               min_tract_af=a.min_tract_af)
 
     if n_samples is None and tracts:
         sys.stderr.write(
@@ -365,7 +551,8 @@ def main(argv=None) -> int:
     with open(a.output, "w") as fh:
         for note in notes:
             fh.write(note + "\n")
-        fh.write(f"# gconv_cohort.py min_bf={a.min_bf} corroborated_bf={a.corroborated_bf} "
+        fh.write(f"# gconv_cohort.py min_bf={a.min_bf} min_tract_af={a.min_tract_af} "
+                 f"corroborated_bf={a.corroborated_bf} "
                  f"ubiquitous={a.ubiquitous} min_samples={a.min_samples} "
                  f"donor_margin={a.donor_margin} slack={a.slack} "
                  f"cohort_size={n_samples if n_samples is not None else 'unknown'}\n")

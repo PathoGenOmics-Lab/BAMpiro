@@ -237,7 +237,7 @@ def write_invalid_samplesheets(rows) -> None:
 
 
 def write_pathotypr_panels(reference: str) -> None:
-    """Marker panels shaped like the real Zenodo v1.0.0 files.
+    """Marker panels shaped like the real Zenodo v1.0.2 files.
 
     -profile test_full stages these so the pathotypr branch of the DAG runs; a stub
     run never parses them, but the column layout matches the real panels so they are

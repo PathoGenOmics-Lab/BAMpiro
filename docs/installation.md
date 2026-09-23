@@ -27,11 +27,11 @@ The pipeline pulls `paururo/bampiro` automatically; it contains every tool it ne
 image **by digest**, not by a tag:
 
 ```groovy
-container = "docker://paururo/bampiro@sha256:c3bc85157c866154490162603ce8cdcffe86e41d3f065064104d6eb875a1cd19"
+container = "docker://paururo/bampiro@sha256:bef43753dd0e7a6cd5478b0a4a7af4a77c6944ccec9a04176a52a2b4298ee1ca"
 ```
 
 A tag can be repointed at a rebuilt image, so two runs a month apart could silently use
-different tool versions; a digest cannot. That digest is the 1.0.1 image. Override it with
+different tool versions; a digest cannot. That digest is the 1.1.0-rc2 image. Override it with
 `--container`; either way the value actually used is recorded in the report's provenance
 footer.
 
@@ -103,6 +103,25 @@ and with no spaces: `-profile local,docker`, `-profile slurm,generic`.
     (`nextflow run PathoGenOmics-Lab/BAMpiro -profile garnatxa`), so there is nothing to
     write or copy first.
 
+    Submit the driver rather than running it on the login node, which is what that cluster's
+    own documentation asks for:
+
+    ```bash
+    sbatch conf/garnatxa.sbatch samples.tsv results
+    ```
+
+    `conf/garnatxa.sbatch` asks for one core and 4 GB for Nextflow itself, which submits every
+    task as its own job and waits. Its `--time` is set explicitly and deliberately: **every QoS
+    on Garnatxa defaults to six hours**, and a driver killed at its limit orphans whatever it
+    was waiting on.
+
+    !!! tip "The Kraken2 database is already set there"
+
+        `-profile garnatxa` points `--kraken2_db` at the shared copy under
+        `/storage/shared_datasets`, so it needs no flag. What it does need is a `taxId` column
+        in the samplesheet, or there is nothing to filter against. Kraken2 asks for about 80 GB,
+        which is the memory ceiling of the whole run.
+
 ## Kraken2 is opt-in
 
 `--kraken2_db` has no default: without one the contamination screen is skipped and the
@@ -114,7 +133,7 @@ sets both the database and its bind.
 
 ## Container contents (software versions)
 
-The container (`paururo/bampiro`, the 1.0.1 image pinned above) bundles the following tools:
+The container (`paururo/bampiro`, the 1.1.0-rc2 image pinned above) bundles the following tools:
 
 | Tool | Version | Purpose |
 | :--- | :--- | :--- |
@@ -130,15 +149,16 @@ The container (`paururo/bampiro`, the 1.0.1 image pinned above) bundles the foll
 | **FastP** | `1.0.1` | Fast all-in-one read pre-processing |
 | **Kraken2** | `2.17.1` | Taxonomic classification |
 | **Genmap** | *(bioconda)* | Genome mappability (length-aware read filter) |
-| **Pathotypr** | *(bioconda)* | Alignment-free MTBC lineage + WHO drug-resistance typing |
+| **Pathotypr** | `1.0.2` | Alignment-free MTBC lineage + WHO drug-resistance typing |
 | **MultiQC** | `1.33` | Aggregate results reporting |
 | **MUMmer4** | `4.0.1` | `nucmer` / `show-coords` self-alignment for repeat masking |
 | **Biopython** | `1.86` | Biological computation library |
 | **Pandas** | `2.3.3` | Data analysis library |
 
 The image also bundles, under `/opt/pathotypr/`, Pathotypr's marker panels +
-pre-trained RF model (Zenodo v1.0.0, DOI
-[10.5281/zenodo.19210044](https://doi.org/10.5281/zenodo.19210044)) and the
+pre-trained RF model (Zenodo v1.0.2, DOI
+[10.5281/zenodo.21915539](https://doi.org/10.5281/zenodo.21915539), MTBC-ancestor
+coordinate frame) and the
 MTBC-ancestor reference, plus the pre-downloaded **H37Rv snpEff database**
 (`Mycobacterium_tuberculosis_h37rv`) - so [lineage/DR typing](pathotypr.md) and
 [dual amino-acid annotation](pathotypr.md#dual-amino-acid-numbering-h37rv--mycobrowser)

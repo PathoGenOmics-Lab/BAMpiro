@@ -19,6 +19,12 @@ var LINCOL={};(function(){(R.lineages||[]).forEach(function(lab,i){
   else if(i<LINPAL_BASE.length){LINCOL[lab]=LINPAL_BASE[i];}                  // else colour-blind-safe fallback
   else{var h=(i*137.508)%360;LINCOL[lab]='hsl('+h.toFixed(0)+',58%,52%)';}});})();
 function linColor(lab){return (lab!=null&&LINCOL[lab])?LINCOL[lab]:'#b8c2cf';}
+// A lineage call lists every level the typer resolved, 'A4;M_bovis;A4.7;A4.7.1'. Read it as its
+// finest level plus the species label when it carries one: 'A4.7.1 · M. bovis'.
+function linLabel(l){if(!l)return 'NA';var sp=null,lv=[];
+  String(l).split(';').forEach(function(p){p=p.trim();if(!p)return;if(/^[A-Z]_[a-z]/.test(p))sp=p.charAt(0)+'. '+p.slice(2).replace(/_/g,' ');else lv.push(p);});
+  return lv.length?(lv[lv.length-1]+(sp?' · '+sp:'')):(sp||String(l));}
+function untyped(l){return !l||/^(na|unclassified|unknown|none)$/i.test(String(l).trim());}
 R.gene_map=R.gene_map||{};
 function geneRv(g){ return (g&&R.gene_map[g])||''; }   // Mycobrowser (H37Rv) locus tag for a gene, or ''
 function geneRvTag(g){ var rv=geneRv(g); return rv?(' <a class="rvtag" href="https://mycobrowser.epfl.ch/genes/'+esc(rv)+'" target="_blank" rel="noopener" title="Mycobrowser locus tag of '+esc(g)+' (opens mycobrowser.epfl.ch)">'+esc(rv)+'</a>'):''; }

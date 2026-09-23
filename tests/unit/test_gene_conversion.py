@@ -682,6 +682,82 @@ def test_main_end_to_end(tmp_path, samtools, capsys):
     assert "S1: 2 candidate tract(s), 1 called as conversion" in err
 
 
+def _main_rows(tmp_path, samtools, records, positions):
+    bam = _bam(tmp_path, records)
+    sites = _sites_tsv(tmp_path / "sites.tsv", {0: positions})
+    out = tmp_path / "tracts.tsv"
+    assert gc.main(["--sites", sites, "--bam", bam, "--sample", "S1", "-o", str(out),
+                    "--samtools", samtools]) == 0
+    lines = [ln for ln in out.read_text().splitlines() if not ln.startswith("#")]
+    header = lines[0].split("\t")
+    return [dict(zip(header, ln.split("\t"))) for ln in lines[1:]]
+
+
+def test_main_does_not_call_a_tract_read_by_one_molecule(tmp_path, samtools):
+    """One read carrying the donor's bases across a tract is log10 BF 7 on base quality alone.
+
+    On a real cohort that read was all a 0.2x sample had, and its "outright call" went on to
+    corroborate the same stretch in 67 other samples. The locus around it is well read; the tract
+    is not, and a call there would be a statement about a stretch the sequencing never reached.
+    """
+    positions = [100, 110, 120, 130, 140, 150]
+    records = [_read_at(f"left{i}", 96, {100: "A"}, length=8) for i in range(6)]
+    records += [_read_at(f"right{i}", 146, {150: "A"}, length=8) for i in range(6)]
+    records.append(_read_at("lonely", 100, {p: ("G" if 110 <= p <= 140 else "A") for p in positions}))
+
+    [row] = _main_rows(tmp_path, samtools, records, positions)
+
+    assert float(row["log10_bf"]) > 3.0, "the model on its own would have called it"
+    assert row["verdict"] == "ambiguous"
+    assert "none of the tract's 4 sites is read by 5 or more molecules" in row["reason"]
+
+
+def test_main_does_not_call_a_trickle_of_donor_reads(tmp_path, samtools):
+    """2 of 40 reads carrying the donor's bases is 5%, a fraction the model cannot fit: its tract
+    fraction stops at 20%, so the fit parks there and the Bayes factor comes out large for a
+    fraction the reads do not have. The reason has to quote the reads, not the floor."""
+    positions = [100, 110, 120, 130, 140, 150]
+    records = [_read_at(f"r{i}", 100, dict.fromkeys(positions, "A")) for i in range(38)]
+    records += [_read_at(f"d{i}", 100, {p: ("G" if 110 <= p <= 140 else "A") for p in positions})
+                for i in range(2)]
+
+    [row] = _main_rows(tmp_path, samtools, records, positions)
+
+    assert row["verdict"] == "ambiguous"
+    assert float(row["tract_af"]) == pytest.approx(0.2, abs=0.01), "parked on the grid's floor"
+    assert "only 5% of the reads over the tract carry the donor's bases" in row["reason"]
+    assert "20% of the reads here carry the tract" not in row["reason"]
+
+
+# ------------------------------------------------------------------------------ unreadable
+
+
+def test_a_well_read_tract_is_readable():
+    assert gc.unreadable(5, 0, 1.0) is None
+    assert gc.unreadable("5", "2", "0.4") is None, "the columns arrive as text in the cohort pass"
+
+
+def test_a_tract_whose_sites_the_reads_mostly_miss_is_unreadable():
+    why = gc.unreadable(10, 7, 0.24, min_depth=5)
+
+    assert why and "only 3 of the tract's 10 sites are read by 5 or more molecules" in why
+
+
+def test_a_tract_read_at_exactly_half_its_sites_is_still_readable():
+    assert gc.unreadable(4, 2, 0.8) is None
+
+
+def test_the_trickle_floor_is_half_the_thinnest_tract_the_model_fits():
+    assert gc.TRICKLE_AF == pytest.approx(min(gc.gm.TRACT_AF_GRID) / 2)
+    assert gc.unreadable(6, 0, gc.TRICKLE_AF) is None
+    assert gc.unreadable(6, 0, gc.TRICKLE_AF - 0.001) is not None
+
+
+@pytest.mark.parametrize("n_sites, n_undetermined, donor_af_in", [(None, None, None), ("", "", "")])
+def test_missing_columns_are_evidence_neither_way(n_sites, n_undetermined, donor_af_in):
+    assert gc.unreadable(n_sites, n_undetermined, donor_af_in) is None
+
+
 def test_main_skips_a_locus_with_too_few_diagnostic_sites(tmp_path, samtools):
     """Fewer diagnostic sites than min_sites means no tract is reachable, so the locus is
     dropped before samtools is invoked at all."""

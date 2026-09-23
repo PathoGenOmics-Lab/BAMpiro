@@ -350,3 +350,55 @@ def test_a_codon_is_placed_where_translating_the_whole_gene_puts_it(seed):
                 f"for {feature} at {pos}->{alt}")
         else:
             assert got == want, f"seed {seed}: tool {got}, translating the gene gives {want}"
+
+
+# --------------------------------------------------------------------------- placeholder attributes
+#
+# A GFF built from a table writes pandas' NaN as the four characters `nan`, and an attribute
+# cascade that only asks whether a key is PRESENT takes that for a name. On one real MTBC
+# reference 3,001 of the CDS lines carry `Name=nan` beside a perfectly good `ID=Rv0001_1-1524`,
+# none of them carry `locus_tag` at all, and every tract in a 185-sample cohort came out labelled
+# `nan`, with amino-acid changes reported as `nan:P1443A`. The failure is silent: `nan` is a
+# string, so nothing downstream can tell it from a gene that is really called that.
+
+REAL_GFF = (
+    "##gff-version 3\n"
+    "chr\tAMAP\tCDS\t1\t1524\t.\t+\t0\tID=Rv0001_1-1524;Name=nan;product=nan\n"
+    "chr\tAMAP\tCDS\t2052\t3260\t.\t+\t0\tID=E1ASM0035_00002;gene=dnaN;product=DNA clamp\n"
+)
+
+
+def test_a_nan_name_falls_through_to_the_id(write):
+    feats = ga.parse_cds(write(REAL_GFF, "real.gff"))
+
+    # The first has only a placeholder Name and must fall through to its ID; the second has a
+    # real gene symbol and must keep it. One assertion, both directions.
+    assert [f["name"] for f in feats] == ["Rv0001_1-1524", "dnaN"]
+
+
+def test_a_real_name_still_wins(write):
+    """The cascade must not become 'always use the ID'. dnaN is a gene, not a placeholder."""
+    feats = ga.parse_cds(write(REAL_GFF, "real.gff"))
+
+    assert feats[1]["name"] == "dnaN"
+
+
+@pytest.mark.parametrize("value", ["nan", "NaN", "NA", "na", "None", "null", "", ".", "-", "n/a"])
+def test_every_spelling_of_absent_is_absent(write, value):
+    line = f"chr\t.\tCDS\t1\t99\t.\t+\t0\tID=THE_ID;Name={value};locus_tag={value}\n"
+
+    f = ga.parse_cds(write(line, "p.gff"))[0]
+
+    assert f["name"] == "THE_ID", f"Name={value!r} was taken for a gene name"
+    assert f["locus_tag"] == "", f"locus_tag={value!r} was taken for a locus tag"
+
+
+def test_the_label_a_tract_reports_is_never_a_placeholder(write):
+    """End to end, because the column that broke is the one annotate_tract builds."""
+    gff = write("chr\t.\tCDS\t1\t30\t.\t+\t0\tID=Rv0001_1-1524;Name=nan\n", "p.gff")
+    seqs = {"chr": "ATGAAACCCGGGTTTAAACCCGGGTTTTAA"}
+
+    got = ga.annotate_tract(ga.parse_cds(gff), seqs, "chr", 1, 30, {7: "T"})
+
+    assert got["genes"] == "Rv0001_1-1524"
+    assert "nan:" not in got["aa_changes"]

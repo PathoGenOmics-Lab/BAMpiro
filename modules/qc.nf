@@ -58,8 +58,19 @@ process VALIDATE_RAW_READS_SE {
 
 process KRAKEN_FILTER_PE {
     tag "Kraken PE: ${sampleId}"
-    cpus 12
-    memory '80 GB'
+    // Sized from a measured run rather than from caution. Three of these tasks averaged 102% CPU
+    // over ten minutes on a 12-CPU reservation: kraken2 threads well but spends that time faulting
+    // the database in, and the two steps after it were single-threaded until bgzip. 8 is what bgzip
+    // actually scales to here, and a smaller reservation is scheduled sooner on a shared queue,
+    // which is most of what a run waits for.
+    cpus 8
+    // Sized from params.kraken_memory, because the right number is a property of the DATABASE and
+    // not of this pipeline: with --memory-mapping the resident set is the part of the index
+    // actually probed, measured at 34.7-39.7 GB against a 133 GB standard database and well under
+    // 20 GB against the capped 16 GB one. A fixed 56 GB here is what put 61 of these behind
+    // QOSMaxMemoryPerUser on a real cohort. Scales with the attempt, like every other memory
+    // directive in this pipeline, so an underestimate costs a retry and not the run.
+    memory { (params.kraken_memory as nextflow.util.MemoryUnit) * task.attempt }
     
     // Use getSampleDir for nested output support
     publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
@@ -100,9 +111,13 @@ process KRAKEN_FILTER_PE {
       -s !{r1} -s2 !{r2} -t !{taxId} --include-children --fastq-output \
       -o ${prefix}_R1.kraken.fq -o2 ${prefix}_R2.kraken.fq
 
-    # Compress outputs
-    gzip -f ${prefix}_R1.kraken.fq
-    gzip -f ${prefix}_R2.kraken.fq
+    # Compress outputs. bgzip, not gzip, and with the task's own threads: gzip is single-threaded,
+    # so on a 1.5M-pair sample it spent 72 s compressing 480 MB per mate while the other eleven
+    # reserved cores sat idle. bgzip -@ 8 does the same work in 2.8 s. BGZF is valid gzip, every
+    # downstream reader is unaffected, and the output is byte-for-byte identical after decompression
+    # and slightly smaller. Measured against this container, not assumed.
+    bgzip -@ !{task.cpus} -f ${prefix}_R1.kraken.fq
+    bgzip -@ !{task.cpus} -f ${prefix}_R2.kraken.fq
     '''
 
     stub:
@@ -115,8 +130,8 @@ process KRAKEN_FILTER_PE {
 
 process KRAKEN_FILTER_SE {
     tag "Kraken SE: ${sampleId}"
-    cpus 12
-    memory '80 GB'
+    cpus 8              // as KRAKEN_FILTER_PE above
+    memory { (params.kraken_memory as nextflow.util.MemoryUnit) * task.attempt }
     
     // Use getSampleDir for nested output support
     publishDir path: { "${params.outdir}/${getSampleDir(sampleId, params)}" }, mode: params.publish_mode, saveAs: { filename -> getSavePath(filename, params) }
@@ -152,7 +167,8 @@ process KRAKEN_FILTER_SE {
       -s !{r1} -t !{taxId} --include-children --fastq-output \
       -o ${prefix}.kraken.fq
 
-    gzip -f ${prefix}.kraken.fq
+    # bgzip for the reason given in KRAKEN_FILTER_PE above.
+    bgzip -@ !{task.cpus} -f ${prefix}.kraken.fq
     '''
 
     stub:
@@ -329,6 +345,19 @@ process DUMP_VERSIONS {
       ver snpEff    ''                   snpEff    -version
       ver python    'Python '            python3   --version
       ver multiqc   'multiqc, version '  multiqc   --version
+      ver pathotypr 'pathotypr '         pathotypr --version
+
+      # The marker catalogue is provenance too, and it is the half that cannot be recovered from
+      # the results. Catalogue v1.0.0 assigned each variant a single drug inherited from its gene;
+      # v1.0.2 grades per variant-drug pair and disagrees with it on 15,969 rows, so two runs with
+      # identical calls can mean different things. The checksum covers the case of a catalogue
+      # supplied with --pathotypr_dr_markers, which carries no version string at all.
+      if [ -s "!{params.pathotypr_dr_markers}" ]; then
+          echo "pathotypr markers: $(cat "$(dirname "!{params.pathotypr_dr_markers}")/VERSION" 2>/dev/null || echo 'not recorded')"
+          echo "pathotypr dr_markers sha256: $(sha256sum "!{params.pathotypr_dr_markers}" | cut -d' ' -f1)"
+      else
+          echo "pathotypr markers: NA"
+      fi
     } > software_versions.txt
 
     # MultiQC custom-content section (files ending in _mqc.yml are auto-detected)
