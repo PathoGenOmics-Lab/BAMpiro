@@ -1,11 +1,13 @@
 function renderCuration(){var ex=nExcl(),keep=R.samples.length-ex;
-  var nb=el('nbasket'); if(nb)nb.innerHTML=icon('basket')+ex+' basketed';   // always-visible toolbar mirror of the basket
-  el('curation').innerHTML='<div class="cur-intro"><b>Exclusion basket</b> - the set of samples you are dropping from the downstream analysis (phylogeny / clock). <b>FAIL samples start pre-selected</b> (their boxes are ticked); tick or untick any box in the table (or use the buttons), then export the drop list (<b>exclusion.tsv</b>) or the survivors (<b>keep_list.txt</b>).</div>'+
+  var nb=el('nbasket'); if(nb)nb.innerHTML=icon('basket')+ex+' in the exclusion list';   // always-visible toolbar mirror of the basket
+  el('curation').innerHTML='<div class="cur-intro"><b>Exclusion list</b>: the samples you are dropping from the downstream analysis. Failing samples start in it; tick or untick any sample above or in the table below, then export the dropped samples with their reasons (<b>exclusion.tsv</b>) or the ones you keep (<b>keep_list.txt</b>).</div>'+
     '<div class="cur-read"><b>'+ex+'</b> to exclude <span class="arw">→</span> <b>'+keep+'</b> kept for downstream</div>'+
    '<div class="cur-btns"><button class="btn" data-cur="fail">exclude FAILs</button><button class="btn" data-cur="flagged">exclude all flagged</button>'+
    '<button class="btn" data-cur="clear">clear</button><button class="btn" data-cur="invert">invert (shown)</button>'+
    '<button class="btn prim" data-cur="excl">'+icon('download')+'exclusion.tsv</button><button class="btn prim" data-cur="keep">'+icon('download')+'keep_list.txt</button></div>';
   Array.prototype.forEach.call(el('curation').querySelectorAll('[data-cur]'),function(b){b.onclick=function(){curAction(b.getAttribute('data-cur'));};});
+  // every change to the list passes through here, so the flagged list's boxes follow it too
+  Array.prototype.forEach.call(document.querySelectorAll('#flagtable .fcb'),function(cb){cb.checked=!!st.excl[cb.getAttribute('data-s')];});
   if(typeof saveState=='function')saveState();}
 function curAction(a){
   if(a=='fail')R.samples.forEach(function(s){if(s.v=='FAIL')st.excl[s.s]=1;});
@@ -43,8 +45,8 @@ function openDetail(sid){var s=null;R.samples.forEach(function(x){if(x.s==sid)s=
       '<div class="drow"><div class="dk">3&#39; G&gt;A (pos 1)</div><div class="dbarwrap"><div class="dbar" style="width:'+Math.min(100,(d.ga1||0)*100/0.3).toFixed(1)+'%;background:#4f83c2"></div></div><div class="dv">'+(d.ga1==null?'NA':(d.ga1*100).toFixed(1)+'%')+'</div><div class="dp"></div></div>'+
       '<div class="drow"><div class="dk">mean frag len</div><div class="dv" style="flex:1;text-align:left;color:var(--txt2)">'+(d.fraglen==null?'NA':d.fraglen.toFixed(0)+' bp')+'</div></div>';
     }else{dmg='<div class="dsub">aDNA damage</div><div class="nd" style="padding:4px 0">no mapDamage2 output found.</div>';}}
-  var fl=s.f.length?s.f.map(function(f){return '<span class="chip'+(FAILF[f]?' failc':'')+'" title="'+esc(flagWhy(s,f))+'">'+f+'</span>';}).join(' '):'<span style="color:#16a34a">no flags ✓</span>';
-  var why=s.f.length?'<div class="dwhy">'+s.f.map(function(f){return '<div><b>'+esc(f)+'</b> &middot; '+esc(flagWhy(s,f))+'</div>';}).join('')+'</div>':'';
+  var fl=s.f.length?'':'<span style="color:#16a34a">no flags ✓</span>';
+  var why=s.f.length?'<div class="rsns">'+s.f.map(function(f){var r=flagReason(s,f);return '<span class="rsn '+(FAILF[f]?'bad':'warn')+'" title="'+esc(f)+': '+esc(flagWhy(s,f))+'"><b>'+esc(r[0])+'</b> '+r[1]+'</span>';}).join('')+'</div>':'';
   var annb='';
   (function(){if(s.m.ann_high==null&&s.m.annotated_pct==null)return;
     var warn=s.m.snpeff_warn, tot=s.m.total_variants, badFrac=(warn!=null&&tot)?warn/tot:null;
@@ -66,7 +68,7 @@ function openDetail(sid){var s=null;R.samples.forEach(function(x){if(x.s==sid)s=
         '<div class="astat"><span class="ak">snpEff warnings</span><span class="av'+(badFrac!=null&&badFrac>0.5?' bad':'')+'">'+(s.m.snpeff_warn==null?"NA":Math.round(s.m.snpeff_warn).toLocaleString("en-US"))+'</span></div>'+
         '</div>'+((annBad||(badFrac!=null&&badFrac>0.5))?'<div class="alow">Low annotation coverage, a snpEff database error, or many snpEff warnings: the reference GFF-to-database build may be wrong for this contig; treat the impact counts and the missense/silent proxy for this sample with suspicion.</div>':'')+
       '</div></div>';})();
-  el('modalbody').innerHTML='<div class="dhead"><div><div class="dtitle">'+esc(s.s)+'</div><div class="dmeta">'+esc(s.lineage||'lineage NA')+(s.anc?' &middot; <b style="color:#8a5a12">aDNA</b>':'')+(s.dr?' &middot; DR: '+esc(s.dr):'')+(s.date?' &middot; '+esc(s.date):'')+'</div></div>'+
+  el('modalbody').innerHTML='<div class="dhead"><div><div class="dtitle">'+esc(s.s)+'</div><div class="dmeta" title="'+esc(s.lineage||'')+'">'+esc(s.lineage?linLabel(s.lineage):'lineage NA')+(s.ref?' &middot; mapped to '+esc(s.ref):'')+(s.anc?' &middot; <b style="color:#8a5a12">aDNA</b>':'')+(s.dr?' &middot; DR: '+esc(s.dr):'')+(s.date?' &middot; '+esc(s.date):'')+'</div></div>'+
     '<span class="v '+s.v+'" style="font-size:12px">'+s.v+'</span></div><div class="dflags">'+fl+'</div>'+why+genomeSpark(s)+lin+dmg+annb+
     '<div class="dsub">All metrics <span style="font-weight:400;color:#94a3b8">(bar = position in cohort range · p = percentile)</span></div>'+rows+
     '<div class="dbtns"><button class="btn" id="dexcl"></button></div>';

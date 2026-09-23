@@ -1,87 +1,84 @@
+// ---- Kraken2: how much of each sample is the organism the cohort is about ----
+// target_pct is the share of the CLASSIFIED reads that fall in the cohort's target clade (the one
+// most samples are dominated by, e.g. the M. tuberculosis complex). Below KRK_OFF the sample is
+// mostly something else; between KRK_OFF and KRK_PURE it carries a real share of another taxon.
+var KRK_PURE=90, KRK_OFF=50, KRK_UNCL=15;
+// A payload without a target (an older report re-rendered) falls back to the taxon most samples are
+// dominated by, measured as its share of the classified reads, which is what target_pct is.
+function krkTarget(){var K=R.kraken; if(K&&K.target&&K.target.name)return K.target.name;
+  var c={},best=null; ((K&&K.samples)||[]).forEach(function(k){if(k.primary)c[k.primary.name]=(c[k.primary.name]||0)+1;});
+  Object.keys(c).forEach(function(n){if(best==null||c[n]>c[best])best=n;}); return best||'the target organism';}
+function krkPurity(k){if(k.target_pct!=null)return k.target_pct;
+  var t=krkTarget(),hit=null; (k.top||[]).forEach(function(x){if(x.name===t)hit=x;});
+  return (hit&&k.classified>0)?Math.min(100,100*hit.pct/k.classified):0;}
+function krkState(k){var p=krkPurity(k);return p<KRK_OFF?'off':(p<KRK_PURE?'mixed':(k.unclassified>KRK_UNCL?'uncl':'ok'));}
+// the taxa the off-target samples are dominated by, most frequent first: [[name, n], ...]
+function krkOffTaxa(off){var c={};off.forEach(function(k){var n=k.primary?k.primary.name:'unclassified';c[n]=(c[n]||0)+1;});
+  return Object.keys(c).sort(function(a,b){return c[b]-c[a]||(a<b?-1:1);}).map(function(n){return [n,c[n]];});}
 function insKraken(){
   var K=R.kraken; if(!(K&&K.samples&&K.samples.length)) return "";
-  var n=K.samples.length, bad=[], worst=null, worstP=101;
-  for(var i=0;i<n;i++){
-    var s=K.samples[i], pri=(s.primary&&typeof s.primary.pct==='number')?s.primary.pct:0;
-    if(pri<90){ bad.push(s); if(pri<worstP){ worstP=pri; worst=s; } }
+  var n=K.samples.length, tgt=krkTarget(), off=[], mix=[], uncl=[];
+  K.samples.forEach(function(k){var st0=krkState(k); if(st0==='off')off.push(k); else if(st0==='mixed')mix.push(k); else if(st0==='uncl')uncl.push(k);});
+  var narr;
+  if(!off.length&&!mix.length){
+    narr='All <b>'+n+'</b> samples are at least '+KRK_PURE+'% <b>'+esc(tgt)+'</b> (share of the classified reads): no contamination detected by Kraken2.';
+  }else{
+    narr='';
+    if(off.length){var tx=krkOffTaxa(off);
+      narr+='<b class="tone-bad">'+off.length+'</b> of '+n+' sample'+(off.length>1?'s are':' is')+' mostly <b>not '+esc(tgt)+'</b>: '+
+        tx.slice(0,4).map(function(t){return t[1]+' &#215; <i>'+esc(t[0])+'</i>';}).join(', ')+(tx.length>4?' and '+(tx.length-4)+' other taxa':'')+'.';}
+    if(mix.length)narr+=(narr?' ':'')+'<b class="tone-warn">'+mix.length+'</b> '+(off.length?'more ':'')+'carry '+(100-KRK_PURE)+'&#8211;'+(100-KRK_OFF)+'% of other taxa.';
+    narr+=' <span class="c">The target is the clade most samples are dominated by; percentages are of the classified reads.</span>';
   }
-  if(!bad.length){
-    return insBox("Contamination","All <b>"+n+"</b> librar"+(n>1?"ies show":"y shows")+" a clean primary taxon (≥90% of classified reads); no cross-species contamination flagged by Kraken2.");
-  }
-  var wname=worst.primary?worst.primary.name:"target";
-  var contam=(worst.secondary&&typeof worst.secondary.pct==='number'&&worst.secondary.pct>=1)?worst.secondary:null;
-  var narr="<b class=\"tone-bad\">"+bad.length+"</b> of <b>"+n+"</b> sample"+(bad.length>1?"s":"")+" fall below the <b>90%</b> primary-taxon line; worst is <b>"+esc(worst.s)+"</b> at only <b class=\"tone-bad\">"+worstP.toFixed(1)+"%</b> "+esc(wname);
-  if(contam) narr+=", where <b>"+esc(contam.name)+"</b> ("+contam.pct.toFixed(1)+"%) is the dominant contaminant";
-  narr+=". Heuristic read on Kraken2 read fractions — inspect the composition bars below before excluding.";
-  var chips=[];
-  for(var k=0;k<bad.length;k++){
-    var b=bad[k], bp=(b.primary&&typeof b.primary.pct==='number')?b.primary.pct:0;
-    chips.push({t:b.s+" "+bp.toFixed(0)+"%", cls:"bad", title:(b.primary?esc(b.primary.name)+" ":"")+bp.toFixed(1)+"% primary taxon"});
-  }
+  if(uncl.length)narr+=' <span class="c">'+uncl.length+' sample'+(uncl.length>1?'s have':' has')+' more than '+KRK_UNCL+'% unclassified reads.</span>';
+  var chips=off.concat(mix).map(function(k){var st0=krkState(k);
+    return {t:esc(k.s)+' &#183; '+krkPurity(k).toFixed(0)+'%',cls:st0==='off'?'bad':'warn',
+            title:krkPurity(k).toFixed(1)+'% '+tgt+(k.primary?'; dominant: '+k.primary.name+' '+k.primary.pct.toFixed(1)+'% of reads':'')};});
   return insBox("Contamination", narr, chips);
 }
 function insDrug(){
-  var D=R.dr;
-  if(!(D&&D.calls&&D.calls.length)) return '';
-  var calls=D.calls, rmap={}, drugSet={}, i, c;
-  for(i=0;i<calls.length;i++){
-    c=calls[i];
-    if(c.gn===1||c.gn===2){
-      (rmap[c.s]=rmap[c.s]||{})[c.drug]=true;
-      drugSet[c.drug]=true;
-    }
+  var d=drSummary(); if(!d) return '';
+  var narr,chips=[];
+  if(d.nCarriers){
+    narr='<b class="tone-bad">'+d.nCarriers+'</b> of '+d.nTyped+' samples carry resistance-associated mutations (WHO 1&#8211;2) that their lineage does not share: '+
+      d.drugs.map(function(x){return '<b>'+esc(x.drug)+'</b> in '+x.n;}).join(', ')+'.';
+    // MDR: rifampicin and isoniazid both hit in one sample, by mutations beyond the lineage's own
+    var rif={},inh={}; d.acquired.forEach(function(m){var ds=(m.dr&&m.dr.length)?m.dr:[m.drug];
+      Object.keys(m.samples).forEach(function(s){if(ds.indexOf('RIF')>=0)rif[s]=1;if(ds.indexOf('INH')>=0)inh[s]=1;});});
+    var mdr=Object.keys(rif).filter(function(s){return inh[s];});
+    if(mdr.length)narr+=' <b class="tone-bad">'+mdr.length+' MDR</b> (rifampicin and isoniazid in one sample).';
+    chips=d.acquired.map(function(m){return {t:esc(drMutLab(m))+' &#183; '+m.n,cls:'bad',title:m.drug+', WHO grade '+m.gn+', carried by '+m.n+' samples'};});
+  }else{
+    narr='<b>No resistance-associated mutation (WHO 1&#8211;2)</b> beyond what each lineage carries, across '+d.nTyped+' samples.';
   }
-  var resSamples=[], s; for(s in rmap){ if(rmap.hasOwnProperty(s)) resSamples.push(s); }
-  var drugList=[], d; for(d in drugSet){ if(drugSet.hasOwnProperty(d)) drugList.push(d); }
-  drugList.sort();
-  var nTot=(D.samples&&D.samples.length)||0, nRes=resSamples.length;
-  function isRIF(name){ var n=(''+name).toLowerCase(); return n.indexOf('rifampicin')>=0||n.indexOf('rifampin')>=0||n.indexOf('rif')===0; }
-  function isINH(name){ var n=(''+name).toLowerCase(); return n.indexOf('isoniazid')>=0||n.indexOf('inh')===0; }
-  var mdr=[], k, dd, set, hasR, hasI;
-  for(k=0;k<nRes;k++){
-    set=rmap[resSamples[k]]; hasR=false; hasI=false;
-    for(dd in set){ if(!set.hasOwnProperty(dd)) continue; if(isRIF(dd)) hasR=true; if(isINH(dd)) hasI=true; }
-    if(hasR&&hasI) mdr.push(resSamples[k]);
-  }
-  var nMDR=mdr.length, chips=[], narr;
-  if(nRes===0){
-    narr='<b>No WHO group 1&#8211;2 resistance-associated variants</b> across '+nTot+' sample'+(nTot===1?'':'s')+' &#8212; only uncertain or non-associated calls detected. Genomic screen (WHO catalogue), not a clinical DST result.';
-    return insBox('Resistance', narr, chips);
-  }
-  var tone=nMDR>0?'tone-bad':'tone-warn';
-  narr='<b class="'+tone+'">'+nRes+'/'+nTot+' sample'+(nRes===1?'':'s')+'</b> carry resistance-associated variants (WHO groups 1&#8211;2) spanning <b>'+drugList.length+' drug'+(drugList.length===1?'':'s')+'</b>';
-  if(nMDR>0){ narr+='; <b class="tone-bad">'+nMDR+' MDR</b> (rifampicin + isoniazid resistant in one sample)'; }
-  narr+='. Genomic screen (WHO catalogue), not a clinical DST result.';
-  for(k=0;k<nMDR;k++){ chips.push({t:'MDR '+esc(mdr[k]), cls:'bad', title:'rifampicin + isoniazid resistance called in '+mdr[k]}); }
-  for(k=0;k<drugList.length;k++){ chips.push({t:esc(drugList[k]), cls:'warn', title:'resistance-associated variant(s) for '+drugList[k]}); }
+  if(d.wide.length)narr+=' <span class="c">Shared by a whole lineage and not counted: '+d.wide.map(function(m){return drWideTxt(m,d.nLin);}).join('; ')+'.</span>';
+  narr+=' <span class="c">A genomic screen against the WHO catalogue, not a drug-susceptibility result.</span>';
   return insBox('Resistance', narr, chips);
 }
+// Counts come from the flags, never from the mere presence of a lineage breakdown: every typed sample
+// carries one (s.linf), and counting those reported 176 "mixed" samples in a cohort with none.
 function insLineages(){
   if(!R.lin_present||!R.samples||!R.samples.length)return '';
-  var tot=R.samples.length;
-  var groups={},order=[];
-  R.samples.forEach(function(s){var k=s.lineage||'NA';if(!groups.hasOwnProperty(k)){groups[k]=0;order.push(k);}groups[k]++;});
-  var distinct=0,naN=0,k;
-  for(k in groups){if(!groups.hasOwnProperty(k))continue;if(k=='NA')naN=groups[k];else distinct++;}
-  var domK=null,domN=0;
-  order.forEach(function(k){if(k=='NA')return;if(groups[k]>domN){domN=groups[k];domK=k;}});
-  var mixed=[];
-  R.samples.forEach(function(s){if(s.linf)mixed.push(s.s);});
-  var narr,chips=[];
-  if(domK==null){
-    narr='No sample carries a lineage assignment — all <b>'+tot+'</b> unassigned (NA).';
+  var tot=R.samples.length, groups={}, order=[];
+  R.samples.forEach(function(s){if(untyped(s.lineage))return;var k=s.lineage;if(!groups.hasOwnProperty(k)){groups[k]=0;order.push(k);}groups[k]++;});
+  order.sort(function(a,b){return groups[b]-groups[a];});
+  var typed=order.reduce(function(a,k){return a+groups[k];},0), notTyped=tot-typed;
+  var mixed=R.samples.filter(function(s){return s.f.indexOf('MIXED')>=0;});
+  var mism=R.samples.filter(function(s){return s.f.indexOf('LINEAGE_MISMATCH')>=0;});
+  var narr;
+  if(!order.length){
+    narr='No sample could be typed to a lineage.';
   }else{
-    var domPct=100*domN/tot;
-    narr='<b>'+esc(domK)+'</b> dominates at <b>'+domPct.toFixed(0)+'%</b> ('+domN+'/'+tot+'), across <b>'+distinct+'</b> distinct lineage'+(distinct==1?'':'s')+'.';
-    if(distinct==1)narr+=' Panel is monoclonal by lineage call.';
-    if(mixed.length){
-      narr+=' <b class="tone-bad">'+mixed.length+' sample'+(mixed.length==1?'':'s')+'</b> flagged mixed-lineage (linf), suggesting mixed infection or cross-sample contamination — treat those consensus calls with caution.';
-    }else{
-      narr+=' No mixed-lineage flags.';
-    }
-    if(naN)narr+=' <b class="tone-warn">'+naN+'</b> unassigned (NA).';
+    narr=(order.length===1?'Every typed sample is <b>'+esc(linLabel(order[0]))+'</b>':'Samples type as '+
+      order.slice(0,4).map(function(k){return '<b>'+esc(linLabel(k))+'</b> ('+groups[k]+')';}).join(', ')+
+      (order.length>4?' and '+(order.length-4)+' more':''))+'.';
+    if(notTyped)narr+=' <b class="tone-warn">'+notTyped+'</b> could not be typed.';
+    narr+=mixed.length?(' <b class="tone-bad">'+mixed.length+'</b> carr'+(mixed.length>1?'y':'ies')+' a second lineage above '+thr.mixed_min_frac+'% of the markers: a mixed infection or cross-contamination.')
+                      :' No sample carries a second lineage.';
+    if(mism.length)narr+=' <b class="tone-bad">'+mism.length+'</b> type'+(mism.length>1?'':'s')+' as a different lineage from the other samples on their reference.';
   }
-  for(var i=0;i<mixed.length;i++){chips.push({t:mixed[i],cls:'bad',title:'Mixed-lineage flag (linf) — possible mixed infection or contamination'});}
+  var chips=mixed.map(function(s){return {t:esc(s.s),cls:'bad',title:flagWhy(s,'MIXED')};})
+    .concat(mism.map(function(s){return {t:esc(s.s)+' &#183; '+esc(linMain(s.lineage)),cls:'bad',title:flagWhy(s,'LINEAGE_MISMATCH')};}));
   return insBox('Lineages',narr,chips);
 }
 function insDist(){
@@ -132,6 +129,15 @@ function insDist(){
   }
   return insBox('Distributions',narr,chips);
 }
+// Metric pairs that are one quantity measured twice (a percent and its complement, the same coverage
+// at two cut-offs, one variant count and its derivatives). Their correlation is arithmetic, so it
+// is never the headline: "Mapped % vs Unmapped % at r = -1" told the reader nothing.
+var COUPLED=[['mapped_pct','unmapped_pct'],['missing_pct','callable_pct'],['mean_depth','median_depth','est_genome_cov'],
+  ['breadth_pct','breadth5x_pct','breadth10x_pct'],['properly_paired_pct','singleton_pct'],['raw_reads','trimmed_reads'],
+  ['q20_pct','q30_pct'],
+  // every annotation class is a share of the same variant calls, so it grows with the SNP count
+  ['snps','total_variants','snp_density','ann_high','ann_moderate','ann_low','ann_modifier']];
+function coupled(a,b){for(var i=0;i<COUPLED.length;i++){if(COUPLED[i].indexOf(a)>=0&&COUPLED[i].indexOf(b)>=0)return true;}return false;}
 function insScatter(){
   if(!R||!R.samples||R.samples.length<3)return '';
   var keys=[]; (R.dist||[]).forEach(function(k){if(MET[k])keys.push(k);});
@@ -142,6 +148,7 @@ function insScatter(){
   var best=null,t,m,xv,yv;
   for(var i=0;i<keys.length;i++){for(var j=i+1;j<keys.length;j++){
     var ka=keys[i],kb=keys[j],xs=[],ys=[];
+    if(coupled(ka,kb))continue;
     for(t=0;t<R.samples.length;t++){m=R.samples[t].m;xv=m[ka];yv=m[kb];
       if(xv!=null&&yv!=null&&isFinite(xv)&&isFinite(yv)){xs.push(xv);ys.push(yv);}}
     if(xs.length<5)continue;
@@ -158,7 +165,7 @@ function insScatter(){
   var strength=ab>=0.85?'near-perfect':ab>=0.7?'strong':ab>=0.5?'moderate':(ab>=0.3?'weak':'negligible');
   var expected=GRP[best.a]&&GRP[best.b]&&GRP[best.a]===GRP[best.b];
   var surprising=(!expected)&&ab>=0.6;
-  var narr='Across '+best.n+' samples, the tightest linear link among the plotted metrics is <b>'+esc(la)+'</b> vs <b>'+esc(lb)+'</b> ('+
+  var narr='Across '+best.n+' samples, the tightest linear link between two different quantities is <b>'+esc(la)+'</b> vs <b>'+esc(lb)+'</b> ('+
     (surprising?'<b class="tone-warn">Pearson r='+rtxt+'</b>':'<b>Pearson r='+rtxt+'</b>')+', '+strength+' '+dir+'). ';
   if(expected)narr+='These share a QC family and are mechanically coupled, so the correlation is <b>expected</b>.';
   else if(surprising)narr+='<b class="tone-warn">Not an obvious QC pairing</b> — a link worth a look before treating these axes as independent.';
@@ -201,6 +208,7 @@ function insCorr(){
   var strong=0,total=0,best=null,bi=-1,bj=-1,bestN=0,i,j,t;
   for(i=0;i<keys.length;i++){
     for(j=i+1;j<keys.length;j++){
+      if(coupled(keys[i],keys[j]))continue;   // one quantity measured twice: its rho is arithmetic, not a finding
       var xs=[],ys=[],vi=vals[keys[i]],vj=vals[keys[j]];
       for(t=0;t<pool.length;t++){var xv=vj[t],yv=vi[t]; if(xv!=null&&yv!=null){xs.push(xv);ys.push(yv);}}
       var r=spear(xs,ys);
@@ -217,7 +225,7 @@ function insCorr(){
   var redundant=Math.abs(best)>=0.9;
   var narr;
   if(strong>0){
-    narr='Across '+pool.length+' samples, <b'+(redundant?' class="tone-warn"':'')+'>'+strong+' of '+total+'</b> metric pairs are tightly coupled (|ρ| ≥ 0.7). Strongest: <b>'+labA+'</b> vs <b>'+labB+'</b> at ρ '+rhoStr+
+    narr='Across '+pool.length+' samples, <b'+(redundant?' class="tone-warn"':'')+'>'+strong+' of '+total+'</b> pairs of different metrics are tightly coupled (|ρ| ≥ 0.7; a percent and its complement are left out). Strongest: <b>'+labA+'</b> vs <b>'+labB+'</b> at ρ '+rhoStr+
       (redundant?' — near-redundant.':'.')+' Spearman rank over '+bestN+' shared points, so with few samples high |ρ| can arise by chance.';
   } else {
     narr='None of '+total+' metric pairs reach |ρ| ≥ 0.7 across '+pool.length+' samples — QC metrics vary largely independently. Strongest is <b>'+labA+'</b> vs <b>'+labB+'</b> at ρ '+rhoStr+' (Spearman rank, '+bestN+' shared points).';
@@ -268,11 +276,14 @@ function insRefBias(){
   for(i=0;i<R.samples.length;i++){s=R.samples[i];if(s&&s.m&&xof(s)!=null&&s.m[yk]!=null)pool.push(s);}
   if(pool.length<3)return '';
   var ys=[];for(i=0;i<pool.length;i++)ys.push(pool[i].m[yk]);
-  var dmed=_median(ys);
-  var absd=[];for(i=0;i<ys.length;i++)absd.push(Math.abs(ys[i]-dmed));
-  var dmad=_median(absd);
-  var ylo=dmed-2.5*1.4826*dmad;
-  if(!(dmad>0)||!(ylo>0))ylo=0.5*dmed;
+  var scr=divScreen(ys),dmed=scr.med,ylo=scr.lo;
+  if(!scr.on){
+    var far=pool.filter(function(x){return x.f.indexOf('SNP_HIGH')>=0;});
+    return insBox('Divergence','The cohort sits almost on its reference (median <b>'+fmt(dmed,ykind)+' '+ylab+'</b>), as when samples are mapped to their own ancestor. '+
+      'Against such a reference a sample with fewer SNPs than the rest is noise, so no reference-bias screen is run.'+
+      (far.length?' <b class="tone-warn">'+far.length+'</b> sample'+(far.length>1?'s sit':' sits')+' far above the rest instead (<i>Unusually many SNPs</i>): check that they were mapped to the right genome.':''),
+      far.map(function(x){return {t:esc(x.s)+' &#183; '+fmt(x.m[yk],ykind),cls:'warn',title:fmt(x.m[yk],ykind)+' '+ylab};}));
+  }
   var refbias=[],lowcov=[],xv,yv;
   for(i=0;i<pool.length;i++){s=pool[i];xv=xof(s);yv=s.m[yk];
     if(yv<ylo){if(xv<=gx)refbias.push(s);else lowcov.push(s);}}

@@ -26,6 +26,8 @@ function icon(n,cls){return '<svg class="ic'+(cls?' '+cls:'')+'" viewBox="0 0 24
 function fillIcons(root){Array.prototype.forEach.call((root||document).querySelectorAll('[data-ic]'),function(e){e.innerHTML=icon(e.getAttribute('data-ic'),e.getAttribute('data-ic-cls')||'');e.removeAttribute('data-ic');});}
 function fmt(v,k){if(v==null)return'NA';if(k=='int')return Math.round(v).toLocaleString('en-US');if(k=='pct')return v.toFixed(1);return v.toFixed(2);}
 function shortv(v,k){if(v==null)return'';if(k=='int')return Math.round(v).toLocaleString('en-US');return (+v).toPrecision(3);}
+// a measured value as a sentence quotes it: three significant digits, no padding zeros (2.2, 0.05, 93.7, 261)
+function nv(v){if(v==null||!isFinite(v))return 'NA';var a=Math.abs(v);return a>=1000?Math.round(v).toLocaleString('en-US'):String(parseFloat((+v).toPrecision(3)));}
 function el(id){return document.getElementById(id);}
 function metaFilterActive(){for(var f in st.metaFilter){if(st.metaFilter[f])return true;} return false;}
 function metaMatch(s){   // AND across the active samplesheet-metadata cohort filters
@@ -103,7 +105,11 @@ function _median(vals){var a=vals.filter(function(v){return v!=null;}).sort(func
 var INS_ICON='<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M12 2.5l2.1 5.9 5.9 2.1-5.9 2.1L12 18.5l-2.1-6L4 10.5l5.9-2.1z"/></svg>';
 // Generic analytical read-out block. title=short caps label; narrHTML=the computed verdict sentence(s);
 // chips=optional array of {t,cls,title} rendered as pills (cls: ''|good|warn|bad). Hidden en masse by the header toggle.
+// At most INS_CHIPS pills: a read-out that lists 176 sample names says nothing a count would not.
+var INS_CHIPS=8;
 function insBox(title, narrHTML, chips){
+  if(chips&&chips.length>INS_CHIPS){var more=chips.length-INS_CHIPS;
+    chips=chips.slice(0,INS_CHIPS).concat([{t:'+'+more+' more',cls:'more',title:more+' more not listed here; the panel below has them all'}]);}
   var ch=(chips&&chips.length)?('<div class="ins-chips">'+chips.map(function(c){return '<span class="ins-chip'+(c.cls?(' '+c.cls):'')+'"'+(c.title?(' title="'+esc(c.title)+'"'):'')+'>'+c.t+'</span>';}).join('')+'</div>'):'';
   return '<div class="insight"><div class="ins-h"><span class="ins-title">'+INS_ICON+esc(title)+'</span></div><div class="ins-narr">'+narrHTML+'</div>'+ch+'</div>';
 }

@@ -1,6 +1,7 @@
 var DYNCOL={fixation:'#2f6fed',emergence:'#1f9d6b',loss:'#e6893a',nonsyn:'#d1495b',high_impact:'#7c3aed'};
 var DYNHELP={emergence:'Emergence: the variant is (near-)absent at the first timepoint, then rises above the emergence threshold - a new allele appearing in this series.',fixation:'Fixation: the allele frequency reaches near 1.0 by the last timepoint - the variant has (almost) taken over.',loss:'Loss: the variant is present early then falls back toward 0 - an allele being lost from the series.',nonsyn:'Non-synonymous: the variant changes the protein (missense / stop / frameshift / splice / inframe indel), per snpEff - potentially functional.',high_impact:'High impact: snpEff predicts a HIGH-impact effect (frameshift, stop gained/lost...) - likely to disrupt the gene.'};
-var dynState={sel:null,q:'',showAll:false};
+var dynState={sel:null,q:'',showAll:false,cap:24,chipsAll:false};
+var DYN_CARDS=24, DYN_CHIPS=40;   // cards drawn per step, gene chips listed before "show every gene": 800 cards took 75,000 px
 var dynFilter={};
 var dynZoom=250;   // trajectory-card width in px (zoom slider); smaller -> more charts per row
 var dynShowDP=true;   // draw the per-timepoint read-depth (DP) bars behind each trajectory
@@ -135,12 +136,14 @@ function renderDynamics(){
     '<div class="dyn-grid" id="dyngrid"></div>';
   function paintChips(){
     var q=dynState.q.toLowerCase();
-    var list=geneList.filter(function(g){return !q||g.toLowerCase().indexOf(q)>=0;});
+    var all=geneList.filter(function(g){return !q||g.toLowerCase().indexOf(q)>=0;});
+    var capped=!dynState.chipsAll&&all.length>DYN_CHIPS, list=capped?all.filter(function(g,i){return i<DYN_CHIPS||dynState.sel[g];}):all;
     el('dynchips').innerHTML=list.length?list.map(function(g){
       var nf=genes[g].filter(dynHasFlag).length;
       return '<button class="dyn-chip'+(dynState.sel[g]?' sel':'')+'" data-g="'+esc(g)+'" title="Click to toggle. '+genes[g].length+' variant trajectory(ies)'+(nf?(', '+nf+' flagged'):'')+'">'+esc(g)+' <b>'+genes[g].length+'</b>'+(nf?'<i class="dyn-dot" title="'+nf+' flagged variant(s) in this gene"></i>':'')+'</button>';
-    }).join(''):'<span class="c">'+(filterActive()?'no gene matches the current series filter':'no gene matches "'+esc(dynState.q)+'"')+'</span>';
-    Array.prototype.forEach.call(el('dynchips').querySelectorAll('.dyn-chip'),function(b){ b.onclick=function(){ var g=b.getAttribute('data-g'); if(dynState.sel[g])delete dynState.sel[g]; else dynState.sel[g]=1; paintChips(); paintGrid(); }; });
+    }).join('')+(capped?'<button class="dyn-btn" id="dynChipsAll" title="List every gene with a trajectory">+'+(all.length-list.length)+' more genes</button>':''):'<span class="c">'+(filterActive()?'no gene matches the current series filter':'no gene matches "'+esc(dynState.q)+'"')+'</span>';
+    Array.prototype.forEach.call(el('dynchips').querySelectorAll('.dyn-chip'),function(b){ b.onclick=function(){ var g=b.getAttribute('data-g'); if(dynState.sel[g])delete dynState.sel[g]; else dynState.sel[g]=1; dynState.cap=DYN_CARDS; paintChips(); paintGrid(); }; });
+    var ca=el('dynChipsAll'); if(ca)ca.onclick=function(){ dynState.chipsAll=true; paintChips(); };
   }
   function paintGrid(){
     var q=dynState.q.toLowerCase();
@@ -150,7 +153,7 @@ function renderDynamics(){
     var grid=el('dyngrid');
     grid.style.setProperty('--dyncw', dynZoom+'px');
     if(!sel.length){ grid.innerHTML='<div class="dyn-empty" style="grid-column:1/-1">&#128204; '+(geneList.length?(dynState.q?('no selected gene matches &quot;'+esc(dynState.q)+'&quot;'):'Search and select one or more genes above to see the allele-frequency trajectories of their variants.'):'no variant trajectory matches the current series filter.')+'</div>'; return; }
-    var cards=[];
+    var cards=[], total=nvar;
     sel.forEach(function(g){
       genes[g].slice().sort(function(a,b){ return ((dynHasFlag(b)?1:0)-(dynHasFlag(a)?1:0)) || (String(a.pos)>String(b.pos)?1:-1); }).forEach(function(v){
         var flagged=dynHasFlag(v);
@@ -160,29 +163,35 @@ function renderDynamics(){
           '<div class="dyn-card-h"><span class="dyn-cardgene" title="Gene (click its chip above to toggle)">'+esc(v.gene||'(intergenic)')+'</span>'+geneRvTag(v.gene)+(singleGroup?'':'<span class="dyn-grp" title="Connected series this variant belongs to (the metadata group column, e.g. patient / passage line)">'+esc(v.group)+'</span>')+'<span class="dyn-pos" title="Genomic position (contig:position) of this SNP: '+esc(v.pos)+(v.pos_h37rv?('  &#183; '+esc(AA2LBL)+': '+esc(v.pos_h37rv)):'')+'">'+refPos(posNum,v.pos_h37rv)+'</span></div>'+
           '<div class="dyn-eff" title="Predicted effect (snpEff) and protein change HGVS.p: ref amino acid, codon position, alt amino acid">'+esc(v.eff||'variant')+(v.aa?(' &#183; <b class="dyn-aa">'+aaDual(v.aa,v.aa_h37rv)+'</b>'):(v.alt?(' &#183; &#8594;'+esc(v.alt)):''))+'</div>'+
           dynMiniChart(v,th,dynShowDP)+
-          '<div class="dyn-card-f">'+(chips||'<span class="c" title="no emergence / fixation / loss / non-synonymous event for this variant">no event</span>')+'<span class="dyn-traj" title="Allele frequency at each timepoint, in chronological order">'+v.traj.map(function(a){return a.toFixed(2);}).join(' &#8594; ')+'</span></div>'+
+          '<div class="dyn-card-f">'+(chips||'<span class="c" title="no emergence / fixation / loss / non-synonymous event for this variant">no event</span>')+'</div>'+
         '</div>');
       });
     });
-    grid.innerHTML=cards.join('');
+    var shown=Math.min(cards.length,dynState.cap);
+    grid.innerHTML=cards.slice(0,shown).join('')+(cards.length>shown?'<div class="dyn-more" style="grid-column:1/-1"><button class="dyn-btn" id="dynMore">show '+Math.min(DYN_CARDS,cards.length-shown)+' more</button><span class="c">'+shown+' of '+total+' trajectories drawn; hover a point for its allele frequency and depth</span></div>':'');
+    var mb=el('dynMore'); if(mb)mb.onclick=function(){ dynState.cap+=DYN_CARDS; paintGrid(); };
   }
   function paintInsight(){
     var box=el('dyn_insight'); if(!box) return;
     var drIdx=dynDRindex();
     var scored=vars.filter(function(v){ return passFilter(v.group); }).map(function(v){ var sl=dynSlope(v.traj,v.times), c=dynSelCls(v.traj); return {v:v,s:sl?sl.s:0,r2:sl?sl.r2:0,cls:c.cls,dir:c.dir,delta:c.delta,a0:c.a0,aN:c.aN,dr:dynDRmatch(drIdx,v)}; });
-    var movers=scored.filter(function(x){ return x.dir!==0; }).sort(function(a,b){ return (Math.abs(b.s)-Math.abs(a.s))||(Math.abs(b.delta)-Math.abs(a.delta)); });
+    // what rises comes first (sweeps, then the largest gains), then what falls: under a drug the gains are the story
+    var CLSRANK={sweep:0,emerge:1,rising:2,declining:3,lost:4};
+    var movers=scored.filter(function(x){ return x.dir!==0; }).sort(function(a,b){ return ((CLSRANK[a.cls]<3?0:1)-(CLSRANK[b.cls]<3?0:1))||(Math.abs(b.delta)-Math.abs(a.delta))||(Math.abs(b.s)-Math.abs(a.s)); });
     if(!movers.length){ box.innerHTML='<div class="dyn-ins-h"><span class="dyn-ins-title">Selection screen</span></div><div class="dyn-ins-narr">No trajectory shows a directional allele-frequency change beyond noise'+(filterActive()?' in the current series filter':'')+' &#8212; the alleles present look static across the sampled timepoints.</div>'; return; }
     var sweeps=movers.filter(function(x){return x.cls==='sweep';});
     var drUp=movers.filter(function(x){return x.dr&&x.dir>0;});
     var drugsUp={}; drUp.forEach(function(x){ if(x.dr.drug) drugsUp[x.dr.drug]=1; });
     var byGene={}; movers.filter(function(x){return x.dir>0;}).forEach(function(x){ var g=x.v.gene||'(intergenic)'; (byGene[g]=byGene[g]||{})[x.v.group]=1; });
     var conv=[]; for(var g in byGene){ var ser=Object.keys(byGene[g]); if(ser.length>=2) conv.push({gene:g,series:ser.sort()}); }
+    conv.sort(function(a,b){return b.series.length-a.series.length||(a.gene<b.gene?-1:1);});
     var risers=movers.filter(function(x){return x.dir>0;}).length, fallers=movers.length-risers;
     var narr='<b>'+movers.length+'</b> of <b>'+scored.length+'</b> trajectories are moving directionally &#8212; <b>'+risers+'</b> rising'+(fallers?', <b>'+fallers+'</b> declining':'')+
       (sweeps.length?', <b>'+sweeps.length+'</b> sweeping toward fixation':'')+
       (drUp.length?'. <b class="tone-bad">'+drUp.length+'</b> rising allele'+(drUp.length>1?'s are':' is a')+' known resistance mutation'+(drUp.length>1?'s':'')+' ('+esc(Object.keys(drugsUp).join(', '))+')':'')+
       (conv.length?'. <b class="tone-warn">'+conv.length+'</b> gene'+(conv.length>1?'s':'')+' rising in parallel across independent series &#8212; candidate convergent adaptation':'')+'.';
-    var convHTML=conv.length?'<div class="dyn-conv">'+conv.map(function(c){ return '<span class="dyn-conv-chip" title="'+esc(c.gene)+' has a rising variant in '+c.series.length+' independent series ('+esc(c.series.join(', '))+'). The same gene under selection in parallel is a strong signal of real adaptation (e.g. drug pressure), not noise.">'+esc(c.gene)+' &#8593; '+c.series.length+' series &#183; parallel</span>'; }).join('')+'</div>':'';
+    var CONVMAX=12, convHTML=conv.length?'<div class="dyn-conv">'+conv.slice(0,CONVMAX).map(function(c){ return '<span class="dyn-conv-chip" title="'+esc(c.gene)+' has a rising variant in '+c.series.length+' independent series ('+esc(c.series.join(', '))+'). The same gene under selection in parallel is a strong signal of real adaptation (e.g. drug pressure), not noise.">'+esc(c.gene)+' &#8593; '+c.series.length+' series</span>'; }).join('')+
+      (conv.length>CONVMAX?'<span class="dyn-conv-more">+'+(conv.length-CONVMAX)+' more genes rising in 2 or more series</span>':'')+'</div>':'';
     var rows=movers.slice(0,8).map(function(x){ var v=x.v, cc=DYNCLS[x.cls]||DYNCLS.stable, spCol=(x.dir>0?cc.col:'#e6893a');
       var drTag=x.dr?('<span class="dyn-drtag'+((x.dr.gn===1||x.dr.gn===2)?' r':'')+'" title="Drug-resistance catalogue match: '+esc(x.dr.drug||'')+' &#183; grade '+esc(x.dr.grade||'')+'">'+esc(x.dr.drug||'DR')+'</span>'):'';
       return '<tr class="dyn-ins-row" data-g="'+esc(v.gene||'')+'" title="Click to show this gene in the charts below &#183; logit-slope s='+x.s.toFixed(3)+', fit R&#178;='+x.r2.toFixed(2)+'">'+
@@ -196,11 +205,11 @@ function renderDynamics(){
       '<div class="dyn-ins-narr">'+narr+'</div>'+convHTML+
       '<div class="dyn-ins-scroll"><table class="dyn-ins-tbl"><thead><tr><th>variant &#183; series</th><th>trajectory</th><th>change</th><th>call</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
       '<div class="dyn-ins-caveat">Heuristic screen from a logit-AF slope, not a formal selection test: few timepoints, allele frequencies carry depth noise, and drift or hitchhiking (linkage) can mimic selection. Convergence across independent series is the most robust signal.</div>';
-    Array.prototype.forEach.call(box.querySelectorAll('.dyn-ins-row'),function(r){ r.onclick=function(){ var g=r.getAttribute('data-g'); if(!g)return; dynState.sel={}; dynState.sel[g]=1; dynState.q=''; el('dynsearch').value=''; paintChips(); paintGrid(); el('dyngrid').scrollIntoView({behavior:'smooth',block:'nearest'}); }; });
+    Array.prototype.forEach.call(box.querySelectorAll('.dyn-ins-row'),function(r){ r.onclick=function(){ var g=r.getAttribute('data-g'); if(!g)return; dynState.sel={}; dynState.sel[g]=1; dynState.q=''; dynState.cap=DYN_CARDS; el('dynsearch').value=''; paintChips(); paintGrid(); el('dyngrid').scrollIntoView({behavior:'smooth',block:'nearest'}); }; });
   }
-  el('dynsearch').oninput=function(){ dynState.q=this.value; paintChips(); paintGrid(); };
-  el('dynFlag').onclick=function(){ dynState.sel={}; geneList.filter(function(g){return genes[g].some(dynHasFlag);}).forEach(function(g){dynState.sel[g]=1;}); paintChips(); paintGrid(); };
-  function dynSetAll(on){ dynState.showAll=on; dynState.sel={};
+  el('dynsearch').oninput=function(){ dynState.q=this.value; dynState.cap=DYN_CARDS; paintChips(); paintGrid(); };
+  el('dynFlag').onclick=function(){ dynState.sel={}; dynState.cap=DYN_CARDS; geneList.filter(function(g){return genes[g].some(dynHasFlag);}).forEach(function(g){dynState.sel[g]=1;}); paintChips(); paintGrid(); };
+  function dynSetAll(on){ dynState.showAll=on; dynState.sel={}; dynState.cap=DYN_CARDS;
     if(on){ geneList.forEach(function(g){dynState.sel[g]=1;}); }
     else { var fg=geneList.filter(function(g){return genes[g].some(dynHasFlag);}); (fg.length?fg:geneList).slice(0,8).forEach(function(g){dynState.sel[g]=1;}); }
     var bb=el('dynAll'); if(bb){ bb.textContent=on?'show less':'show all'; bb.classList.toggle('on',on); }
