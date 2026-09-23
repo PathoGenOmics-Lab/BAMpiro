@@ -69,7 +69,21 @@ function dynSelCls(traj){ var vals=[],i; for(i=0;i<traj.length;i++){ if(traj[i]!
   return {cls:cls,dir:dir,delta:delta,a0:a0,aN:aN}; }
 var DYNCLS={sweep:{lab:'sweep → fixation',col:'#2f6fed'},emerge:{lab:'emerging',col:'#1f9d6b'},rising:{lab:'rising',col:'#2ea36b'},declining:{lab:'declining',col:'#e6893a'},lost:{lab:'lost',col:'#e0544f'},stable:{lab:'stable',col:'#8895a6'},single:{lab:'single point',col:'#8895a6'}};
 function dynDRindex(){ var idx={}; if(R.dr&&R.dr.calls){ R.dr.calls.forEach(function(c){ if(!c.gene)return; var k=((c.gene||'')+'|'+(c.mutation||'')).toLowerCase().replace(/\s+/g,''); if(!idx[k]||((c.gn===1||c.gn===2)&&!(idx[k].gn===1||idx[k].gn===2))) idx[k]=c; }); } return idx; }
-function dynDRmatch(idx,v){ if(!v.aa) return null; var k=((v.gene||'')+'|'+v.aa).toLowerCase().replace(/\s+/g,''); return idx[k]||null; }
+// A variant's protein change is HGVS (p.Ile66Met); the catalogue writes I66M, or LoF for any loss of function
+// of the gene, so the two never met. The canonical (H37Rv) gene and numbering are tried first, since the
+// catalogue is written in them and a reference of another lineage names and numbers its genes its own way.
+var AA1={Ala:'A',Arg:'R',Asn:'N',Asp:'D',Cys:'C',Gln:'Q',Glu:'E',Gly:'G',His:'H',Ile:'I',Leu:'L',Lys:'K',Met:'M',Phe:'F',Pro:'P',Ser:'S',Thr:'T',Trp:'W',Tyr:'Y',Val:'V',Ter:'*',Sec:'U',Pyl:'O'};
+function aaShort(hgvs){ var m=/^p\.([A-Z][a-z]{2})(\d+)([A-Z][a-z]{2}|\*)$/.exec(hgvs||''); if(!m) return '';
+  var a=AA1[m[1]], b=m[3]==='*'?'*':AA1[m[3]]; return (a&&b)?a+m[2]+b:''; }
+function aaLoF(hgvs){ return /^p\.[A-Z][a-z]{2}\d+(\*|Ter|[A-Z][a-z]{2}fs|fs)/.test(hgvs||''); }
+function dynDRmatch(idx,v){
+  var tries=[[v.gene_h37rv,v.aa_h37rv],[v.gene,v.aa]], i, g, a, s, k;
+  for(i=0;i<tries.length;i++){ g=(tries[i][0]||'').toLowerCase(); a=tries[i][1]; if(!g||!a) continue;
+    s=aaShort(a).toLowerCase();
+    k=g+'|'+(s||a.toLowerCase().replace(/\s+/g,'')); if(idx[k]) return idx[k];
+    if(s&&s.slice(-1)==='*'&&idx[g+'|'+s.slice(0,-1)+'!']) return idx[g+'|'+s.slice(0,-1)+'!'];
+    if(aaLoF(a)&&idx[g+'|lof']) return idx[g+'|lof']; }
+  return null; }
 function dynSpark(traj,col){ var n=traj.length; if(n<2) return ''; var W=110,H=28,pad=3;
   function X(i){return pad+(i/(n-1))*(W-2*pad);} function Y(a){return H-pad-a*(H-2*pad);}
   var pts=[],i; for(i=0;i<n;i++){ if(traj[i]!=null) pts.push(X(i).toFixed(1)+','+Y(traj[i]).toFixed(1)); }
@@ -84,7 +98,7 @@ function renderDynamics(){
   if(sec)sec.style.display='';
   var th=D.thresholds||{emerge:0.25,fix:0.9,loss:0.1};
   var vars=[];
-  D.groups.forEach(function(g){ g.series.forEach(function(s){ vars.push({gene:s.gene||'(intergenic)',pos:s.pos,group:g.group,times:g.times,traj:s.traj,dp:s.dp,flags:s.flags,eff:s.eff,imp:s.imp,alt:s.alt,aa:s.aa,aa_h37rv:s.aa_h37rv,pos_h37rv:s.pos_h37rv}); }); });
+  D.groups.forEach(function(g){ g.series.forEach(function(s){ vars.push({gene:s.gene||'(intergenic)',pos:s.pos,group:g.group,times:g.times,traj:s.traj,dp:s.dp,flags:s.flags,eff:s.eff,imp:s.imp,alt:s.alt,aa:s.aa,aa_h37rv:s.aa_h37rv,gene_h37rv:s.gene_h37rv,pos_h37rv:s.pos_h37rv}); }); });
   // per-series (group) metadata + the fields usable as a series filter: group-invariant (one value per
   // series, so timepoint/date -> the trajectory axis -> excluded) and with >1 value across series.
   var groupMeta={}; D.groups.forEach(function(g){ groupMeta[g.group]=g.meta||{}; });
