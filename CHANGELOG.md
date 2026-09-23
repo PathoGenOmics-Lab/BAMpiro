@@ -84,6 +84,16 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Fixed
 
+- **The blind-spot mask missed a third of the blind spots on any other reference.** Lifted onto
+  the run's reference by interpolating between shared unique k-mers, a blind spot was dropped
+  wherever the anchors around it were far apart, and blind spots are repeats, where anchors are
+  scarce. On two MTBC assemblies of a 185-sample cohort, the mask covered 63% and 65% of the blind
+  spots minimap2 places on each, leaving 46,700 to 49,800 bp of problematic sites to the variant
+  caller. The lift now aligns the stretch between two anchors where it cannot interpolate
+  (`--align-gaps`): 97% and 98% are masked at minimap2's place, with 700 to 1,100 bp masked
+  elsewhere. About 15% of the H37Rv blind spots are stretches those assemblies do not have at all,
+  with nothing to mask.
+
 - **The genome page drew one reference's genes under every sample.** The report took the GFF and the
   masked regions of the first reference of the run, and its length, for the whole landscape, so on a
   cohort mapped against two assemblies the second one's samples were drawn over the first one's genes,

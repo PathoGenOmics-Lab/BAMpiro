@@ -132,8 +132,10 @@ strand` for `lift --global-chain`. `lifted.bed` = the positions collapsed into i
   `pos_h37rv`, looked up by contig and position, and `bin/lift_vcf.py`, which moves each SNP to its H37Rv
   position so the canonical snpEff annotation reads H37Rv's gene and codon.
 - **(B) Blind-spots mask on any reference.** Lift `assets/H37Rv_blindspots.bed` **from H37Rv to the run's
-  reference**: `A = H37Rv`, `B = mapping reference`. The resulting BED (target coords) goes into the
-  per-reference exclusion — so the mask works even when the reference is not H37Rv.
+  reference**: `A = H37Rv`, `B = mapping reference`, with `--sample 10 --align-gaps` (PREPARE_REFERENCE). The
+  resulting BED (target coords, every contig) goes into the per-reference exclusion — so the mask works even
+  when the reference is not H37Rv. The blind spots are repeats, where anchors are scarce: interpolation alone
+  masked 63–65% of those minimap2 places on two MTBC assemblies, `--align-gaps` 97–98%, ~1 GB and ~15 s.
 
 ## Calibration and limits (be honest)
 

@@ -130,7 +130,12 @@ lifts it onto the run reference, every contig of it, with the **same k-mer lifto
 `--canonical_ref` as the FASTA the blind-spots are defined on (default: the
 H37Rv-colinear MTBC ancestor bundled at `/opt/pathotypr/reference.fasta`; point it at a
 true H37Rv FASTA for an exact lift), so the mask is correct even when the reference is
-**not** H37Rv. Set `--blindspot_liftover false` — which appends the BED directly and
-ignores `--canonical_ref` — only when the reference already shares H37Rv coordinates.
+**not** H37Rv. The blind spots sit in repeats, where shared unique k-mers are scarce, so
+the stretch between two anchors is aligned rather than interpolated (`--align-gaps`): on
+two MTBC assemblies of a 185-sample cohort, 97–98% of the blind spots minimap2 places on
+each are masked at the same place, where interpolation alone masked 63–65%; about 15% of
+the H37Rv blind spots are stretches those assemblies do not have, with nothing to mask. Set
+`--blindspot_liftover false` — which appends the BED directly and ignores
+`--canonical_ref` — only when the reference already shares H37Rv coordinates.
 The repetitive fraction is already covered by the pipeline's own repeat /
 mappability masking — the blind-spots add the non-repetitive problematic sites.

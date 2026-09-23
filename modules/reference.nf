@@ -107,11 +107,13 @@ process PREPARE_REFERENCE {
         CONTIG=$(head -1 reference.fa | sed 's/^>//; s/[[:space:]].*//')
         if [[ "!{params.blindspot_liftover}" == "true" && -s "!{params.canonical_ref}" ]]; then
             # Whole-genome anchor-chain liftover of the H37Rv blind-spots onto THIS reference, so the mask is
-            # correct without assuming shared coordinates: every position is placed by interpolation between
-            # flanking unique anchors (handles SNP sites + indels; anchor-desert positions drop, never mis-map),
-            # on whichever contig of the reference it lies, and the BED names that contig.
+            # correct without assuming shared coordinates: every position is placed between flanking unique
+            # anchors, on whichever contig of the reference it lies, and the BED names that contig. The blind
+            # spots sit in repeats, where anchors are scarce: interpolating only across short colinear gaps
+            # left a third of them unmasked on another MTBC assembly, so the stretch between two anchors is
+            # aligned instead (--align-gaps), which masks 97-98% of them where minimap2 puts them.
             python3 !{projectDir}/bin/pathotypr_liftover.py lift "!{params.blindspot_bed}" "!{params.canonical_ref}" reference.fa \
-                --out-bed bs_lifted.bed --kmer-size 21 --global-chain --sample 10
+                --out-bed bs_lifted.bed --kmer-size 21 --global-chain --sample 10 --align-gaps
             awk 'BEGIN{OFS="\t"} $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {print $1, $2+1, $3, "blindspot", ""}' bs_lifted.bed >> "$out"
         else
             # reference already shares H37Rv coordinates: append the blind-spots directly (contig rewrite + 1-based)
