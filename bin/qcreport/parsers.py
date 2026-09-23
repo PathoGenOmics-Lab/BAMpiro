@@ -812,6 +812,42 @@ def parse_sample_meta(path):
             'time_field': time_field, 'group_field': group_field, 'tx_field': tx_field}
 
 
+_DATE_RE = re.compile(r'^(collection|sampling|isolation|sample)?[_ ]?(date|year)$|^fecha$', re.I)
+
+
+def parse_collection_dates(path):
+    """{sample: date string} from the samplesheet column that says when a sample was COLLECTED
+    ('collection_date', 'sampling_date', 'date', 'year'...). {} when there is no such column.
+
+    This is the only source of a sampling date. The summary TSV carries a 'date' too, but it is
+    DAT_OUT, the day the pipeline processed the sample: read as a collection date it put a whole
+    cohort in one year and the temporal panel reported a sampling span of zero years."""
+    if not path or not os.path.exists(path):
+        return {}
+    header, out = None, {}
+    try:
+        with _dyn_open(path) as fh:
+            for line in fh:
+                if not line.strip() or line.startswith('#'):
+                    continue
+                cells = line.rstrip('\n').split('\t')
+                if header is None:
+                    header = [c.strip() for c in cells]
+                    si = next((i for i, h in enumerate(header) if _DYN_SAMPLE_RE.match(h)), 0)
+                    di = next((i for i, h in enumerate(header) if _DATE_RE.match(h)), None)
+                    if di is None:
+                        return {}
+                    continue
+                if max(si, di) >= len(cells):
+                    continue
+                s, d = cells[si].strip(), clean_str(cells[di])
+                if s and d and s not in out:
+                    out[s] = d
+    except OSError:
+        return {}
+    return out
+
+
 def parse_dose(path):
     """{sample: float} for a numeric samplesheet column named 'dose'/'dosis' (a quantitative
     annotation exposed as a report metric). {} if the file or column is absent / non-numeric."""

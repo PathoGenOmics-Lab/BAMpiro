@@ -903,6 +903,28 @@ def test_parse_sample_meta_of_an_absent_file_is_none(path):
     assert qc_parsers.parse_sample_meta(path) is None
 
 
+def test_parse_collection_dates_reads_the_samplesheet_date_column(tmp_path):
+    sheet = write(tmp_path / "sheet.tsv", "sampleId\trunId\tcollection_date\nA\tR1\t2019-03-01\n"
+                                          "A\tR2\t2019-03-01\nB\tR1\tNA\n")
+    assert qc_parsers.parse_collection_dates(sheet) == {"A": "2019-03-01"}
+
+
+@pytest.mark.parametrize("column", ["date", "year", "sampling_date", "Collection_Year", "fecha"])
+def test_parse_collection_dates_recognises_the_usual_names(tmp_path, column):
+    sheet = write(tmp_path / "sheet.tsv", f"sampleId\t{column}\nA\t2011\n")
+    assert qc_parsers.parse_collection_dates(sheet) == {"A": "2011"}
+
+
+def test_parse_collection_dates_without_a_date_column_is_empty(tmp_path):
+    # passage/timepoint columns order a series; they are not a date and must not be read as one
+    assert qc_parsers.parse_collection_dates(write(tmp_path / "s.tsv", "sampleId\tpassage\nA\t3\n")) == {}
+
+
+@pytest.mark.parametrize("path", [None, "", MISSING])
+def test_parse_collection_dates_of_an_absent_file_is_empty(path):
+    assert qc_parsers.parse_collection_dates(path) == {}
+
+
 def test_parse_sample_meta_without_rows_or_header_is_none(tmp_path):
     assert qc_parsers.parse_sample_meta(write(tmp_path / "sheet.tsv", "")) is None
     assert qc_parsers.parse_sample_meta(write(tmp_path / "h.tsv", "sampleId\tpassage\n")) is None
