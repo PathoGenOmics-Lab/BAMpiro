@@ -145,11 +145,12 @@ SECTION_INFO = {
                 "next to one, a contaminant next to nobody.",
     "deletions": "Stretches of the reference a sample has no reads for, compared with the other samples on "
                  "the same reference. Lacked by one sample it is a private deletion; by several, a shared "
-                 "one (often a lineage's); by all, a repeat or a part of the reference these genomes do not "
-                 "have, which is nobody's deletion and is listed apart. Only samples read deeply enough are "
-                 "assessed, since in a thin sample stretches without reads turn up by chance. From the "
-                 "all-positions VCF, so a deletion shorter than the minimum length, or one the caller "
-                 "already reported as an indel, is not listed here.",
+                 "one (often a lineage's); by nearly all (90% or more), a repeat or a part of the reference "
+                 "these genomes do not have, which is nobody's deletion and is listed apart. Two samples' "
+                 "stretches are one deletion when each covers at least half of the other. Only samples "
+                 "read deeply enough are assessed, since in a thin sample stretches without reads turn up "
+                 "by chance. From the all-positions VCF, so a deletion shorter than the minimum length, or "
+                 "one the caller already reported as an indel, is not listed here.",
     "function": "The snpEff functional class of each sample's variants (HIGH/MODERATE/LOW/MODIFIER impact and "
                 "effect types such as missense / synonymous). A per-sample mutational-impact profile.",
     "geneburden": "Genes carrying the most impactful (HIGH/MODERATE) variants across the cohort, with the "

@@ -336,7 +336,7 @@ function loadState(){try{var s=JSON.parse(localStorage.getItem(SKEY)||'null');if
 // ---- expand-to-fill (fullscreen within the window) for the big panels ----
 function collapseExpanded(){var ex=document.querySelector('.panel.expanded');if(!ex)return;ex.classList.remove('expanded');document.body.classList.remove('has-expanded');
   Array.prototype.forEach.call(document.querySelectorAll('.exp-h'),function(b){b.innerHTML=icon('maximize')+'full';});
-  renderGenome();renderPlots();renderScatter();renderTable();renderQCspace();renderRefBias();renderFunction();renderGeneBurden();renderHotspots();renderPnps();renderGconv();}
+  renderGenome();renderPlots();renderScatter();renderTable();renderQCspace();renderRefBias();renderFunction();renderGeneBurden();renderHotspots();renderPnps();renderGconv();renderDeletions();renderMinority();}
 Array.prototype.forEach.call(document.querySelectorAll('.exp-h'),function(b){b.onclick=function(){
   var panel=el(b.getAttribute('data-panel')); if(!panel)return;
   var willExpand=!panel.classList.contains('expanded'); collapseExpanded();

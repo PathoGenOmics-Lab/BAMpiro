@@ -3,21 +3,30 @@
 bin/depth_profile.py reduces each sample's all-positions VCF to windows, the stretches no read
 covers, and a per-gene table. What those stretches mean needs the cohort:
 
-- a stretch no sample reads is a part of the reference none of these genomes has, or one no
-  read can be placed on (a repeat). It is not a deletion of any sample;
+- a stretch almost no sample reads is a part of the reference none of these genomes has, or one
+  no read can be placed on (a repeat). It is not a deletion of any sample;
 - a stretch some samples read and others do not is a deletion in the others, shared by a
   lineage when several carry it and private to one sample when only it does;
 - in a sample read too thinly, stretches without reads turn up by chance, so its stretches are
   not assessed at all rather than reported as deletions.
 
+Stretches of different samples are the same deletion when each covers at least half of the
+other (reciprocal overlap), measured against the stretch that opened the region: overlap alone
+would chain a run of neighbouring small deletions into one, and let one long private deletion
+swallow a short gap every sample shares.
+
 The windows also give, per bin of the genome landscape, how much of each sample could be called,
 which is what turns a count of SNPs per bin into a density: a bin half of which was not read
 holds half the SNPs whatever the genome looks like there.
+
+A sample mapped against two references has a profile for each, so profiles are keyed on the
+sample and the reference together.
 """
 from __future__ import annotations
 
 import math
 import os
+from array import array
 
 from .parsers import NBINS, to_float
 
@@ -34,59 +43,79 @@ def _kind(header):
     return None
 
 
-def parse_depth_profiles(paths):
-    """{sample: profile} from depth_profile.py's tables, any of the three per sample.
+def _read_table(path):
+    """(meta, header, rows as lists) of one depth_profile.py table, or None."""
+    meta, header, rows = {}, None, []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.rstrip("\n")
+                if line.startswith("#"):
+                    k, sep, v = line[1:].strip().partition("=")
+                    if sep:
+                        meta[k.strip()] = v.strip()
+                    continue
+                if header is None:
+                    header = line.split("\t")
+                    continue
+                if line:
+                    rows.append(line.split("\t"))
+    except OSError:
+        return None
+    return meta, header or [], rows
 
-    The table is recognised by its columns and the sample by its '# sample=' line, so neither
-    depends on a file name. A profile holds the header values (reference, median_dp, contigs...)
-    and the rows of whichever tables were given.
+
+def parse_depth_profiles(paths, min_len=0, nbins=NBINS):
+    """(profiles, gene lists) from depth_profile.py's tables, any of the three per sample.
+
+    profiles maps (sample, reference) to what the report needs and no more, so a cohort of a
+    thousand samples fits: the header values, callable positions per landscape bin (the windows
+    are not kept), the stretches without reads of at least `min_len` bp, and the breadth of each
+    gene as a compact array aligned with its reference's gene list (gene lists maps the reference
+    to [(contig, start, end, gene, locus_tag)], the same for every sample on it).
     """
-    out = {}
+    profiles, gene_lists = {}, {}
     for path in paths or []:
         if not path or not os.path.exists(path) or os.path.basename(path).startswith("NO_FILE"):
             continue
-        meta, header, rows = {}, None, []
-        try:
-            with open(path, encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    line = line.rstrip("\n")
-                    if line.startswith("#"):
-                        k, sep, v = line[1:].strip().partition("=")
-                        if sep:
-                            meta[k.strip()] = v.strip()
-                        continue
-                    if header is None:
-                        header = line.split("\t")
-                        continue
-                    if line:
-                        rows.append(dict(zip(header, line.split("\t"))))
-        except OSError:
+        table = _read_table(path)
+        if table is None:
             continue
-        sample = meta.get("sample")
-        kind = _kind(header or [])
+        meta, header, rows = table
+        sample, kind = meta.get("sample"), _kind(header)
         if not sample or not kind:
             continue
-        p = out.setdefault(sample, {"windows": [], "zero": [], "genes": []})
-        for k in ("reference", "median_dp", "mean_dp", "genome_len", "zero_frac", "callable_frac",
-                  "min_dp", "window", "min_run", "contigs"):
-            if k in meta and k not in p:
-                p[k] = meta[k]
+        ref = meta.get("reference") or ""
+        p = profiles.setdefault((sample, ref), {"sample": sample, "reference": ref, "median_dp": 0.0,
+                                                "contigs": [], "callable": None, "zero": [], "genes": None})
+        if not p["contigs"]:
+            p["contigs"] = _contigs(meta.get("contigs"))
+            p["median_dp"] = to_float(meta.get("median_dp")) or 0.0
+        col = {h: i for i, h in enumerate(header)}
+
+        def cell(r, name):
+            i = col.get(name)
+            return r[i] if i is not None and i < len(r) else ""
+
+        rows = [r for r in rows if cell(r, "start").isdigit() and cell(r, "end").isdigit()]
         if kind == "windows":
-            p["windows"] = [(r["contig"], int(r["start"]), int(r["end"]), to_float(r.get("mean_dp")),
-                             to_float(r.get("zero_frac")), to_float(r.get("callable_frac")))
-                            for r in rows if r.get("start", "").isdigit() and r.get("end", "").isdigit()]
+            spans = [(cell(r, "contig"), int(cell(r, "start")), int(cell(r, "end")),
+                      to_float(cell(r, "callable_frac"))) for r in rows]
+            spans = [s for s in spans if s[3] is not None]
+            p["callable"] = _spread(spans, p["contigs"], nbins) if spans and p["contigs"] else None
         elif kind == "zero":
-            p["zero"] = [(r["contig"], int(r["start"]), int(r["end"]))
-                         for r in rows if r.get("start", "").isdigit() and r.get("end", "").isdigit()]
+            p["zero"] = [(cell(r, "contig"), int(cell(r, "start")), int(cell(r, "end"))) for r in rows
+                         if int(cell(r, "end")) - int(cell(r, "start")) + 1 >= min_len]
         else:
-            p["genes"] = [{"contig": r["contig"], "start": int(r["start"]), "end": int(r["end"]),
-                           "gene": r.get("gene", ""), "locus": r.get("locus_tag", ""),
-                           "breadth": to_float(r.get("breadth")), "rel": to_float(r.get("rel_depth"))}
-                          for r in rows if r.get("start", "").isdigit() and r.get("end", "").isdigit()]
-    for p in out.values():
-        p["median_dp"] = to_float(p.get("median_dp")) or 0.0
-        p["contigs"] = _contigs(p.get("contigs"))
-    return out
+            keys = [(cell(r, "contig"), int(cell(r, "start")), int(cell(r, "end")), cell(r, "gene"),
+                     cell(r, "locus_tag")) for r in rows]
+            breadth = [to_float(cell(r, "breadth")) for r in rows]
+            known = gene_lists.setdefault(ref, keys)
+            if keys != known:              # another GFF version for the same reference: align by key
+                at = {k: i for i, k in enumerate(keys)}
+                breadth = [breadth[at[k]] if k in at else None for k in known]
+            p["genes"] = array("f", [-1.0 if b is None else b for b in breadth])
+    return profiles, gene_lists
 
 
 def _contigs(text):
@@ -132,14 +161,6 @@ def _spread(intervals, contigs, nbins=NBINS):
     return out
 
 
-def callable_bp(profile, nbins=NBINS):
-    """Per-bin number of positions deep enough for the consensus to call, or None."""
-    rows = [(c, s, e, f) for c, s, e, _, _, f in profile.get("windows", []) if f is not None]
-    if not rows or not profile.get("contigs"):
-        return None
-    return _spread(rows, profile["contigs"], nbins)
-
-
 def _bin_len(contigs, nbins=NBINS):
     return _spread([(c, 1, n, 1.0) for c, n in contigs], contigs, nbins)
 
@@ -150,25 +171,51 @@ def snp_per_kb(snp_profile, profile, nbins=NBINS):
     A bin with fewer than a tenth of its positions callable has no value: a few called bases
     make any count look dense or empty.
     """
-    cb = callable_bp(profile, nbins)
-    if not snp_profile or cb is None:
+    cb = (profile or {}).get("callable")
+    if not snp_profile or not cb or not profile.get("contigs"):
         return None
     full = _bin_len(profile["contigs"], nbins)
     return [round(1000.0 * (snp_profile[b] or 0) / cb[b], 3)
-            if cb[b] > 0 and full[b] and cb[b] >= 0.1 * full[b] else None for b in range(nbins)]
+            if cb[b] > 0 and full[b] and cb[b] >= 0.1 * full[b] else None
+            for b in range(min(nbins, len(snp_profile)))]
 
 
 def _overlap(a0, a1, b0, b1):
     return max(0, min(a1, b1) - max(a0, b0) + 1)
 
 
-def build_coverage(profiles, min_len=200, min_depth=10.0, cohort_frac=0.9, gene_breadth=0.5,
-                   nbins=NBINS):
-    """(report section, {sample: per-bin deleted fraction}, rows for the deletions TSV).
+def _cluster(stretches, frac=0.5):
+    """Regions of [(start, end, carrier)] sorted by start: a stretch joins the first open region
+    whose founding stretch and itself each overlap by at least `frac` of their length."""
+    regions, open_ = [], []
+    for s, e, who in stretches:
+        open_ = [r for r in open_ if r["e0"] >= s]
+        home = None
+        for r in open_:
+            ov = _overlap(r["s0"], r["e0"], s, e)
+            if ov >= frac * (r["e0"] - r["s0"] + 1) and ov >= frac * (e - s + 1):
+                home = r
+                break
+        if home is None:
+            home = {"s0": s, "e0": e, "members": {}}
+            regions.append(home)
+            open_.append(home)
+        home["members"].setdefault(who, []).append((s, e))
+    return regions
+
+
+def _median(v):
+    v = sorted(v)
+    return v[len(v) // 2]
+
+
+def build_coverage(profiles, gene_lists=None, min_len=200, min_depth=10.0, cohort_frac=0.9,
+                   gene_breadth=0.5, nbins=NBINS):
+    """(report section, {(sample, reference): per-bin deleted fraction}, rows for the TSV).
 
     Stretches without reads of at least `min_len` bp, in samples whose genome-wide median depth
-    is at least `min_depth`, are merged across samples into regions and classed by how many of
-    the assessed samples on the same reference lack them:
+    is at least `min_depth`, are grouped across samples into regions (see _cluster) and classed
+    by how many of the assessed samples on the same reference lack them:
 
       cohort   at least `cohort_frac` of them, and at least two: not a deletion of anyone
       shared   two or more, fewer than that: a deletion several samples carry
@@ -177,97 +224,102 @@ def build_coverage(profiles, min_len=200, min_depth=10.0, cohort_frac=0.9, gene_
 
     Genes are named for a region when a carrier reads less than `gene_breadth` of them.
     """
+    gene_lists = gene_lists or {}
     by_ref = {}
-    for sid, p in profiles.items():
-        by_ref.setdefault(p.get("reference") or ",".join(c for c, _ in p.get("contigs", [])), []).append(sid)
+    for key, p in profiles.items():
+        by_ref.setdefault(p.get("reference") or ",".join(c for c, _ in p.get("contigs", [])), []).append(key)
 
-    regions, tracks, not_assessed = [], {}, []
-    for ref, samples in sorted(by_ref.items()):
-        assessed = [s for s in samples if profiles[s]["median_dp"] >= min_depth]
-        not_assessed += [s for s in samples if s not in assessed]
-        runs = sorted((c, s, e, sid) for sid in assessed for c, s, e in profiles[sid]["zero"]
-                      if e - s + 1 >= min_len)
-        merged = []
-        for c, s, e, sid in runs:
-            if merged and merged[-1]["contig"] == c and s <= merged[-1]["end"]:
-                r = merged[-1]
-                r["end"] = max(r["end"], e)
-                r["carriers"].setdefault(sid, []).append((s, e))
-            else:
-                merged.append({"contig": c, "start": s, "end": e, "carriers": {sid: [(s, e)]}})
+    # The genes each profile barely reads, found once: naming a region's genes then looks at a
+    # handful of genes per carrier instead of every gene of the reference.
+    thin_genes = {}
+    for key, p in profiles.items():
+        genes, b = gene_lists.get(p.get("reference") or "", []), p.get("genes")
+        thin_genes[key] = ([genes[i] for i in range(min(len(genes), len(b))) if 0 <= b[i] < gene_breadth]
+                           if b is not None else [])
+
+    regions, not_assessed = [], []
+    for ref, keys in sorted(by_ref.items()):
+        assessed = [k for k in keys if profiles[k]["median_dp"] >= min_depth]
+        not_assessed += [k[0] for k in keys if k not in assessed]
         n = len(assessed)
-        for r in merged:
-            k = len(r["carriers"])
-            if n < 2:
-                cls = "alone"
-            elif k >= max(2, math.ceil(cohort_frac * n)):
-                cls = "cohort"
-            elif k >= 2:
-                cls = "shared"
-            else:
-                cls = "private"
-            genes = {}
-            for sid in r["carriers"]:
-                for g in profiles[sid]["genes"]:
-                    if g["contig"] == r["contig"] and _overlap(g["start"], g["end"], r["start"], r["end"]) \
-                            and g["breadth"] is not None and g["breadth"] < gene_breadth:
-                        genes.setdefault(g["gene"], g["locus"])
-            regions.append({
-                "ref": ref, "contig": r["contig"], "start": r["start"], "end": r["end"],
-                "len": r["end"] - r["start"] + 1, "cls": cls, "n": k, "of": n,
-                "genes": sorted(genes),
-                "samples": sorted([sid, min(a for a, _ in iv), max(b for _, b in iv)]
-                                  for sid, iv in r["carriers"].items()),
-            })
+        by_contig = {}
+        for k in assessed:
+            for c, s, e in profiles[k]["zero"]:
+                if e - s + 1 >= min_len:
+                    by_contig.setdefault(c, []).append((s, e, k))
+        for contig, stretches in sorted(by_contig.items()):
+            for r in _cluster(sorted(stretches)):
+                k = len(r["members"])
+                if n < 2:
+                    cls = "alone"
+                elif k >= max(2, math.ceil(cohort_frac * n)):
+                    cls = "cohort"
+                elif k >= 2:
+                    cls = "shared"
+                else:
+                    cls = "private"
+                own = {who: (min(a for a, _ in iv), max(b for _, b in iv)) for who, iv in r["members"].items()}
+                start, end = _median([a for a, _ in own.values()]), _median([b for _, b in own.values()])
+                names = {}
+                for who in r["members"]:
+                    for gc, gs, ge, gene, locus in thin_genes.get(who, []):
+                        if gc == contig and _overlap(gs, ge, start, end):
+                            names.setdefault(gene, locus)
+                regions.append({
+                    "ref": ref, "contig": contig, "start": start, "end": end, "len": end - start + 1,
+                    "cls": cls, "n": k, "of": n, "genes": sorted(names),
+                    "samples": sorted([who[0], a, b] for who, (a, b) in own.items()),
+                    "_members": r["members"],
+                })
 
-    # Per-bin share of each sample's positions inside a deletion it carries (cohort-wide gaps
-    # excluded, since they are nobody's deletion).
-    per_sample = {}
+    # Per-bin share of each profile's positions inside its own stretches of the regions it
+    # carries. A stretch nearly nobody reads is nobody's deletion, and a sample alone on its
+    # reference has nothing to be compared with, so neither lights up the track.
+    per = {}
     for reg in regions:
-        if reg["cls"] == "cohort":
+        if reg["cls"] in ("cohort", "alone"):
             continue
-        for sid, s, e in reg["samples"]:
-            per_sample.setdefault(sid, []).append((reg["contig"], s, e, 1.0))
-    for sid, ivs in per_sample.items():
-        contigs = profiles[sid].get("contigs") or []
-        full = _bin_len(contigs, nbins)
-        lost = _spread(ivs, contigs, nbins)
-        tracks[sid] = [round(min(1.0, lost[b] / full[b]), 3) if full[b] else 0.0 for b in range(nbins)]
-    for sid in profiles:
-        if sid not in tracks and profiles[sid]["median_dp"] >= min_depth and profiles[sid].get("contigs"):
-            tracks[sid] = [0.0] * nbins
+        for who, iv in reg["_members"].items():
+            per.setdefault(who, []).extend((reg["contig"], s, e, 1.0) for s, e in iv)
+    tracks = {}
+    for key, p in profiles.items():
+        if p["median_dp"] < min_depth or not p.get("contigs"):
+            continue
+        full = _bin_len(p["contigs"], nbins)
+        lost = _spread(per.get(key, []), p["contigs"], nbins)
+        tracks[key] = [round(min(1.0, lost[b] / full[b]), 3) if full[b] else 0.0 for b in range(nbins)]
 
-    lost_genes = _lost_genes(profiles, by_ref, min_depth, gene_breadth)
+    for r in regions:
+        del r["_members"]
+    lost_genes = _lost_genes(profiles, gene_lists, by_ref, min_depth, gene_breadth)
     regions.sort(key=lambda r: (r["cls"] == "cohort", -r["n"] if r["cls"] == "shared" else 0,
                                 r["ref"], r["contig"], r["start"]))
     for i, r in enumerate(regions, 1):
         r["id"] = f"D{i}"
     # Each reference's contigs in order, so the report can place a region on the landscape, which
     # lays the contigs of a sample's genome end to end.
-    refs = {ref: [list(c) for c in profiles[samples[0]].get("contigs", [])] for ref, samples in by_ref.items()}
+    refs = {ref: [list(c) for c in profiles[keys[0]].get("contigs", [])] for ref, keys in by_ref.items()}
     section = {"min_len": min_len, "min_depth": min_depth, "cohort_frac": cohort_frac, "refs": refs,
-               "regions": regions, "genes_lost": lost_genes, "not_assessed": sorted(not_assessed),
+               "regions": regions, "genes_lost": lost_genes, "not_assessed": sorted(set(not_assessed)),
                "n_assessed": sum(1 for p in profiles.values() if p["median_dp"] >= min_depth)}
     return section, tracks, regions
 
 
-def _lost_genes(profiles, by_ref, min_depth, gene_breadth, cohort_breadth=0.9):
+def _lost_genes(profiles, gene_lists, by_ref, min_depth, gene_breadth, cohort_breadth=0.9):
     """Genes a sample reads less than `gene_breadth` of while at least half of the assessed
     samples on its reference read `cohort_breadth` of them: gene loss, rather than a gene
     nobody here carries."""
     out = []
-    for ref, samples in sorted(by_ref.items()):
-        assessed = [s for s in samples if profiles[s]["median_dp"] >= min_depth and profiles[s]["genes"]]
-        if len(assessed) < 2:
+    for ref, keys in sorted(by_ref.items()):
+        genes = gene_lists.get(ref) or []
+        assessed = [k for k in keys if profiles[k]["median_dp"] >= min_depth and profiles[k].get("genes")]
+        if len(assessed) < 2 or not genes:
             continue
-        table = {}
-        for sid in assessed:
-            for g in profiles[sid]["genes"]:
-                if g["breadth"] is not None:
-                    table.setdefault((g["contig"], g["start"], g["end"], g["gene"], g["locus"]), {})[sid] = g["breadth"]
-        for (contig, s, e, gene, locus), vals in sorted(table.items()):
-            lost = sorted([sid, round(b, 3)] for sid, b in vals.items() if b < gene_breadth)
-            read = sum(1 for b in vals.values() if b >= cohort_breadth)
+        for i, (contig, s, e, gene, locus) in enumerate(genes):
+            vals = [(k[0], profiles[k]["genes"][i]) for k in assessed
+                    if i < len(profiles[k]["genes"]) and profiles[k]["genes"][i] >= 0]
+            lost = sorted([sid, round(b, 3)] for sid, b in vals if b < gene_breadth)
+            read = sum(1 for _, b in vals if b >= cohort_breadth)
             if lost and read >= 0.5 * len(vals):
                 out.append({"ref": ref, "contig": contig, "start": s, "end": e, "gene": gene,
                             "locus": locus, "samples": lost, "of": len(vals)})
@@ -275,7 +327,7 @@ def _lost_genes(profiles, by_ref, min_depth, gene_breadth, cohort_breadth=0.9):
 
 
 def write_deletions(path, regions):
-    """The regions as a TSV: one row per region, its carriers with their own coordinates."""
+    """The regions as a TSV: one row per region, each carrier with its own stretch."""
     with open(path, "w", encoding="utf-8") as fh:
         fh.write("region\treference\tcontig\tstart\tend\tlength\tclass\tn_samples\tn_assessed\t"
                  "samples\tgenes\n")

@@ -5,7 +5,7 @@
 var DEL_CLS={private:['private','only this sample lacks it; the other samples on its reference read it'],
   shared:['shared','several samples lack it; the others on the reference read it'],
   alone:['alone','the only sample on its reference read deeply enough, so nothing tells a deletion from a stretch the reference has and these genomes do not'],
-  cohort:['nobody reads it','no sample reads it: a repeat, or a part of the reference none of these genomes has']};
+  cohort:['nearly nobody reads it','at least 90% of the samples on its reference lack it: a repeat, or a part of the reference none of these genomes has']};
 var delView='del';
 function delBins(r){   // a region's landscape bins: the landscape lays each sample's contigs end to end
   var C=R.coverage,nb=R.nbins||200,cs=(C.refs&&C.refs[r.ref])||[],off=0,tot=0,i;
@@ -32,11 +32,11 @@ function renderDeletions(){
   var big=el('deletionsPanel')&&el('deletionsPanel').classList.contains('expanded'), cap=q?400:(big?300:40);
   var lede='<b>'+nDel+'</b> '+_plural(nDel,'stretch','stretches')+' of '+C.min_len+' bp or more that some samples do not read and others do: '+
     '<b>'+cnt.private+'</b> private to one sample, <b>'+cnt.shared+'</b> shared'+(cnt.alone?(', '+cnt.alone+' in a sample alone on its reference'):'')+'. '+
-    '<b>'+cnt.cohort+'</b> '+_plural(cnt.cohort,'stretch','stretches')+' no sample reads '+_plural(cnt.cohort,'is','are')+' set apart: a repeat or a part of the reference these genomes lack is nobody&#39;s deletion. '+
+    '<b>'+cnt.cohort+'</b> '+_plural(cnt.cohort,'stretch','stretches')+' that nearly every sample lacks '+_plural(cnt.cohort,'is','are')+' set apart: a repeat or a part of the reference these genomes lack is nobody&#39;s deletion. '+
     'Measured on the '+C.n_assessed+' samples read at a median depth of '+C.min_depth+'&#215; or more'+
     (C.not_assessed&&C.not_assessed.length?('; '+C.not_assessed.length+' thinner '+_plural(C.not_assessed.length,'sample was','samples were')+' left out, since stretches without reads turn up there by chance'):'')+'.';
   var seg='<span class="seg" id="delseg"><button data-v="del"'+(delView=='del'?' class="on"':'')+'>Deletions '+nDel+'</button>'+
-    '<button data-v="cohort"'+(delView=='cohort'?' class="on"':'')+'>Nobody reads '+cnt.cohort+'</button></span>';
+    '<button data-v="cohort"'+(delView=='cohort'?' class="on"':'')+'>Nearly nobody reads '+cnt.cohort+'</button></span>';
   var rows=regs.slice(0,cap).map(function(r){
     var bb=delBins(r), names=r.samples.map(function(x){return x[0];});
     var who=_list(names.map(function(s){return esc(s);}),4);
@@ -73,8 +73,12 @@ function renderDeletions(){
     dl(lines.join('\n')+'\n','deletions.tsv','text/tab-separated-values');};
   Array.prototype.forEach.call(host.querySelectorAll('#deltable tbody tr[data-b0]'),function(tr){tr.onclick=function(){
     var b0=+tr.getAttribute('data-b0'),b1=+tr.getAttribute('data-b1'),nb=R.nbins||200,pad=Math.max(3,Math.round((b1-b0)*0.6)+2);
-    if(gtrackHas('del'))st.gtrack='del';
+    // A stretch nearly nobody reads is left out of the Deletions track by design, so it is shown
+    // on the Missing one, where it is visible in every sample.
+    var want=delView=='cohort'?'missing':'del'; if(gtrackHas(want))st.gtrack=want;
     st.geneMark={b0:b0,b1:b1,name:tr.getAttribute('data-id')||''}; st.gzoom={b0:Math.max(0,b0-pad),b1:Math.min(nb-1,b1+pad)};
     Array.prototype.forEach.call(document.querySelectorAll('#gtrack button'),function(x){x.classList.toggle('on',x.getAttribute('data-gt')==st.gtrack);});
-    renderGenome(); el('genome').scrollIntoView();};});
+    renderGenome(); el('genome').scrollIntoView();
+    var rd=el('gselreadout');if(rd){rd.innerHTML='stretch <b>'+esc(tr.getAttribute('data-id')||'')+'</b> <button class="btn" id="gselclear" style="padding:2px 8px;font-size:11px">reset zoom</button>';
+      var cb=el('gselclear');if(cb)cb.onclick=function(ev){ev.stopPropagation();genomeResetZoom();};}};});
 }

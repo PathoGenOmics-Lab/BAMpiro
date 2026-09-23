@@ -95,7 +95,7 @@ function renderGenome(){
   [0,0.25,0.5,0.75,1].forEach(function(t){var px=gut+t*plotW,pos=Math.round((z0+t*winN)/nb*gl);
     svg+='<line x1="'+px.toFixed(1)+'" y1="'+yb+'" x2="'+px.toFixed(1)+'" y2="'+(yb+4)+'" stroke="'+TH.axis+'"/>'+
       '<text x="'+px.toFixed(1)+'" y="'+(yb+14)+'" font-size="8.5" fill="#94a3b8" text-anchor="'+(t==0?'start':t==1?'end':'middle')+'">'+fmtpos(pos)+'</text>';});
-  if((tk=='snp'||tk=='snpkb'||tk=='del')&&st.geneMark&&st.geneMark.b1>=z0&&st.geneMark.b0<=z1){var gm=st.geneMark,mx0=Math.max(gut,x(gm.b0)),mx1=Math.min(gut+plotW,x(gm.b1+1));
+  if((tk=='snp'||tk=='snpkb'||tk=='del'||tk=='missing')&&st.geneMark&&st.geneMark.b1>=z0&&st.geneMark.b0<=z1){var gm=st.geneMark,mx0=Math.max(gut,x(gm.b0)),mx1=Math.min(gut+plotW,x(gm.b1+1));
     svg+='<rect x="'+mx0.toFixed(1)+'" y="0" width="'+Math.max(2,mx1-mx0).toFixed(1)+'" height="'+yb+'" fill="none" stroke="'+TH.ink+'" stroke-width="1.2" stroke-dasharray="3 2"/>'+
       '<text x="'+Math.min(W-2,(mx0+mx1)/2).toFixed(1)+'" y="'+(profH+11)+'" font-size="9" font-weight="600" fill="'+TH.ink+'" text-anchor="middle">'+esc(gm.name||'')+'</text>';}
   svg+='<rect id="gbrush" x="0" y="0" width="0" height="'+yb+'" fill="rgba(14,139,168,.12)" stroke="#0e8ba8" stroke-width="1" stroke-dasharray="3 2" pointer-events="none" style="display:none"/>';

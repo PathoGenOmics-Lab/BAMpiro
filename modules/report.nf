@@ -109,7 +109,9 @@ process QC_REPORT {
     tag "QC report"
     publishDir "${params.outdir}", mode: params.publish_mode
     cpus 1
-    memory '4 GB'
+    // The report now holds every sample's depth summary and the distances as well; a retry after
+    // running out gets more rather than failing again at the same size.
+    memory { 4.GB * task.attempt }
 
     input:
     path(summary)

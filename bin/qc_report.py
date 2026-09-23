@@ -272,16 +272,26 @@ def build_payload(args, thr, anc_thr):
     groups = {s: md.get("group") for s, md in series_meta.items()}
     distances = parse_pairs(args.snp_distances)
     outside = group_mismatches(distances, groups, args.cluster_snps)
-    profiles = parse_depth_profiles(args.depth_profiles)
-    coverage, del_tracks = (build_coverage(profiles, min_len=args.deletion_min_len,
+    profiles, gene_lists = parse_depth_profiles(args.depth_profiles, min_len=args.deletion_min_len)
+    coverage, del_tracks = (build_coverage(profiles, gene_lists, min_len=args.deletion_min_len,
                                            min_depth=args.deletion_min_depth)[:2]
                             if profiles else (None, {}))
+    # A sample mapped against two references has a profile for each; its row in the report is the
+    # one of the reference the samplesheet gives it first.
+    profile_keys = {}
+    for key in profiles:
+        profile_keys.setdefault(key[0], []).append(key)
+
+    def profile_of(sid):
+        keys = profile_keys.get(sid, [])
+        return (sid, ref_of.get(sid)) if (sid, ref_of.get(sid)) in profiles else (keys[0] if len(keys) == 1 else None)
 
     jsamples, counts = [], {"PASS": 0, "WARN": 0, "FAIL": 0}
     for sid, m in summ.items():
         anc = is_ancient(m)
         dmg = dmg_by_sample.get(sid)
         snp_prof = parse_profile(m.get("snp_profile"))
+        pkey = profile_of(sid)
         verdict, flags = flag_sample(m, thr, snp_med, snp_sig, ancient=anc, anc_thr=anc_thr, dmg=dmg,
                                      ref_lineage=ref_major.get(ref_of.get(sid)))
         if sid in outside:
@@ -308,11 +318,11 @@ def build_payload(args, thr, anc_thr):
                          # nearest of another, with their distances
                          "grpd": outside.get(sid),
                          "trk": ({k: v for k, v in (("snp", snp_prof),
-                                                    ("snpkb", snp_per_kb(snp_prof, profiles[sid])
-                                                     if sid in profiles else None),
+                                                    ("snpkb", snp_per_kb(snp_prof, profiles[pkey])
+                                                     if pkey else None),
                                                     ("het", parse_profile(m.get("het_profile"))),
                                                     ("indel", parse_profile(m.get("indel_profile"))),
-                                                    ("del", del_tracks.get(sid))) if v is not None}
+                                                    ("del", del_tracks.get(pkey))) if v is not None}
                                  or None),
                          "ann_db_error": (clean_str(m.get("ann_db_error")) == "yes"),
                          "m": dict({k: to_float(m.get(k)) for k in metric_keys + extra_keys + EFF_KEYS},

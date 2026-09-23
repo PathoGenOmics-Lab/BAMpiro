@@ -122,15 +122,23 @@ one is compared with the other samples mapped to the same reference:
 | :--- | :--- |
 | `private` | One sample lacks it and the others read it: a deletion in that sample |
 | `shared` | Several samples lack it and the others read it: often a deletion that defines a lineage |
-| `cohort` | Nearly every sample lacks it: a repeat no read can be placed on, or a part of the reference none of these genomes has. Nobody's deletion |
+| `cohort` | At least 90% of the samples on its reference lack it: a repeat no read can be placed on, or a part of the reference none of these genomes has. Nobody's deletion |
 | `alone` | The only sample on its reference read deeply enough, so there is nothing to compare it with |
+
+Two samples' stretches are the same deletion when each covers at least half of the other,
+measured against the stretch that opened the region. Plain overlap would chain a run of
+neighbouring small deletions into one, and let one sample's long deletion swallow a short gap
+every sample shares.
 
 Only stretches of at least `--deletion_min_len` bp (200) count, and only in samples whose median
 depth reaches `--report_depth_min`: in a thinly read sample, stretches without reads turn up by
-chance. The `samples` column gives each carrier's own coordinates and `genes` the genes a carrier
+chance. The `samples` column gives each carrier's own stretch and `genes` the genes a carrier
 reads less than half of.
 
-The per-sample tables behind it are in each sample's `stats/` folder and are useful on their own:
+The per-sample tables behind it are in each sample's `stats/` folder and are useful on their own
+(they are written whether or not a report is made). *Callable* there means read by
+`--allpos_min_cov` reads or more, where the consensus can call a base; it is also what the
+report's *SNPs / kb* divides by.
 `gene_depth.tsv` says, for every gene of the GFF, how much of it the sample read and at what depth
 against its genome-wide median, which is also where an amplification shows as a depth well above 1.
 A deletion shorter than the minimum, or one the variant caller already reported as an indel, is
