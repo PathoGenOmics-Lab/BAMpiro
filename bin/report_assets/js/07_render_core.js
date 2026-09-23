@@ -8,37 +8,6 @@ function renderInsights(){
     slot.innerHTML=html||'';
   }
 }
-function renderExec(){
-  var host=el('exec_body'); if(!host)return;
-  var S=R.samples, N=S.length, c=R.counts, toEx=c.FAIL;
-  function med(k){return _median(S.map(function(s){return s.m[k];}));}
-  function rg(k){return _range(S.map(function(s){return s.m[k];}));}
-  var mDepth=med('mean_depth'), mBreadth=med('breadth_pct'), rDepth=rg('mean_depth'), rBreadth=rg('breadth_pct');
-  var contam=(R.kraken&&R.kraken.samples)?R.kraken.samples.filter(function(k){return k.primary&&k.primary.pct<90;}).length:null;
-  var resSamp=null, resDrugs=[];
-  if(R.dr&&R.dr.calls){var rs={},dd={}; R.dr.calls.forEach(function(cl){if(cl.gn===1||cl.gn===2){rs[cl.s]=1; if(cl.drug)dd[cl.drug]=(dd[cl.drug]||0)+1;}});
-    resSamp=Object.keys(rs).length; resDrugs=Object.keys(dd).sort(function(a,b){return dd[b]-dd[a];}).slice(0,4);}
-  function card(l,n,s,tone){return '<div class="kpi'+(tone?' '+tone:'')+'"><div class="kpi-l">'+l+'</div><div class="kpi-n">'+n+'</div><div class="kpi-s">'+(s||'')+'</div></div>';}
-  var passRate=N?Math.round(c.PASS/N*100):0;
-  var cards=[
-    card('Samples', N, '<span class="v PASS xs">'+c.PASS+' pass</span> <span class="v WARN xs">'+c.WARN+' warn</span> <span class="v FAIL xs">'+c.FAIL+' fail</span>'),
-    card('Pass rate', passRate+'%', toEx?('<b>'+toEx+'</b> to exclude'):'all usable', passRate>=80?'good':(passRate>=50?'warn':'bad')),
-    card('Median depth', (mDepth!=null?fmt(mDepth,'float')+'&#215;':'NA'), rDepth?(fmt(rDepth[0],'float')+'-'+fmt(rDepth[1],'float')+'&#215; range'):''),
-    card('Median breadth', (mBreadth!=null?mBreadth.toFixed(1)+'%':'NA'), rBreadth?(rBreadth[0].toFixed(0)+'-'+rBreadth[1].toFixed(0)+'% range'):'')];
-  if(contam!=null) cards.push(card('Contamination', contam, contam?'sample(s) &lt; 90% primary':'none flagged', contam?'warn':'good'));
-  if(resSamp!=null) cards.push(card('Resistance', resSamp, resDrugs.length?esc(resDrugs.join(' · ')):'no R calls', resSamp?'warn':''));
-  var flagc={}; S.forEach(function(s){(s.f||[]).forEach(function(f){flagc[f]=(flagc[f]||0)+1;});});
-  var flags=Object.keys(flagc).sort(function(a,b){return flagc[b]-flagc[a];});
-  var prof=flags.length?flags.map(function(f){var n=flagc[f],w=Math.round(n/N*100),fatal=FAILF[f];
-    return '<div class="qcp-row"><span class="qcp-lab">'+f+'</span><span class="qcp-bar"><span style="width:'+Math.max(4,w)+'%;background:'+(fatal?'var(--fail)':'var(--warn)')+'"></span></span><span class="qcp-n">'+n+'</span></div>';}).join(''):'<div class="krk-mut">No sample trips any check at the current thresholds.</div>';
-  var linc={}; S.forEach(function(s){if(s.lineage)linc[s.lineage]=(linc[s.lineage]||0)+1;});
-  var lins=Object.keys(linc).sort();
-  var strip=lins.length?'<div class="lincomp-bar" style="margin:0 0 8px">'+lins.map(function(l){return '<div class="lseg" style="width:'+(linc[l]/N*100).toFixed(2)+'%;background:'+linColor(l)+'" title="'+esc(l)+' n='+linc[l]+'"></div>';}).join('')+'</div><div class="lincomp-lab" style="padding:0">'+lins.map(function(l){return '<span class="lchip"><i style="background:'+linColor(l)+'"></i>'+esc(l)+' <b>'+linc[l]+'</b></span>';}).join('')+'</div>':'<div class="krk-mut">no lineage calls</div>';
-  var narr='<b>'+N+'</b> samples analysed against '+(R.provenance&&R.provenance.reference?esc(R.provenance.reference):'the reference')+' &#183; <b>'+c.PASS+'</b> pass, '+(toEx?'<b class="tone-bad">'+toEx+'</b> recommended for exclusion':'0 to exclude')+' &#183; median depth <b>'+(mDepth!=null?fmt(mDepth,'float')+'&#215;':'NA')+'</b>, breadth <b>'+(mBreadth!=null?mBreadth.toFixed(1)+'%':'NA')+'</b>'+(contam?' &#183; <b class="tone-warn">'+contam+'</b> possibly contaminated':'')+(resSamp?' &#183; drug resistance in <b class="tone-warn">'+resSamp+'</b> sample(s)':'')+'.';
-  host.innerHTML='<div class="exec-narr">'+narr+'</div><div class="exec-grid">'+cards.join('')+'</div>'+
-    '<div class="exec-cols"><div class="exec-block"><div class="exec-h">QC quality profile <span class="krk-mut">- samples tripping each check (red = gate-failing)</span></div>'+prof+'</div>'+
-    '<div class="exec-block"><div class="exec-h">Cohort lineages</div>'+strip+'</div></div>';
-}
 function renderOverview(){
   var c=R.counts;
   el('summary').innerHTML=donut(c)+'<div class="counts">'+
@@ -46,13 +15,13 @@ function renderOverview(){
     ['PASS','WARN','FAIL'].map(function(v){return '<div class="c '+v.toLowerCase()+'"><div class="n">'+c[v]+'</div><div class="l">'+v.toLowerCase()+'</div></div>';}).join('')+'</div>';
   var freq={}; R.samples.forEach(function(s){s.f.forEach(function(f){freq[f]=(freq[f]||0)+1;});});
   var keys=Object.keys(freq).sort(function(a,b){return freq[b]-freq[a];});
-  el('chips').innerHTML='<span class="t">flags</span>'+(keys.length?keys.map(function(f){return '<span class="chip'+(st.flagFilter==f?' on':'')+'" data-f="'+f+'" role="button" tabindex="0" aria-pressed="'+(st.flagFilter==f?'true':'false')+'" aria-label="filter by '+f+'">'+f+'<span class="k">'+freq[f]+'</span></span>';}).join('')+'<span class="chip-hint">click to filter</span>':'<span style="color:#94a3b8;font-size:12px">none - every sample clear ✓</span>');
+  el('chips').innerHTML='<span class="t">flags</span>'+(keys.length?keys.map(function(f){return '<span class="chip'+(FAILF[f]?' failc':'')+(st.flagFilter==f?' on':'')+'" data-f="'+f+'" role="button" tabindex="0" title="'+esc(f)+'" aria-pressed="'+(st.flagFilter==f?'true':'false')+'" aria-label="filter by '+esc(flagLab(f))+'">'+esc(flagLab(f))+'<span class="k">'+freq[f]+'</span></span>';}).join('')+'<span class="chip-hint">click to filter every panel</span>':'<span style="color:#94a3b8;font-size:12px">none - every sample clear ✓</span>');
   Array.prototype.forEach.call(document.querySelectorAll('#chips .chip'),function(ch){function tog(){var f=ch.getAttribute('data-f');st.flagFilter=(st.flagFilter==f?null:f);st.onlyFlagged=false;renderAll();}
     ch.onclick=tog; ch.onkeydown=function(e){if(e.key=='Enter'||e.key==' '||e.key=='Spacebar'){e.preventDefault();tog();}};});
 }
 
 function renderTable(){
-  var mets=R.metrics.filter(function(m){return !st.hidden[m.key];});
+  var mets=tableMetrics();
   function hsa(k){return ' tabindex="0" aria-sort="'+(st.sortKey==k?(st.asc?'ascending':'descending'):'none')+'"';}  // sortable-header a11y
   function sarr(k){return st.sortKey==k?(st.asc?icon('chevronUp','sort'):icon('chevronDown','sort')):'';}  // active-sort direction caret
   var head='<tr><th class="s" data-k="s"'+hsa('s')+'><input type="checkbox" id="cbAll" title="exclude all shown samples"><span class="hlab"> Sample</span>'+sarr('s')+'</th><th data-k="v"'+hsa('v')+'>QC'+sarr('v')+'</th>'+
@@ -74,14 +43,14 @@ function renderTable(){
   var body=draw.map(function(s){
     var pre='';
     if(st.groupLin){var lk=s.lineage||'NA'; if(lk!==lastLin){lastLin=lk;
-      pre='<tr class="lingrp"><td class="s" colspan="'+ncol+'" style="text-align:left"><span class="ldot" style="background:'+linColor(s.lineage)+'"></span>'+esc(lk)+'</td></tr>';}}
+      pre='<tr class="lingrp"><td class="s" colspan="'+ncol+'" style="text-align:left"><span class="ldot" style="background:'+linColor(s.lineage)+'"></span>'+esc(lk==='NA'?lk:linLabel(lk))+'</td></tr>';}}
     var badge=s.anc?'<span class="abadge" title="ancient (aDNA) sample">aDNA</span>':'';
     var tds='<td class="s" data-s="'+esc(s.s)+'"><input type="checkbox" class="cbx" data-s="'+esc(s.s)+'"'+(st.excl[s.s]?' checked':'')+' aria-label="basket '+esc(s.s)+'"><span class="sname" data-s="'+esc(s.s)+'" role="button" tabindex="0" aria-label="Open profile for '+esc(s.s)+'">'+esc(s.s)+'</span>'+badge+'</td><td data-v="'+s.v+'"><span class="v '+s.v+'">'+s.v+'</span></td>';
+    var hit={}; s.f.forEach(function(f){var k=FLAGMET[f]; if(k)hit[k]=(FAILF[f]||hit[k]==='bad')?'bad':'warn';});   // the cells behind this sample's flags
     mets.forEach(function(m){var v=s.m[m.key];
       if(v==null){tds+='<td class="na" data-v="">NA</td>';return;}
-      var r=RANGES[m.key],nn=r[1]>r[0]?(v-r[0])/(r[1]-r[0]):0;nn=Math.max(0,Math.min(1,nn));var p=(nn*100).toFixed(1);
-      tds+='<td data-v="'+v+'" style="background:linear-gradient(90deg,'+BAR[m.dir]+'2b 0 '+p+'%,#0000 '+p+'%)">'+fmt(v,m.kind)+'</td>';});
-    tds+='<td data-v="'+esc(s.lineage||'')+'" style="text-align:left">'+(s.lineage?'<span class="ldot" style="background:'+linColor(s.lineage)+'"></span>':'')+esc(s.lineage||'NA')+'</td>';
+      tds+='<td data-v="'+v+'"'+(hit[m.key]?' class="c'+hit[m.key]+'" title="'+esc(s.f.filter(function(f){return FLAGMET[f]===m.key;}).map(function(f){return flagLab(f);}).join(', '))+'"':'')+'>'+fmt(v,m.kind)+'</td>';});
+    tds+='<td data-v="'+esc(s.lineage||'')+'" style="text-align:left" title="'+esc(s.lineage||'')+'">'+(s.lineage?'<span class="ldot" style="background:'+linColor(s.lineage)+'"></span>':'')+esc(s.lineage?linLabel(s.lineage):'NA')+'</td>';
     return pre+'<tr class="'+(st.hi==s.s?'hl':'')+'" data-s="'+esc(s.s)+'">'+tds+'</tr>';}).join('');
   var bodyOut=draw.length?body:'<tr><td colspan="'+ncol+'" style="text-align:left;color:#5f6f81;padding:14px 12px">No samples match the current filters.</td></tr>';
   var t=el('gstable'); t.innerHTML='<thead>'+head+filtRow+'</thead><tbody>'+bodyOut+'</tbody>';
@@ -163,8 +132,9 @@ function renderScatter(){
   var vis={}; visible().forEach(function(s){vis[s.s]=1;});
   var dots=rows.map(function(s){var big=(st.hi==s.s),dim=(st.q||st.onlyFlagged||st.flagFilter||st.ancOnly||st.linFilter)&&!vis[s.s];
     return '<circle cx="'+sx(s.m[xk]).toFixed(1)+'" cy="'+sy(s.m[yk]).toFixed(1)+'" r="'+(big?5.4:3.4)+'" fill="'+dotColor(s)+'" opacity="'+(dim?0.12:0.82)+'"'+((s.v=='FAIL'||big)?' stroke="'+TH.ink+'" stroke-width="'+(big?1.4:0.6)+'"':'')+' data-s="'+esc(s.s)+'" data-lin="'+esc(s.lineage||'')+'" data-x="'+s.m[xk]+'" data-y="'+s.m[yk]+'" data-xl="'+esc(xm.label)+'" data-yl="'+esc(ym.label)+'" data-xk="'+xm.kind+'" data-yk="'+ym.kind+'"/>';}).join('');
+  var top=H-pad-ph;   // the y scale spans top..H-pad, so the frame and grid must too (they started at pad, and the top values floated above the axis)
   var ticks='';[0,0.5,1].forEach(function(t){var gx=pad+t*plot,gy=H-pad-t*ph;
-    ticks+='<line x1="'+gx+'" y1="'+pad+'" x2="'+gx+'" y2="'+(H-pad)+'" stroke="'+TH.grid+'"/><line x1="'+pad+'" y1="'+gy+'" x2="'+(pad+plot)+'" y2="'+gy+'" stroke="'+TH.grid+'"/>'+
+    ticks+='<line x1="'+gx+'" y1="'+top+'" x2="'+gx+'" y2="'+(H-pad)+'" stroke="'+TH.grid+'"/><line x1="'+pad+'" y1="'+gy+'" x2="'+(pad+plot)+'" y2="'+gy+'" stroke="'+TH.grid+'"/>'+
     '<text x="'+gx+'" y="'+(H-pad+13)+'" font-size="9" fill="#94a3b8" text-anchor="middle">'+shortv(xr[0]+t*(xr[1]-xr[0]),xm.kind)+'</text>'+
     '<text x="'+(pad-6)+'" y="'+(gy+3)+'" font-size="9" fill="#94a3b8" text-anchor="end">'+shortv(yr[0]+t*(yr[1]-yr[0]),ym.kind)+'</text>';});
   // Spearman rho + two-sided p over the samples IN VIEW (matches the correlation-matrix scoping); a
@@ -174,7 +144,7 @@ function renderScatter(){
   var corrCap=(cx.length>=4)?('Spearman &rho; = <b>'+(rho==null?'n/a':(rho>0?'':'−')+Math.abs(rho).toFixed(2))+'</b> &middot; p = '+pfmt(pv)+' &middot; n = '+cx.length+((pv!=null&&pv<0.05)?' <span class="sc-sig">significant</span>':''))
     :('n = '+cx.length+' — need &ge; 4 samples in view for a correlation');
   host.innerHTML='<svg width="'+S+'" height="'+H+'" id="scsvg" style="display:block;max-width:100%;margin:0 auto">'+
-    '<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(pad+plot)+'" y2="'+(H-pad)+'" stroke="'+TH.axis+'"/><line x1="'+pad+'" y1="'+pad+'" x2="'+pad+'" y2="'+(H-pad)+'" stroke="'+TH.axis+'"/>'+
+    '<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(pad+plot)+'" y2="'+(H-pad)+'" stroke="'+TH.axis+'"/><line x1="'+pad+'" y1="'+top+'" x2="'+pad+'" y2="'+(H-pad)+'" stroke="'+TH.axis+'"/>'+
     ticks+dots+
     '<text x="'+(pad+plot/2)+'" y="'+(H-6)+'" font-size="11" fill="'+TH.mut+'" text-anchor="middle">'+esc(xm.label)+'</text>'+
     '<text x="12" y="'+(pad+ph/2)+'" font-size="11" fill="'+TH.mut+'" text-anchor="middle" transform="rotate(-90 12 '+(pad+ph/2)+')">'+esc(ym.label)+'</text></svg>'+
@@ -255,18 +225,28 @@ function renderStacks(){
 function qcScore(s){var fails=s.f.filter(function(f){return FAILF[f];}).length;return fails*100+(s.f.length-fails)*10;}
 function renderFlags(){
   var fl=R.samples.filter(function(s){return s.v!='PASS';}).sort(function(a,b){return qcScore(b)-qcScore(a)||a.s.localeCompare(b.s);});
-  var body=fl.length?fl.map(function(s){return '<tr data-s="'+esc(s.s)+'">'+
-    '<td class="s">'+esc(s.s)+(s.anc?'<span class="abadge">aDNA</span>':'')+'</td><td><span class="v '+s.v+'">'+s.v+'</span></td>'+
-    '<td class="flags"><div class="fchips">'+s.f.map(function(f){return '<span class="chip'+(FAILF[f]?' failc':'')+'" data-f="'+f+'" title="'+esc(flagWhy(s,f))+'" style="cursor:pointer">'+f+'</span>';}).join(' ')+'</div>'+
-      '<div class="flagrsn">'+s.f.map(function(f){return '<span>'+esc(flagWhy(s,f))+'</span>';}).join('')+'</div></td></tr>';}).join('')
-    :'<tr><td colspan="3" style="text-align:left;color:#16a34a;padding:10px">All samples pass at the current thresholds.</td></tr>';
+  function row(s){var rs=s.f.slice().sort(function(a,b){return (FAILF[b]?1:0)-(FAILF[a]?1:0);}).map(function(f){var r=flagReason(s,f);
+      return '<span class="rsn '+(FAILF[f]?'bad':'warn')+'" data-f="'+f+'" title="'+esc(f)+': '+esc(flagWhy(s,f))+' &#183; click to filter every panel by it"><b>'+esc(r[0])+'</b> '+r[1]+'</span>';}).join('');
+    return '<tr data-s="'+esc(s.s)+'"><td class="s"><span class="sname" data-s="'+esc(s.s)+'" role="button" tabindex="0">'+esc(s.s)+'</span>'+(s.anc?'<span class="abadge">aDNA</span>':'')+
+      (s.lineage&&!untyped(s.lineage)?'<div class="flin"><span class="ldot" style="background:'+linColor(s.lineage)+'"></span>'+esc(linLabel(s.lineage))+'</div>':'')+'</td>'+
+      '<td><span class="v '+s.v+'">'+s.v+'</span></td><td class="flags"><div class="rsns">'+rs+'</div></td>'+
+      '<td class="fx"><input type="checkbox" class="fcb" data-s="'+esc(s.s)+'"'+(st.excl[s.s]?' checked':'')+' title="in the exclusion list" aria-label="exclude '+esc(s.s)+'"></td></tr>';}
+  var fail=fl.filter(function(s){return s.v=='FAIL';}), warn=fl.filter(function(s){return s.v=='WARN';});
+  function grp(t,n,cls){return n?'<tr class="fgrp"><td colspan="4"><span class="tag '+cls+'">'+t+'</span> <b>'+n+'</b></td></tr>':'';}
+  var body=fl.length?(grp('to exclude',fail.length,'bad')+fail.map(row).join('')+grp('to review',warn.length,'warn')+warn.map(row).join(''))
+    :'<tr><td colspan="4" style="text-align:left;color:#16a34a;padding:10px">All samples pass at the current thresholds.</td></tr>';
   var t=el('flagtable');
-  t.innerHTML='<thead><tr><th class="s">Sample (worst first)</th><th>QC</th><th style="text-align:left">Flags &amp; reason</th></tr></thead><tbody>'+body+'</tbody>';
+  t.innerHTML='<thead><tr><th class="s">Sample</th><th>QC</th><th style="text-align:left">Why</th><th title="in the exclusion list">Excl.</th></tr></thead><tbody>'+body+'</tbody>';
   Array.prototype.forEach.call(t.querySelectorAll('tbody tr[data-s]'),function(tr){tr.onclick=function(e){
-    if(e.target.classList.contains('chip')){var f=e.target.getAttribute('data-f');st.flagFilter=(st.flagFilter==f?null:f);renderAll();el('gstats').scrollIntoView();return;}
-    setHi(tr.getAttribute('data-s'));el('gstats').scrollIntoView();};});
+    var r=e.target.closest?e.target.closest('.rsn'):null;
+    if(r){var f=r.getAttribute('data-f');st.flagFilter=(st.flagFilter==f?null:f);st.onlyFlagged=false;renderAll();return;}
+    if(e.target.classList.contains('fcb'))return;
+    if(e.target.classList.contains('sname')){openDetail(tr.getAttribute('data-s'));return;}
+    setHi(tr.getAttribute('data-s'));};});
+  Array.prototype.forEach.call(t.querySelectorAll('.fcb'),function(cb){cb.onchange=function(){var sid=cb.getAttribute('data-s');
+    if(cb.checked)st.excl[sid]=1;else delete st.excl[sid];renderCuration();renderTable();};});
   el('nflag').textContent=fl.length;
-  var bw=el('basketFlagged'); if(bw){bw.onclick=function(){fl.forEach(function(s){st.excl[s.s]=1;});renderTable();renderCuration();};}
+  var bw=el('basketFlagged'); if(bw){bw.onclick=function(){fl.forEach(function(s){st.excl[s.s]=1;});renderTable();renderCuration();renderFlags();};}
 }
 
 // ---- curation basket + exclusion exports ----

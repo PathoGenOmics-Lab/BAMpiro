@@ -1,4 +1,34 @@
-function renderAll(){renderExec();renderOverview();renderTable();renderLineages();renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderDoseTx();renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderTemporal();renderPnps();renderADNA();renderDynamics();renderEpistasis();renderSnpMatrix();renderVarDose();renderDrug();renderGconv();renderKraken();renderFlags();renderCuration();renderInsights();}
+// ---- pages: the report reads as seven pages, and the sidebar is both the page list and the contents of
+// the page on screen. Only that page is redrawn on a change (a new threshold, a highlighted sample, the
+// theme); the others are marked stale and redraw when opened, which is also when they know their width.
+var PAGES=['summary','qc','genome','variants','drug','gconv','diag'];
+var PAGE_RENDER={
+  summary:function(){renderExec();},
+  qc:function(){renderOverview();renderFlags();renderCuration();renderTable();renderLineages();renderKraken();renderPlots();renderADNA();},
+  genome:function(){renderStacks();renderGenome();renderFunction();renderGeneBurden();renderHotspots();renderPnps();},
+  variants:function(){renderDynamics();renderEpistasis();renderSnpMatrix();renderVarDose();},
+  drug:function(){renderDrug();},
+  gconv:function(){renderGconv();},
+  diag:function(){renderScatter();renderCorr();renderQCspace();renderRefBias();renderDoseTx();renderTemporal();}};
+var curPage='summary', pageDirty={};
+function renderPage(p){if(PAGE_RENDER[p])PAGE_RENDER[p]();pageDirty[p]=false;}
+function renderAll(){renderNavBadges();PAGES.forEach(function(p){pageDirty[p]=true;});renderPage(curPage);renderInsights();}
+function renderEverything(){renderNavBadges();PAGES.forEach(renderPage);renderInsights();}
+function pageOf(id){var e=el(id);if(!e)return null;var pg=e.closest?e.closest('.page'):null;return pg?pg.getAttribute('data-page'):null;}
+function pageShown(p){var pg=el('p-'+p);return !!pg&&pg.getAttribute('data-empty')!=='1';}
+function showPage(p,target){
+  if(!pageShown(p))p='summary';
+  var changed=(p!==curPage); curPage=p;
+  PAGES.forEach(function(q){var pg=el('p-'+q);if(pg)pg.classList.toggle('on',q===p);
+    var g=document.querySelector('#toc .toc-group[data-page="'+q+'"]');if(g)g.classList.toggle('open',q===p);});
+  if(changed||pageDirty[p]){renderPage(p);renderInsights();}
+  var t=(target&&target.indexOf('p-')!==0)?el(target):null;
+  if(t&&t.scrollIntoView)t.scrollIntoView(); else window.scrollTo(0,0);
+  if(window.__spy)window.__spy();
+}
+// '#p-qc' opens a page, '#flagged' the page holding that section, scrolled to it; false if neither.
+function goHash(h){var id=(h||'').replace(/^#/,'');if(!id){showPage('summary');return true;}
+  var p=(id.indexOf('p-')===0)?id.slice(2):pageOf(id); if(!p||!PAGE_RENDER[p])return false; showPage(p,id); return true;}
 
 // ---- static wiring ----
 el('meta').textContent=R.samples.length+' samples · '+R.generated;
@@ -24,8 +54,8 @@ fillIcons();   // swap every static data-ic placeholder (header, TOC chevrons, b
   document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&pop.style.display==='block'){pop.style.display='none';pop._for=null;} });
   window.addEventListener('scroll',function(){ if(pop.style.display==='block'){pop.style.display='none';pop._for=null;} },true);
 })();
-el('foot').innerHTML='<span class="foot-brand">BAMpiro'+(R.version?' <b>v'+esc(R.version)+'</b>':'')+' · <a href="'+esc(R.repo_url)+'" target="_blank" rel="noopener noreferrer">'+icon('github','sort')+'source on GitHub'+icon('ext','sort')+'</a></span> · Generated '+R.generated+' · thresholds are adjustable live above; the pipeline gate uses the defaults ('+
-  Object.keys(R.thresholds).map(function(k){return k+'='+R.thresholds[k];}).join(', ')+'). Values scale within each column; NA = not reported.';
+el('foot').innerHTML='<span class="foot-brand">BAMpiro'+(R.version?' <b>v'+esc(R.version)+'</b>':'')+' · <a href="'+esc(R.repo_url)+'" target="_blank" rel="noopener noreferrer">'+icon('github','sort')+'source on GitHub'+icon('ext','sort')+'</a></span> · Generated '+R.generated+' · the thresholds can be changed on the Sample QC page; the pipeline gate and qc_flags.tsv keep the defaults ('+
+  Object.keys(R.thresholds).map(function(k){return k+'='+R.thresholds[k];}).join(', ')+'). NA = not reported.';
 el('colmenu').innerHTML='<div style="display:flex;gap:12px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--line);font-size:12px"><a href="#" id="colall" style="color:var(--accent)">show all</a><a href="#" id="colnone" style="color:var(--accent)">hide all</a></div>'+R.metrics.map(function(m){return '<label><input type="checkbox" data-k="'+m.key+'"'+(st.hidden[m.key]?'':' checked')+'> '+esc(m.label)+'</label>';}).join('');
 Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.onchange=function(){if(cb.checked)delete st.hidden[cb.getAttribute('data-k')];else st.hidden[cb.getAttribute('data-k')]=1;renderTable();saveState();};});
 (function(){var ca=el('colall'),cn=el('colnone');
@@ -67,7 +97,7 @@ if(R.n_ancient){var ATH=[['depth_min','aDNA depth min'],['breadth_min','aDNA bre
     '<input type="number" step="any" data-t="'+t[0]+'" value="'+(athr[t[0]]!=null?athr[t[0]]:'')+'" style="width:78px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:12px"></label>';}).join('');
   Array.prototype.forEach.call(document.querySelectorAll('#athbox input'),function(inp){inp.oninput=function(){var v=parseFloat(inp.value);if(!isNaN(v)){athr[inp.getAttribute('data-t')]=v;clearTimeout(_thdb);_thdb=setTimeout(function(){recompute();renderAll();saveState();},180);}};});}
 // CSV export of the current (filtered rows, visible columns) table
-el('csv').onclick=function(){var mets=R.metrics.filter(function(m){return !st.hidden[m.key];});
+el('csv').onclick=function(){var mets=tableMetrics();
   var head=['sample','verdict'].concat(mets.map(function(m){return m.key;})).concat(['lineage','flags']);
   var lines=[head.join('\t')]; visible().filter(colMatch).forEach(function(s){lines.push([s.s,s.v].concat(mets.map(function(m){return s.m[m.key]==null?'':s.m[m.key];})).concat([s.lineage||'',s.f.join(';')]).join('\t'));});
   var blob=new Blob([lines.join('\n')],{type:'text/tab-separated-values'}),a=document.createElement('a');
@@ -275,20 +305,26 @@ function applyMetaFilter(field,val){
 // print / save as PDF. The SNP matrix in "show all" mode only keeps the visible window in the DOM (with tall
 // spacer rows), which would print as a few rows over a big blank; collapse it to the top sites for a clean
 // printout, then restore. Run synchronously in the click handler AND via beforeprint (Ctrl+P) to be safe.
-function _printPrep(){ if(snpmxAll){ window.__printWasAll=true; snpmxAll=false; if(window.__snpmxDraw)window.__snpmxDraw(); if(window.__syncSitesBtn)window.__syncSitesBtn(); } }
-function _printRestore(){ if(window.__printWasAll){ window.__printWasAll=false; snpmxAll=true; if(window.__snpmxDraw)window.__snpmxDraw(); if(window.__syncSitesBtn)window.__syncSitesBtn(); } }
+// Printing lays every page out one after another, drawn at the width they have on paper.
+function _printPrep(){ if(document.body.classList.contains('print-all'))return;
+  document.body.classList.add('print-all'); renderEverything();
+  if(snpmxAll){ window.__printWasAll=true; snpmxAll=false; if(window.__snpmxDraw)window.__snpmxDraw(); if(window.__syncSitesBtn)window.__syncSitesBtn(); } }
+function _printRestore(){ if(!document.body.classList.contains('print-all'))return;
+  document.body.classList.remove('print-all');
+  if(window.__printWasAll){ window.__printWasAll=false; snpmxAll=true; if(window.__snpmxDraw)window.__snpmxDraw(); if(window.__syncSitesBtn)window.__syncSitesBtn(); }
+  renderAll(); }
 var pbtn=el('printBtn'); if(pbtn)pbtn.onclick=function(){ _printPrep(); window.print(); _printRestore(); };
 window.addEventListener('beforeprint',_printPrep);
 window.addEventListener('afterprint',_printRestore);
 // ---- persistence of the curated view (basket + thresholds), namespaced per sample-set so two reports don't bleed ----
 var SKEY='bampiro_qc_v2:'+R.samples.length+':'+(R.samples[0]?R.samples[0].s:'')+':'+(R.samples.length?R.samples[R.samples.length-1].s:'');
-function saveState(){try{localStorage.setItem(SKEY,JSON.stringify({excl:st.excl,thr:thr,athr:athr,hidden:st.hidden,sortKey:st.sortKey,asc:st.asc}));}catch(e){}}
+function saveState(){try{localStorage.setItem(SKEY,JSON.stringify({v:3,excl:st.excl,thr:thr,athr:athr,hidden:st.hidden,sortKey:st.sortKey,asc:st.asc}));}catch(e){}}
 function loadState(){try{var s=JSON.parse(localStorage.getItem(SKEY)||'null');if(!s)return false;
   if(s.thr)Object.keys(s.thr).forEach(function(k){if(k in thr)thr[k]=s.thr[k];});
   if(s.athr)Object.keys(s.athr).forEach(function(k){if(k in athr)athr[k]=s.athr[k];});
   if(s.excl&&typeof s.excl=='object'){var have={};R.samples.forEach(function(x){have[x.s]=1;});
     st.excl={};Object.keys(s.excl).forEach(function(k){if(have[k])st.excl[k]=1;});}  // drop unknown sample ids
-  if(s.hidden&&typeof s.hidden=='object')st.hidden=s.hidden;        // restore the chosen visible columns
+  if(s.v>=3&&s.hidden&&typeof s.hidden=='object')st.hidden=s.hidden;   // restore the chosen columns (not an older report's, saved before the table opened on the key metrics)
   if(s.sortKey){st.sortKey=s.sortKey;st.asc=!!s.asc;}              // and the sort order (SKEY is per-cohort)
   return true;}catch(e){return false;}}
 // ---- expand-to-fill (fullscreen within the window) for the big panels ----
@@ -320,7 +356,19 @@ if(R.n_ancient)Array.prototype.forEach.call(document.querySelectorAll('#athbox i
 Array.prototype.forEach.call(document.querySelectorAll('#colmenu input'),function(cb){cb.checked=!st.hidden[cb.getAttribute('data-k')];});  // sync the column checkboxes to any restored/hidden set
 recompute();
 if(!(hadSaved&&Object.keys(st.excl).length))R.samples.forEach(function(s){if(s.v=='FAIL')st.excl[s.s]=1;});  // preselect FAILs unless a saved basket exists
-renderAll();
+renderEverything();   // every page once, so each panel settles whether it has data at all
+(function(){   // a page none of whose sections has data is dropped, with its sidebar entry; the rest are renumbered
+  var n=0;
+  PAGES.forEach(function(p){var pg=el('p-'+p); if(!pg)return;
+    var any=(p==='summary')||Array.prototype.some.call(pg.querySelectorAll('section[id]'),function(x){return x.style.display!=='none';});
+    pg.setAttribute('data-empty',any?'0':'1');
+    var g=document.querySelector('#toc .toc-group[data-page="'+p+'"]'); if(g)g.style.display=any?'':'none';
+    if(!any)return; n++;
+    var num=g?g.querySelector('.toc-n'):null; if(num)num.textContent=n;
+    var eb=pg.querySelector('.page-h .eyebrow'); if(eb)eb.textContent=n+' \u00b7 '+eb.textContent.replace(/^\d+\s*\u00b7\s*/,'');
+    pageDirty[p]=true;});   // drawn off-screen at a guessed width: redraw on first open
+})();
+curPage=null; if(!goHash(location.hash))showPage('summary');
 (function(){  // dark / light theme toggle (the early head script set the initial class from the saved pref or OS)
   var tb=el('themeToggle'); if(!tb)return;
   function setIcon(){tb.innerHTML=icon(isDark()?'sun':'moon');}
@@ -356,31 +404,33 @@ renderAll();
     // deliberately no scroll: the header switch just flips the state, it doesn't navigate anywhere
   };
 })();
-(function(){  // left contents sidebar: collapse toggle, collapsible groups, scroll-spy highlight
+(function(){  // left sidebar: collapse toggle (a drawer on a phone) and the scroll-spy of the page on screen
   var toc=el('toc'), tg=el('toc-toggle'); if(!toc||!tg)return;
   tg.onclick=function(){ document.body.classList.toggle('toc-collapsed'); };
   var scrim=el('tocscrim'); if(scrim)scrim.onclick=function(){ document.body.classList.add('toc-collapsed'); };  // tap outside the drawer to dismiss (mobile)
   if(window.innerWidth&&window.innerWidth<860) document.body.classList.add('toc-collapsed');   // start collapsed on small screens
-  Array.prototype.forEach.call(toc.querySelectorAll('.toc-gh'),function(gh){ gh.onclick=function(){ gh.parentNode.classList.toggle('closed'); }; });
-  Array.prototype.forEach.call(toc.querySelectorAll('.toc-group'),function(g){   // hide a whole group if every section in it was self-hidden
-    var any=false; Array.prototype.forEach.call(g.querySelectorAll('.toc-link'),function(a){ if(a.style.display!=='none') any=true; });
-    if(!any) g.style.display='none';
-  });
   var links=Array.prototype.slice.call(toc.querySelectorAll('.toc-link'));
-  var items=links.map(function(a){ return {a:a, el:el(a.getAttribute('href').slice(1))}; }).filter(function(x){return x.el;});
-  links.forEach(function(a){ a.onclick=function(){ if(window.innerWidth&&window.innerWidth<860) document.body.classList.add('toc-collapsed'); }; });
   function spy(){
-    var se=document.scrollingElement||document.documentElement, y=se.scrollTop+92, cur=null;
-    var best=-1;   // pick the section with the GREATEST offsetTop<=y (TOC order need not match DOM order)
-    items.forEach(function(s){ if(s.el.style.display!=='none' && s.el.offsetTop<=y && s.el.offsetTop>=best){ best=s.el.offsetTop; cur=s; } });
-    if(!cur){ for(var i=0;i<items.length;i++){ if(items[i].el.style.display!=='none'){ cur=items[i]; break; } } }  // above the 1st section -> highlight it
-    links.forEach(function(a){ a.className='toc-link'; });
-    if(cur) cur.a.className='toc-link active';
+    var pg=el('p-'+curPage), y=92, cur=null, best=-Infinity;   // the section whose top last passed under the header
+    links.forEach(function(a){ a.classList.remove('active');
+      var s=el(a.getAttribute('href').slice(1)); if(!s||!pg||!pg.contains(s)||s.style.display==='none'||a.style.display==='none')return;
+      var top=s.getBoundingClientRect().top; if(top<=y&&top>best){best=top;cur=a;} });
+    if(!cur){ for(var i=0;i<links.length;i++){ var s0=el(links[i].getAttribute('href').slice(1)); if(s0&&pg&&pg.contains(s0)&&s0.style.display!=='none'&&links[i].style.display!=='none'){cur=links[i];break;} } }
+    if(cur) cur.classList.add('active');
   }
+  window.__spy=spy;
   window.addEventListener('scroll',spy);
   window.addEventListener('resize',spy);
   spy();
 })();
+// every in-page link (sidebar, summary cards, "see the evidence") goes through the page router
+document.addEventListener('click',function(e){
+  var a=(e.target&&e.target.closest)?e.target.closest('a[href^="#"]'):null; if(!a)return;
+  var h=a.getAttribute('href'); if(!h||h==='#')return;
+  if(goHash(h)){ e.preventDefault(); try{history.replaceState(null,'',h);}catch(err){}
+    if(window.innerWidth&&window.innerWidth<860)document.body.classList.add('toc-collapsed'); }
+});
+window.addEventListener('hashchange',function(){goHash(location.hash);});
 (function(){  // drop a clickable (i) into every section heading; the explanation text comes from R.section_info
   var info=R.section_info||{};
   Array.prototype.forEach.call(document.querySelectorAll('section[id]'),function(sec){

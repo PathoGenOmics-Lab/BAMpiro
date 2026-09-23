@@ -30,7 +30,8 @@ from qcreport.metrics import (ANC_DEF, DEF, DEFS, DIST, METRICS, build_gene_map,
                               flag_sample, het_frac, is_ancient, lineage_counts_parsed, lineage_fracs, robust)
 from qcreport.panels import build_dynamics, build_epistasis, build_snp_matrix
 from qcreport.parsers import (NBINS, clean_str, consensus_stats, mapdamage_stats, mask_profile, parse_bed,
-                              parse_dose, parse_dr, parse_gene_burden, parse_gene_conversion, parse_gff,
+                              parse_collection_dates, parse_dose, parse_dr, parse_gene_burden,
+                              parse_gene_conversion, parse_gff,
                               parse_kraken, parse_lineage_colors, parse_metadata, parse_pnps, parse_profile,
                               parse_sample_meta, parse_summary, parse_vcfs, to_float)
 from qcreport.render import REPO_URL, SECTION_INFO, build_html
@@ -234,6 +235,7 @@ def build_payload(args, thr, anc_thr):
         if ref and lin and lin.lower() not in ("unclassified", "nan"):
             by_ref.setdefault(ref, []).append(lin.split(";")[0])
     ref_major = {r: max(set(v), key=v.count) for r, v in by_ref.items() if len(v) >= 3}
+    dates = parse_collection_dates(args.metadata)
 
     jsamples, counts = [], {"PASS": 0, "WARN": 0, "FAIL": 0}
     for sid, m in summ.items():
@@ -250,7 +252,13 @@ def build_payload(args, thr, anc_thr):
                          "dr": clean_str(m.get("drug_resistance")),
                          "anc": anc,
                          "dmg": dmg,
-                         "date": clean_str(m.get("date")),
+                         # the samplesheet's collection date; the summary's own 'date' is the day
+                         # the pipeline ran, which says nothing about when the sample was taken
+                         "date": dates.get(sid),
+                         # the reference the sample was mapped to and the lineage its other samples
+                         # type as: what a LINEAGE_MISMATCH flag compares, so the report can say so
+                         "ref": ref_of.get(sid),
+                         "ref_lin": ref_major.get(ref_of.get(sid)),
                          "miss": miss_by_sample.get(sid),
                          "trk": ({k: v for k, v in (("snp", parse_profile(m.get("snp_profile"))),
                                                     ("het", parse_profile(m.get("het_profile"))),

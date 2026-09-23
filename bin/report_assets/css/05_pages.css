@@ -1,0 +1,164 @@
+/* ===================== Pages, navigation, the summary and the reading typography =====================
+   The report reads as seven pages. The sidebar lists them, numbered, with a badge where a page needs
+   attention, and opens the contents of the page on screen. Loaded last, so these rules refine the ones
+   above rather than repeat them. */
+
+/* ---- pages ---- */
+.page{display:none}
+.page.on,body.print-all .page{display:block}
+.page-h{margin:10px 0 28px;max-width:82ch}
+.eyebrow{font-size:11.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--accent)}
+.page-h h1{font-size:30px;line-height:1.18;letter-spacing:-.022em;margin:6px 0 10px;font-weight:750;color:var(--ink)}
+.page-lede{font-size:15px;line-height:1.62;color:var(--txt2);margin:0}
+.page-lede code,.f-body code{font-size:12.5px;background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:0 5px}
+.wrap{padding-top:30px}
+section{margin-top:44px}
+.page-h+section,.page-h+.hero{margin-top:0}
+.thsec{margin-top:14px}
+
+/* ---- section titles: a readable heading, the one-line reading under it, controls to the right ---- */
+h2{font-size:18.5px;text-transform:none;letter-spacing:-.012em;color:var(--ink);font-weight:650;margin:0 0 14px;gap:8px 12px;line-height:1.3}
+h2 .c{flex-basis:100%;order:99;font-size:13.5px;font-weight:400;color:var(--mut);letter-spacing:0;line-height:1.5;margin-top:-4px}
+.sec-infoi{align-self:center}
+
+/* ---- sidebar: the pages, and the sections of the open one ---- */
+#toc{padding:60px 12px 26px}
+.toc-brand{padding:0 10px 16px}
+.toc-group{margin-bottom:2px}
+.toc-gh{display:flex;align-items:center;justify-content:flex-start;gap:10px;font-size:14px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--label);padding:7px 10px;border-radius:10px;text-decoration:none;cursor:pointer}
+.toc-gh:hover{background:var(--accent-soft);color:var(--accent)}
+.toc-n{flex:none;width:22px;height:22px;border-radius:7px;background:var(--soft);border:1px solid var(--line);font-size:11.5px;font-weight:700;color:var(--mut);display:inline-flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.toc-group.open .toc-gh{color:var(--ink);background:var(--soft)}
+.toc-group.open .toc-n{background:var(--accent);border-color:var(--accent);color:#fff}
+.toc-badge{margin-left:auto;font-size:11px;font-weight:700;border-radius:20px;padding:1px 8px;font-variant-numeric:tabular-nums;line-height:1.5}
+.toc-badge:empty{display:none}
+.toc-badge.bad{background:#fbe6e4;color:#b42318}
+.toc-badge.warn{background:#fbf0dd;color:#8a5a00}
+.toc-badge.neu{background:var(--panel);color:var(--mut);border:1px solid var(--line)}
+.toc-items{display:none;flex-direction:column;gap:1px;margin:3px 0 10px 21px;padding-left:10px;border-left:1px solid var(--line)}
+.toc-group.open .toc-items{display:flex}
+.toc-link{font-size:13px;padding:5px 10px;border-left:0;border-radius:7px}
+.toc-link.active{border-left:0;box-shadow:inset 2px 0 0 var(--accent)}
+html.dark .toc-badge.bad{background:#3b1a22;color:#f5a1ac}
+html.dark .toc-badge.warn{background:#3a2c10;color:#f1c179}
+html.dark .toc-group.open .toc-n{color:#0f1720}
+
+/* ---- header buttons ---- */
+#printBtn{background:none;border:1px solid var(--line);border-radius:9px;width:32px;height:32px;cursor:pointer;color:var(--mut);display:flex;align-items:center;justify-content:center;box-shadow:var(--sh);flex:none;padding:0}
+#printBtn:hover{color:var(--accent);border-color:var(--accent)}
+#printBtn .ic{margin:0}
+html.dark #printBtn{color:var(--mut)}
+
+/* ---- summary: "in short", then one card per finding ---- */
+.inshort{font-size:17px;line-height:1.62;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:14px;padding:18px 22px;box-shadow:var(--sh);margin-bottom:22px;max-width:92ch}
+.inshort b{font-weight:750}
+.findings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.finding{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh);padding:18px 20px 15px 22px;display:flex;flex-direction:column;gap:11px;position:relative;min-width:0}
+.finding::before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:3px;border-radius:0 3px 3px 0;background:var(--line)}
+.finding.f-bad::before{background:var(--fail)} .finding.f-warn::before{background:var(--warn)} .finding.f-good::before{background:var(--pass)}
+.f-eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.f-head{font-size:18px;line-height:1.38;font-weight:600;letter-spacing:-.01em;margin:0;color:var(--ink)}
+.f-head b{font-weight:800}
+.f-body{font-size:13.5px;line-height:1.62;color:var(--txt2);margin:0}
+.f-body b{color:var(--ink)}
+.f-bar{display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--track)}
+.f-bar span{height:100%;display:block}
+.f-nums{display:flex;gap:10px;flex-wrap:wrap}
+.f-num{flex:1;min-width:84px;background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:7px 12px}
+.f-num b{display:block;font-size:22px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--ink);line-height:1.2}
+.f-num span{font-size:11.5px;color:var(--mut)}
+.f-num.good b{color:var(--pass)} .f-num.warn b{color:var(--warn)} .f-num.bad b{color:var(--fail)}
+.f-foot{display:flex;align-items:flex-end;gap:14px;justify-content:space-between;margin-top:auto;padding-top:10px;border-top:1px dashed var(--line)}
+.f-note{font-size:11.5px;color:var(--mut);line-height:1.45}
+.f-link{font-size:13px;font-weight:600;color:var(--accent);text-decoration:none;white-space:nowrap}
+.f-link:hover{text-decoration:underline}
+#about .provbar{margin-top:0}
+
+/* ---- status tags (a word, not a code) ---- */
+.tag{display:inline-block;font-size:11px;font-weight:600;border-radius:20px;padding:2px 9px;white-space:nowrap;border:1px solid transparent;line-height:1.45}
+.tag.good{background:#e6f5ee;color:#1a7048;border-color:#bfe6d2}
+.tag.warn{background:#fbf0dd;color:#8a5a00;border-color:#f0d49c}
+.tag.bad{background:#fbe6e4;color:#9c231c;border-color:#f3c3be}
+.tag.neu{background:var(--soft);color:var(--label);border-color:var(--line)}
+html.dark .tag.good{background:#12291f;color:#8fd6b0;border-color:#215c40}
+html.dark .tag.warn{background:#332912;color:#f0c674;border-color:#7a5b1e}
+html.dark .tag.bad{background:#331d1b;color:#f0a9a3;border-color:#7a2f2a}
+.ins-chip.more{background:transparent;border-style:dashed;color:var(--mut)}
+td.num,th.num{text-align:right}
+
+/* ---- contamination ---- */
+.krk-table{max-height:62vh;overflow:auto;border:1px solid var(--line);border-radius:12px}
+.krktable th{white-space:nowrap}
+.krk-pur{display:inline-flex;align-items:center;gap:8px;justify-content:flex-end;font-variant-numeric:tabular-nums}
+.krk-purbar{display:inline-block;width:64px;height:7px;border-radius:4px;background:var(--track);overflow:hidden}
+.krk-purbar span{display:block;height:100%}
+.krk-bar span{display:block;height:100%}
+.krk-legend i{border-radius:3px}
+
+/* ---- resistance ---- */
+.seg button i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:0}
+.seg button:disabled{opacity:.45;cursor:default}
+.dr-grades button{padding:6px 11px}
+.dr-grades button:not(.on){color:var(--mut);background:var(--panel)}
+.dr-grades button.on{background:var(--accent-soft);color:var(--ink)}
+html.dark .dr-grades button.on{background:var(--accent-soft);color:var(--ink)}
+.dr-mrow{cursor:pointer}
+.dr-mrow.open td{background:var(--accent-soft)}
+table.epitbl tr.dr-carriers td{white-space:normal;background:var(--soft);padding:8px 11px 10px}
+.dr-car{display:inline-block;font-size:11.5px;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:2px 7px;margin:2px 4px 2px 0;cursor:pointer}
+.dr-car:hover{border-color:var(--accent);color:var(--accent)}
+.dr-lin{color:var(--txt2);font-size:12px}
+.dr-row.acq{color:var(--fail)}
+
+/* ---- gene conversion: a reason is read on hover, the table stays one line per event ---- */
+.gcv-reason{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:340px;min-width:220px}
+
+@media (max-width:900px){ .findings{grid-template-columns:1fr} .page-h h1{font-size:24px} .inshort{font-size:15.5px;padding:15px 16px} }
+@media print{
+  #tocscrim,#expClose,#tt,#toast,#infopop{display:none!important}   /* the drawer's backdrop follows the paper width onto every page */
+  .dyn-zoom,.exp-h,.gsearch,.seg,.dr-controls,.dyn-controls,.dyn-filters{display:none!important}   /* controls do nothing on paper */
+  .page{display:block!important}
+  .page+.page{break-before:page}
+  .finding,.inshort{break-inside:avoid;box-shadow:none}
+  .f-link{display:none}
+}
+
+/* ---- flagged samples: one line of reasons per sample, each a word plus the value against its rule ---- */
+.flagpanel{max-height:62vh}
+#flagtable td{vertical-align:top;padding-top:9px;padding-bottom:9px}
+#flagtable td.s{white-space:nowrap}
+.flin{font-size:11px;color:var(--mut);font-weight:400;margin-top:2px;display:flex;align-items:center;gap:5px}
+.flin .ldot{margin:0}
+tr.fgrp td{background:var(--soft);text-align:left;font-size:12px;color:var(--label);padding:7px 12px;position:sticky;top:36px;z-index:1}
+.rsns{display:flex;flex-wrap:wrap;gap:6px}
+.rsn{font-size:12px;border-radius:8px;padding:3px 9px;border:1px solid var(--line);background:var(--soft);color:var(--txt2);cursor:pointer;line-height:1.45;font-variant-numeric:tabular-nums}
+.rsn b{font-weight:650;color:var(--ink);margin-right:3px}
+.rsn.bad{background:#fdf0ef;border-color:#f3c3be} .rsn.bad b{color:#b42318}
+.rsn.warn{background:#fdf6ea;border-color:#f0d49c} .rsn.warn b{color:#8a5a00}
+.rsn:hover{border-color:var(--accent)}
+html.dark .rsn.bad{background:#2a181b;border-color:#5a2b33} html.dark .rsn.bad b{color:#f5a1ac}
+html.dark .rsn.warn{background:#2a2312;border-color:#5a4a24} html.dark .rsn.warn b{color:#f1c179}
+td.fx{text-align:center}
+.chip.failc{background:#fdf0ef;border-color:#f3c3be;color:#b42318}
+.chip.failc.on{background:var(--fail);border-color:var(--fail);color:#fff}
+
+/* ---- sample table: a value is coloured only when it tripped a flag ---- */
+#gstable td.cbad{background:#fdecea;color:#b42318;font-weight:650}
+#gstable td.cwarn{background:#fdf4e3;color:#8a5a00;font-weight:600}
+html.dark #gstable td.cbad{background:#3b1a22;color:#f5a1ac}
+html.dark #gstable td.cwarn{background:#3a2c10;color:#f1c179}
+
+/* ---- resistance mutation table / dynamics screen: text columns read left to right ---- */
+table.drmut td{text-align:left} table.drmut td.num,table.drmut th.num{text-align:right}
+.dyn-ins-tbl td{text-align:left}
+.dyn-ins-tbl td.dyn-ins-tr{text-align:right}
+.dyn-conv-more{font-size:12px;color:var(--mut);align-self:center;margin-left:4px}
+.dyn-more{display:flex;align-items:center;gap:12px;justify-content:center;padding:10px 0 4px}
+.dr-controls .c{font-size:12.5px;color:var(--mut);line-height:1.45}
+.dyn-card-h{flex-wrap:wrap;row-gap:2px}
+@media (max-width:600px){
+  header{gap:8px;padding:10px 12px 10px 56px}
+  header .meta,#allSitesBtn,#printBtn{display:none!important}
+  .page-h h1{font-size:22px}
+  h2{font-size:17px}
+}

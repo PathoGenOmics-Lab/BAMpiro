@@ -1061,3 +1061,35 @@ def test_qc_report_runs_by_path_from_an_unrelated_cwd(tmp_path):
                           cwd=str(tmp_path), capture_output=True, text=True, timeout=120)
     assert proc.returncode == 0, proc.stderr
     assert "--out-flags" in proc.stdout
+
+
+def build(tmp_path, summary, sheet):
+    """build_payload over a summary and a samplesheet written to disk, as the CLI would run it."""
+    cli = load_script("qc_report")
+    (tmp_path / "summary.tsv").write_text(summary)
+    (tmp_path / "sheet.tsv").write_text(sheet)
+    args = cli.build_parser().parse_args(["--summary", str(tmp_path / "summary.tsv"), "--out-html", "r.html",
+                                          "--out-flags", "f.tsv", "--metadata", str(tmp_path / "sheet.tsv")])
+    return cli.build_payload(args, dict(THR), dict(ANC))[1]
+
+
+CLEAN_ROW = "50\t99\t1\t95\t2026-09-21"
+SUMMARY_HEAD = "sample_id\tmean_depth\tbreadth_pct\tmissing_pct\tmapped_pct\tdate\tlineage\n"
+
+
+def test_a_sample_is_dated_by_the_samplesheet_not_by_the_day_it_was_processed(tmp_path):
+    # The summary's 'date' is DAT_OUT, stamped with the day the pipeline ran. Read as a collection
+    # date it put a whole cohort in one year; only the samplesheet knows when a sample was taken.
+    rows = build(tmp_path, SUMMARY_HEAD + f"A\t{CLEAN_ROW}\tL4\nB\t{CLEAN_ROW}\tL4\n",
+                 "sampleId\trefId\tyear\nA\tR1\t2011\nB\tR1\t\n")
+    assert {s["s"]: s["date"] for s in rows} == {"A": "2011", "B": None}
+
+
+def test_each_sample_carries_its_reference_and_the_lineage_the_reference_agrees_on(tmp_path):
+    # What LINEAGE_MISMATCH compared, so the report can say it rather than just name the flag.
+    summary = SUMMARY_HEAD + "".join(f"S{i}\t{CLEAN_ROW}\tL7\n" for i in range(3)) + f"X\t{CLEAN_ROW}\tA4;M_bovis\n"
+    sheet = "sampleId\trefId\n" + "".join(f"S{i}\tREF7\n" for i in range(3)) + "X\tREF7\n"
+    by = {s["s"]: s for s in build(tmp_path, summary, sheet)}
+    assert (by["X"]["ref"], by["X"]["ref_lin"]) == ("REF7", "L7")
+    assert "LINEAGE_MISMATCH" in by["X"]["f"]
+    assert "LINEAGE_MISMATCH" not in by["S0"]["f"]

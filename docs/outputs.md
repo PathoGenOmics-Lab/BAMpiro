@@ -101,9 +101,10 @@ live-adjustable inside the HTML report.
 | `HIGH_DUP` | duplication % above | `--report_dup_max` | :octicons-alert-fill-16:{ .amber } WARN |
 | `HIGH_IUPAC` | ambiguous/IUPAC % above | `--report_iupac_max` | :octicons-alert-fill-16:{ .amber } WARN |
 | `TITV_LOW` | Ti/Tv below | `--report_titv_min` | :octicons-alert-fill-16:{ .amber } WARN |
+| `LINEAGE_MISMATCH` | typed as a different lineage from the other samples mapped to its reference (it was probably mapped to the wrong genome) | - | :octicons-alert-fill-16:{ .amber } WARN |
 
-**FAIL** = a candidate for the exclusion basket (FAIL samples start pre-selected);
-**WARN** = review, usually keep. See [Downstream](downstream.md) for applying the basket.
+**FAIL** = a candidate for the report's exclusion list (FAIL samples start in it);
+**WARN** = review, usually keep. See [Downstream](downstream.md) for applying the list.
 
 ## Directory layout
 

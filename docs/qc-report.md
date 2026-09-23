@@ -1,62 +1,96 @@
 # Interactive QC Report
 
 Every run produces a **single self-contained HTML file**
-(`<samplesheet>_qc_report.html` - no internet or CDN needed) that folds the whole
-cohort into one interactive dashboard, plus a machine-readable
-`<samplesheet>_qc_flags.tsv` of per-sample **PASS/WARN/FAIL** verdicts. It is built
-by `bin/qc_report.py` and controlled by `--make_qc_report` (default `true`).
+(`<samplesheet>_qc_report.html` - no internet or CDN needed) that reads the whole cohort
+back as a short report, plus a machine-readable `<samplesheet>_qc_flags.tsv` of per-sample
+**PASS/WARN/FAIL** verdicts. It is built by `bin/qc_report.py` and controlled by
+`--make_qc_report` (default `true`).
 
 !!! tip "See it live"
 
-    Explore a full example report built from a 17-sample demo cohort - every panel
-    populated, fully interactive (live thresholds, the exclusion basket, dark mode):
+    Explore a full example report built from a 17-sample demo cohort - every page
+    populated, fully interactive (live thresholds, the exclusion list, dark mode):
 
     [:octicons-play-16: Open the interactive demo report](examples/qc_report_demo.html){ .md-button .md-button--primary target="_blank" rel="noopener" }
 
     *Synthetic demo data. It opens as a standalone page - the very same self-contained
     HTML file each real run produces.*
 
+## How it reads
+
+The report is seven pages, listed in the sidebar in the order a reader needs them. A page
+whose data the run did not produce disappears with its entry, and the rest are renumbered.
+The sidebar badge next to a page says whether it needs attention: the samples to exclude
+on *Sample QC*, the samples with resistance mutations their lineage does not share on
+*Resistance*.
+
+| Page | What it answers |
+| :--- | :--- |
+| **1 · Summary** | What the run found, as sentences with their numbers: an *In short* paragraph, then one card per finding (sample QC, identity, resistance, variants over time, lineages, gene conversion, coverage). Every card links to the page that holds its evidence and says what it does not prove. |
+| **2 · Sample QC** | Which samples can be trusted: the verdicts, the live thresholds, the **flagged samples** with the value behind every flag, the **exclusion list** and its exports, the table of all samples, lineages, **contamination** (Kraken2), distributions and aDNA damage. |
+| **3 · Genome & genes** | Consensus completeness, the genome landscape, functional impact (snpEff), gene burden, variable genes and dN/dS. |
+| **4 · Variants over time** | SNP dynamics, co-varying pairs (epistasis), the SNP matrix and variant &#215; dose. |
+| **5 · Resistance** | WHO-catalogue mutations grouped by mutation, the sample &#215; drug matrix and every call. |
+| **6 · Gene conversion** | Candidate tracts and the evidence behind each verdict. |
+| **7 · Diagnostics** | Metric pairs, the correlation matrix, QC space, divergence vs completeness, dose &#215; treatment and sampling dates: views for digging into a problem, none of which flags a sample. |
+
+Printing (or saving as PDF) lays out every page one after another.
+
+## Reading the results
+
+- **Flags in words.** A flag is shown as what went wrong and the value against the rule it
+  broke: *Low depth 2.2&#215;, needs 10&#215;*; *Incomplete consensus 93.7% of the consensus
+  missing, at most 10%*. The codes (`LOW_DEPTH`, `HIGH_MISSING`...) stay in the tooltips and in
+  every export, so `exclusion.tsv` and `qc_flags.tsv` do not change.
+- **Flags the pipeline decided stay.** Changing a threshold re-flags the page, but a flag that
+  needs evidence the page does not hold is kept rather than recomputed away:
+  `LINEAGE_MISMATCH` compares a sample's lineage with the other samples on its reference, and
+  the flagged list says both (*types as A4; the rest of E1ASM0035 types as L7*).
+- **The table of all samples** opens on the fourteen metrics a verdict is made of, in reading
+  order; the other metrics are under *columns*. A cell is coloured only when its value tripped
+  a flag for that sample, red when the flag fails the sample and amber when it asks for a look.
+- **Contamination is measured against what the cohort is.** Every Kraken2 report of a sample is
+  merged (summing reads), so a sample sequenced over five runs is one row. Each sample is
+  placed in the clade its reads actually sit in rather than at species level: most
+  *M. tuberculosis* reads stop at the complex, so a species-level reading put every clean
+  culture at about 5% and called it contaminated. The *target* is the clade most samples are
+  dominated by; below 90% of the classified reads in it a sample is **mixed**, below 50% it is
+  **another organism**.
+- **Resistance a lineage shares is set apart.** A mutation carried by at least 90% of the samples
+  of a lineage is that lineage's own (pncA H57D in every *M. bovis* is why *M. bovis* resists
+  PZA), so it is listed as a lineage marker and not counted among the resistance the cohort
+  acquired.
+- **Big panels open small.** The SNP dynamics draw 24 trajectories at a time, list the first 40
+  genes and the 12 genes rising in most series; the resistance panel opens on grade 1&#8211;2 calls,
+  grouped by mutation; the gene-conversion table lists the called events first. Everything else
+  is one click away.
+- **Written read-outs** at the top of each panel state its result in a sentence; the header
+  *read-outs* button hides them all. They list at most eight samples or genes and say how many
+  more there are.
+
 ## Live & interactive
 
 - **Live thresholds & presets** - edit any QC cut-off (depth, breadth, missing,
-  duplication, mapping, IUPAC, Ti/Tv, SNP-z, heteroplasmy, mixed-lineage) and the
-  whole report re-flags instantly. Presets: *gate defaults*, *strict (modern WGS)*,
-  *lenient (aDNA / low-cov)*.
+  duplication, mapping, IUPAC, Ti/Tv, SNP-z, heteroplasmy, mixed-lineage) on the *Sample QC*
+  page and the whole report re-flags instantly, the summary included. Presets: *gate
+  defaults*, *strict (modern WGS)*, *lenient (aDNA / low-cov)*.
 - **Filter by metadata** - when the samplesheet carries categorical annotation columns
   (`treatment`, `site`, `ward`…), the toolbar shows a dropdown per column that restricts
   the whole QC view - the sample table, the distribution / QC-space plots, and the genome
   & gene panels - to one value, exactly like the lineage and flag filters. The time and
   group (dynamics) columns and the lineage column are left out (lineage has its own filter).
-- **Collapsible table-of-contents sidebar** with scroll-spy; panels with no data
-  hide themselves (and their nav link).
 - **Per-section (i) info popovers** explaining each analysis and its caveats.
-- **Exclusion basket** - tick samples (via the table, a drag-box in the scatter, or
-  *basket all flagged*); FAIL samples start pre-selected, and you export
-  `exclusion.tsv` / `keep_list.txt` for downstream phylogeny. The margin behind every
-  flag is shown inline in the Flagged panel (no hover needed).
-- **Triage-first layout** - the sample table opens sorted worst-QC first, and the
-  **Flagged** panel sits directly under the general statistics (near the top of the
-  sidebar, right under Summary and Stats) so the failing samples are the first thing
-  you reach.
+- **Exclusion list** - tick samples (in the flagged list, the table, or with a drag-box in the
+  metric-pairs plot); FAIL samples start in it, and you export `exclusion.tsv` /
+  `keep_list.txt` for the downstream analysis.
+- **Sample profile** - click a sample name for every metric, its flags in words and its genome
+  profile.
 - **Dark / light theme** - a header toggle that follows your OS preference and is
   remembered per viewer.
-- **Responsive** - reflows to a phone: the frozen sample column is capped, wide
-  tables and matrices scroll horizontally, and the contents sidebar becomes a
-  dismissable drawer.
+- **Responsive** - reflows to a phone: the sidebar becomes a drawer, wide tables and matrices
+  scroll horizontally.
 - The header shows the **pipeline version** and links to the **source on GitHub**;
-  most panels have a fullscreen (expand) view; the whole report prints / saves to PDF.
-
-## Panels
-
-Grouped as in the sidebar:
-
-| Group | Panels |
-| :--- | :--- |
-| **Overview** | **Executive summary** (cohort health & headline findings at a glance - the first panel) · General statistics (value-coloured, sortable, filterable, TSV export) · **Flagged samples** (worst-first, each failing margin shown inline) · Per-lineage summary (canonical *mycolorsTB* palette) · Distributions (beeswarm / bar / histogram) · **Taxonomic composition** (Kraken2: primary taxon / contaminants / unclassified, worst-first) |
-| **Correlation & structure** | Metric-pair scatter (box-select to basket, with a Spearman *r* + *p* read-out) · Metric correlation heatmap · QC-space PCA (+ most-unusual-samples table) · Divergence vs completeness · **Dose × treatment** (per-group dose distribution + Kruskal–Wallis test) |
-| **Genome & genes** | Consensus completeness · Genome landscape (per-position callability / variant heatmap, gene search, mask-region toggle) · Functional annotation (snpEff classes) · Functional gene burden · Variable genes (SNP-density hotspots) |
-| **Evolution** | Temporal sampling overview · Selection pN/pS (dN/dS, eskaks) · aDNA damage authentication (mapDamage) |
-| **Variants over time** | **SNP dynamics** (allele-frequency trajectories over time, per-timepoint DP bars, zoom, series filter) · **Epistasis** (co-varying variant pairs, permutation *p* + BH-FDR *q*, cards / matrix / table views) · **SNP matrix** (site × sample AF matrix, metadata column filter, TSV export) · **Variant × dose** (per-variant AF ~ dose Spearman scan with BH-FDR) · **Drug resistance** (sample × drug WHO-grade matrix) |
+  most panels have a fullscreen (expand) view.
 
 ## Optional inputs
 
@@ -69,8 +103,8 @@ these from the run's own outputs; you only get what you have.
 | `--metadata <samplesheet.tsv>` | SNP-dynamics grouping + the SNP-matrix column-header levels (see **Optional metadata** below) |
 | `--vcfs <sample.vcf …>` | Per-SNP allele frequencies → SNP dynamics, epistasis, SNP matrix |
 | `--gff <genes.gff3>` | Variable-genes hotspots, genome-landscape gene search, and the **gene → Mycobrowser (H37Rv) locus-tag** links |
-| `--dr-report <dr.tsv>` | **Drug resistance** panel (WHO-grade sample × drug matrix) - the [pathotypr](pathotypr.md) DR calls |
-| `--kraken <sample.report …>` | Taxonomic composition / contamination panel (Kraken2). The pipeline only has these reports to pass when you set `--kraken2_db`, which has no default, so the panel hides itself otherwise |
+| `--dr-report <dr.tsv>` | **Resistance** page (mutations grouped across samples, lineage markers set apart, the sample × drug matrix) - the [pathotypr](pathotypr.md) DR calls |
+| `--kraken <sample.report …>` | **Contamination** panel (Kraken2): one row per sample, its runs merged, measured against the cohort's target clade. The pipeline only has these reports to pass when you set `--kraken2_db`, which has no default, so the panel hides itself otherwise |
 | `--gene-burden <burden.tsv>` | Functional gene-burden panel |
 | `--pnps <dnds.tsv>` | Selection pN/pS panel ([eskaks](https://github.com/PathoGenOmics-Lab/eskaks)) |
 | `--mapdamage-dir <dir>` | aDNA damage-authentication panel (mapDamage) |
@@ -93,6 +127,7 @@ there is nothing to configure - add a column and the matching panel reacts.
 | **time** | `timepoint`, `day`, `date`, `week`, `month`, `hour`, `passage`, `generation`, `visit`, `tp`, `t0`… | The x-axis of the **SNP dynamics** trajectories. |
 | **group / series** | `group`, `patient`, `series`, `host`, `subject`, `cluster`, `experiment`, `donor`, `case`, `replicate`, `chain`, `samples`… | Connects samples into one longitudinal series (a trajectory set per group) for **SNP dynamics** and **epistasis**. |
 | **any other column** | `treatment`, `site`, `region`, `ward`, `batch`… | A categorical annotation - becomes a **cohort filter** dropdown in the toolbar (restrict the whole QC view to one value) and a SNP-matrix header level. |
+| **collection date** | `collection_date`, `sampling_date`, `isolation_date`, `date`, `year`, `fecha` | The *Sampling dates* panel (Diagnostics) and the date in each sample's profile. The day the pipeline processed a sample is never read as one. |
 | **dose** | `dose`, `dosis` | A **numeric** column - becomes a first-class metric (selectable on the scatter axes + the correlation matrix, with a Spearman *r* + *p* read-out) and drives the **Dose × treatment** test. |
 
 **Every** annotation column - including the time and group ones - also becomes a
@@ -122,8 +157,8 @@ singleton `TB-2020-C` (no series) simply has no dynamics trajectory.
 ### Dose × treatment and quantitative metadata
 
 A numeric **`dose`** column is treated as a quantitative variable rather than a category.
-It becomes a first-class **metric** - pick it on either **Correlations** scatter axis (or
-in the **Metric correlation** matrix) to get a Spearman *r* with a two-sided *p*-value
+It becomes a first-class **metric** - pick it on either axis of **Metric pairs** (or
+in the **Correlation matrix**, both on the *Diagnostics* page) to get a Spearman *r* with a two-sided *p*-value
 against any QC or genomic metric - and it powers a dedicated **Dose × treatment** panel:
 a per-treatment dose distribution (box + points) with a **Kruskal–Wallis** rank test of
 whether dose differs across the treatment groups (a Mann–Whitney-equivalent when there

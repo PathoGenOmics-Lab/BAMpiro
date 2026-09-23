@@ -102,6 +102,11 @@ function renderGenome(){
   if(st.gsel&&!(st.gsel.b0<=z0&&st.gsel.b1>=z1)){var gbx=el('gbrush');if(gbx){var bx0=Math.max(gut,x(st.gsel.b0)),bx1=Math.min(gut+plotW,x(st.gsel.b1+1));
     if(bx1>bx0){gbx.setAttribute('x',bx0.toFixed(1));gbx.setAttribute('width',(bx1-bx0).toFixed(1));gbx.style.display='';}else gbx.style.display='none';}}
   var gz=el('genzoom'); if(gz){ if(genomeZoom<=0)gz.value=rowH; gz.oninput=function(){ genomeZoom=+this.value; renderGenome(); }; }   // row-height zoom (re-renders; slider lives in the h2 so the drag survives)
+  var lg=el('genome_legend');   // the scale of the track on screen (it used to be a fixed purple key over a red heatmap)
+  if(lg)lg.innerHTML='<span><i style="width:56px;background:linear-gradient(90deg,'+gcol(base,0)+','+gcol(base,0.5)+','+gcol(base,1)+')"></i>'+
+    (tk=='missing'?'callable &#8594; all missing':'none &#8594; '+(Math.round(mx*10)/10)+' '+TLAB[tk].replace(' density','s')+' per bin')+'</span>'+
+    (mb?'<span><i style="background:'+TH.faint+';opacity:.5"></i>masked</span>':'')+
+    '<span style="margin-left:auto">top strip = cohort mean; hover a cell for the position and value</span>';
 }
 
 // ---- SNP-dense gene / region detection (cohort SNP density along the reference) ----
@@ -170,7 +175,7 @@ function renderLineages(){
   var comp='<div class="lincomp-bar">'+order.map(function(k){var n=(groups[k]||[]).length;if(!n)return '';var w=100*n/tot;
     return '<div class="lseg" style="width:'+w.toFixed(3)+'%;background:'+linColor(k=='NA'?null:k)+'" title="'+esc(k)+': '+n+' ('+w.toFixed(1)+'%)"></div>';}).join('')+'</div>'+
     '<div class="lincomp-lab">'+order.map(function(k){var n=(groups[k]||[]).length;if(!n)return '';
-      return '<span class="lchip"><i style="background:'+linColor(k=='NA'?null:k)+'"></i>'+esc(k)+' <b>'+n+'</b></span>';}).join('')+'</div>';
+      return '<span class="lchip" title="'+esc(k)+'"><i style="background:'+linColor(k=='NA'?null:k)+'"></i>'+esc(k=='NA'?'NA':linLabel(k))+' <b>'+n+'</b></span>';}).join('')+'</div>';
   el('lincomp').innerHTML=comp;
   var head='<tr><th class="s" style="text-align:left">Lineage</th><th>n</th><th>%PASS</th><th>med depth</th><th>med breadth</th><th>med SNPs</th><th># MIXED</th></tr>';
   var body=order.map(function(k){var g=groups[k]||[];if(!g.length)return '';
@@ -179,7 +184,7 @@ function renderLineages(){
     var mb=med(g.map(function(s){return s.m.breadth_pct;}).filter(function(v){return v!=null;}));
     var ms=med(g.map(function(s){return s.m.snps;}).filter(function(v){return v!=null;}));
     var nmix=g.filter(function(s){return s.f.indexOf('MIXED')>=0;}).length;
-    return '<tr data-lin="'+esc(k)+'"><td class="s" style="text-align:left"><span class="ldot" style="background:'+linColor(k=='NA'?null:k)+'"></span>'+esc(k)+'</td>'+
+    return '<tr data-lin="'+esc(k)+'" title="'+esc(k)+'"><td class="s" style="text-align:left"><span class="ldot" style="background:'+linColor(k=='NA'?null:k)+'"></span>'+esc(k=='NA'?'NA':linLabel(k))+'</td>'+
       '<td>'+g.length+'</td><td>'+pct.toFixed(0)+'</td>'+
       '<td>'+(md==null?'<span class="na">NA</span>':md.toFixed(1))+'</td><td>'+(mb==null?'<span class="na">NA</span>':mb.toFixed(1))+'</td>'+
       '<td>'+(ms==null?'<span class="na">NA</span>':Math.round(ms).toLocaleString('en-US'))+'</td>'+
