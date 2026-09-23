@@ -100,11 +100,23 @@ per reference), and every contig of it: each contig of a draft assembly is chain
 its own, so it is placed wherever and in whichever orientation it lies in H37Rv. The
 maps name the contig, and the report looks each variant up by its contig and position.
 
+Where a position cannot be interpolated — an indel between its two anchors, or no
+shared unique k-mer for longer than ~2k (a SNP-dense or repeated stretch) — the pipeline
+aligns the stretch between the two anchors (`--align-gaps`). The anchors pin both ends,
+so the alignment cannot drift to another copy of a repeat. A position is placed when a
+gap-free, ≥90%-identical run of the alignment joins it to one of the anchors and its own
+context agrees; one inside a stretch H37Rv does not have (an IS copy, a region H37Rv
+lost) is reported as **not in H37Rv**, which the report shows beside the variant; and
+one that could sit on either side of an indel in a repeat is left without a coordinate.
+
 On the two references of a 185-sample cohort, checked against minimap2's alignment of
-each to H37Rv, 97% of the variant sites lift to the same coordinate and the rest are
-dropped; the handful that disagree sit in repeats, at a coordinate whose sequence
-matches exactly. Cut into ten contigs with six of them reversed, the same reference
-lifts just as well.
+each to H37Rv: every position of 27 resistance genes lifts to minimap2's coordinate,
+99.8% of 20,000 random positions and of the report's variant sites do, and not one of
+those that differ fits H37Rv worse than minimap2's coordinate — they are exact ties in
+identical repeat units, bases at the junction of a structural difference, or places
+where minimap2 aligned another copy. About 0.2% stay without a coordinate, in PE_PGRS-type
+repeats and rearranged stretches that minimap2 mostly cannot place either. Cut into ten
+contigs with six of them reversed, the same reference lifts just as well.
 
 ## Blind-spot masking (H37Rv problematic sites)
 

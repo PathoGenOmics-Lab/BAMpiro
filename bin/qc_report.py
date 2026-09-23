@@ -166,12 +166,14 @@ def collect_damage(mapdamage_dirs, summ):
 
 
 def read_lift_map(path):
-    """{(contig, position): canonical position} from the liftover map, or {} without one.
+    """{(contig, position): canonical position, or None where the canonical genome has no counterpart} from
+    the liftover map, or {} without one.
 
     LIFT_VARIANTS writes src_contig src_pos tgt_contig tgt_pos strand, one map per reference joined into
-    one. A map in the older two-column form (src_pos tgt_pos) names no contig and is keyed on (None, pos):
-    it can only be applied where the cohort has a single contig, since the same position of another contig,
-    or of another reference, is another site."""
+    one, and '.' as the target of a position inserted relative to the canonical genome. A map in the older
+    two-column form (src_pos tgt_pos) names no contig and is keyed on (None, pos): it can only be applied
+    where the cohort has a single contig, since the same position of another contig, or of another reference,
+    is another site."""
     out = {}
     if not path or not os.path.exists(path) or os.path.basename(path).startswith("NO_FILE"):
         return out
@@ -181,6 +183,8 @@ def read_lift_map(path):
                 c = line.rstrip("\n").split("\t")
                 if len(c) >= 4 and c[1].strip().isdigit() and c[3].strip().isdigit():
                     out[(c[0].strip(), int(c[1]))] = int(c[3])
+                elif len(c) >= 4 and c[1].strip().isdigit() and c[3].strip() == ".":
+                    out[(c[0].strip(), int(c[1]))] = None
                 elif len(c) >= 2 and c[0].strip().isdigit() and c[1].strip().isdigit():
                     out[(None, int(c[0]))] = int(c[1])
     except OSError as e:
@@ -231,11 +235,13 @@ def load_variants(args):
                 _c, _, _p = _key.rpartition(":")
                 if not _p.isdigit():
                     continue
-                _t = _lift.get((_c, int(_p)))
-                if _t is None and legacy:
-                    _t = _lift.get((None, int(_p)))
-                if _t is not None:
-                    _v["pos_h37rv"] = "%s:%s" % (label, _t)
+                _k = (_c, int(_p))
+                if _k not in _lift and legacy:
+                    _k = (None, int(_p))
+                if _k in _lift:
+                    # None: inserted relative to the canonical genome, which has no coordinate to give
+                    _t = _lift[_k]
+                    _v["pos_h37rv"] = "%s:%s" % (label, "absent" if _t is None else _t)
     return _variants
 
 

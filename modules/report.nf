@@ -73,8 +73,10 @@ process LIFT_VARIANTS {
     // from its own sequence, and only the positions on its own contigs. Lifting a second reference's positions
     // with the first one's sequence put 96% of them at a wrong coordinate. Alignment-free, no shared-coordinate
     // assumption; every position (incl. SNP sites) is placed by interpolation between flanking unique anchors,
-    // on each of the reference's contigs -> correct or absent. Pure Python (bin/pathotypr_liftover.py lift
-    // --global-chain), about 15 s and 2.5 GB for a 4.4 Mb genome.
+    // on each of the reference's contigs -> correct or absent. Where it cannot interpolate (an indel between two
+    // anchors, or no anchor for longer than 2k) the stretch between the anchors is aligned (--align-gaps), and a
+    // position the canonical genome lacks is written as such. Pure Python (bin/pathotypr_liftover.py lift
+    // --global-chain), about 25 s and 2.5 GB for a 4.4 Mb genome.
     tag "LiftVariants: ${refId}"
     cpus 1
     memory { 6.GB * task.attempt }
@@ -95,7 +97,7 @@ process LIFT_VARIANTS {
         | sort -u > positions.txt
     if [ -s positions.txt ]; then
         python3 ${projectDir}/bin/pathotypr_liftover.py lift positions.txt ${ref_fa} ${params.canonical_ref} \\
-            --out-map ${refId}.pos_liftover.tsv --kmer-size 21 --global-chain
+            --out-map ${refId}.pos_liftover.tsv --kmer-size 21 --global-chain --align-gaps
     else
         printf 'src_contig\\tsrc_pos\\ttgt_contig\\ttgt_pos\\tstrand\\n' > ${refId}.pos_liftover.tsv
     fi

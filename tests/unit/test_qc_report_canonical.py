@@ -106,3 +106,17 @@ def test_an_in_place_record_pairs_by_contig_as_well_as_position(tmp_path):
     v = qc.load_variants(_args([a], vcfs_h37rv=[h]))["A"]["E1:100"]
 
     assert not v.get("aa_h37rv")
+
+
+def test_a_position_the_canonical_genome_lacks_is_said_to_be_absent(tmp_path):
+    """The lift writes '.' for a position inserted relative to H37Rv: it has no coordinate, which the report
+    says instead of leaving it blank like a position the lift could not place."""
+    a = _vcf(tmp_path / "a.vcf", "A", [("E1", 100, "C", "T", "."), ("E1", 200, "G", "A", ".")])
+    lift = tmp_path / "lift.tsv"
+    lift.write_text("src_contig\tsrc_pos\ttgt_contig\ttgt_pos\tstrand\nE1\t100\t.\t.\t.\n")
+
+    v = qc.load_variants(_args([a], pos_liftover=str(lift)))["A"]
+
+    assert qc.read_lift_map(str(lift)) == {("E1", 100): None}
+    assert v["E1:100"]["pos_h37rv"] == "H37Rv:absent"
+    assert not v["E1:200"].get("pos_h37rv")

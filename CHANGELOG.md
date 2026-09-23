@@ -90,8 +90,12 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
   - The variant positions of every reference were lifted once, from the first reference's sequence,
     and the map was applied by position alone. `LIFT_VARIANTS` now runs once per reference, each from
-    its own sequence, and the report looks each variant up by its contig: 97% of the second
-    reference's sites lift to the coordinate minimap2 gives them, the rest are dropped.
+    its own sequence, and the report looks each variant up by its contig. Where a position cannot be
+    interpolated between two anchors (an indel between them, or a stretch without a shared unique
+    k-mer), the stretch between the anchors is aligned (`--align-gaps`). Every position of 27
+    resistance genes now lifts to the coordinate minimap2 gives it, 99.8% of the report's variant sites
+    do, and none of the rest fits H37Rv worse than minimap2's coordinate; a position H37Rv lacks is
+    shown as *not in H37Rv*, and about 0.2%, in PE_PGRS-type repeats, are left without a coordinate.
   - Only the first contig of a reference was read, so on a draft assembly a variant of any other
     contig was lifted with the first contig's sequence: cut into ten contigs, one of the cohort's
     references had half its positions misplaced. Each contig is now chained on its own, in whichever

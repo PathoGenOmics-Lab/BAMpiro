@@ -395,6 +395,209 @@ def _chains(pairs, increasing, min_anchors, max_chains=1024):
     return out
 
 
+_ALN_MATCH, _ALN_MISMATCH, _ALN_OPEN, _ALN_EXTEND = 1, -4, -6, -1     # BWA-MEM's scores
+_NEG = -(10 ** 9)
+
+
+def _align(s, t, margin=16, max_cells=20_000_000):
+    """Global alignment of s against t with affine gaps (BWA-MEM's scores), banded around the path from corner
+    to corner. [(i, j)] of the alignment's columns, 0-based, None on the side of a gap; None when the band
+    would pass max_cells. On a tie the traceback takes the diagonal, so an indel in a repeat is placed as far
+    left as the scores allow, as VCF normalisation places it."""
+    n, m = len(s), len(t)
+    lo, hi = min(0, m - n) - margin, max(0, m - n) + margin
+    if (n + 1) * (min(m, hi) - max(0, lo) + 1) > max_cells:
+        return None
+    o, x, mt, e_ = _ALN_OPEN, _ALN_MISMATCH, _ALN_MATCH, _ALN_EXTEND
+    # traceback byte per cell: bits 0-1 where H came from (0 diagonal, 1 E, 2 F); bit 2 E extended; bit 3 F extended
+    jb0 = min(m, hi)
+    prev_h = [0] + [o + e_ * j for j in range(1, jb0 + 1)]
+    prev_f = [_NEG] * (jb0 + 1)
+    tbs, starts = [bytearray([0]) + bytearray([1 | (4 if j > 1 else 0) for j in range(1, jb0 + 1)])], [0]
+    prev_ja = 0
+    for i in range(1, n + 1):
+        ja, jb = max(0, i + lo), min(m, i + hi)
+        if ja > jb:
+            return None
+        w = jb - ja + 1
+        h, f, tb = [_NEG] * w, [_NEG] * w, bytearray(w)
+        e = _NEG
+        si = s[i - 1]
+        np_ = len(prev_h)
+        for k in range(w):
+            j = ja + k
+            pk = j - prev_ja
+            if 0 <= pk < np_:
+                fo, fe = prev_h[pk] + o + e_, prev_f[pk] + e_
+                fv, cf = (fe, 8) if fe >= fo else (fo, 0)
+            else:
+                fv, cf = _NEG, 0
+            if k:
+                eo, ee = h[k - 1] + o + e_, e + e_
+                e, ce = (ee, 4) if ee >= eo else (eo, 0)
+            else:
+                e, ce = _NEG, 0
+            dk = pk - 1
+            d = (prev_h[dk] + (mt if si == t[j - 1] and si != "N" else x)) if (j and 0 <= dk < np_) else _NEG
+            if d >= e and d >= fv:
+                h[k], src_ = d, 0
+            elif e >= fv:
+                h[k], src_ = e, 1
+            else:
+                h[k], src_ = fv, 2
+            f[k] = fv
+            tb[k] = src_ | ce | cf
+        tbs.append(tb)
+        starts.append(ja)
+        prev_h, prev_f, prev_ja = h, f, ja
+    cols, i, j, state = [], n, m, 0
+    while i > 0 or j > 0:
+        code = tbs[i][j - starts[i]]
+        if state == 0:
+            src_ = code & 3
+            if src_ == 0:
+                cols.append((i - 1, j - 1)); i -= 1; j -= 1
+            else:
+                state = src_
+        elif state == 1:
+            cols.append((None, j - 1)); j -= 1
+            state = 1 if code & 4 else 0
+        else:
+            cols.append((i - 1, None)); i -= 1
+            state = 2 if code & 8 else 0
+    cols.reverse()
+    return cols
+
+
+def _gap_positions(src, tgt, al, ar, bl, br, orient, k, min_identity, clean_flanks):
+    """{source position: target position, or None where the target has no counterpart} for the positions
+    strictly between two consecutive anchors of a chain, from an alignment of the stretch between them
+    (the anchors' own k-mers included, which match exactly).
+
+    A position is placed when its column aligns two bases and it is joined to one of the two anchors by columns
+    without a gap, at `min_identity` or more: that anchor carries it, and any indel of the stretch lies on its
+    other side. Between two indels it could sit either side of either one, a unit of a repeat away, and is left
+    out. Against minimap2 on two MTBC assemblies, no placement under this rule was a worse fit than minimap2's:
+    those that differ are equally good, in repeats, or better. A position is
+    absent when it lies in a run the target lacks, that run is the only indel between the anchors, its flanks
+    align at 90% or more and `clean_flanks` (no anchor inside the gap points elsewhere). Anything else is left
+    out. Coordinates are global, 1-based."""
+    half = k // 2
+    s0, s1 = al - half, ar + half                        # source span, 1-based inclusive
+    if orient == 1:
+        t0, t1 = bl - half, br + half
+        t = tgt[t0 - 1:t1]
+    else:
+        t0, t1 = br - half, bl + half
+        t = "".join(_COMP.get(b, "N") for b in reversed(tgt[t0 - 1:t1]))
+    if s0 < 1 or t0 < 1 or s1 > len(src) or t1 > len(tgt):
+        return {}
+    s = src[s0 - 1:s1]
+    cols = _align(s, t)
+    if cols is None:
+        return {}
+    ncol = len(cols)
+    al_ok = [a is not None and b is not None for a, b in cols]
+    same = [ok and s[a] == t[b] and s[a] != "N" for ok, (a, b) in zip(al_ok, cols)]
+    pa, pm = [0], [0]
+    for ok, sm in zip(al_ok, same):
+        pa.append(pa[-1] + ok)
+        pm.append(pm[-1] + sm)
+
+    # Where gaps fall in the alignment: a position joined to one of the anchors by columns without a gap is
+    # carried from that anchor, and whatever indel the stretch holds lies on its other side. A position with an
+    # indel between it and each anchor could sit either side of either one: in a repeat, a unit of it away.
+    pg = [0]
+    for ok in al_ok:
+        pg.append(pg[-1] + (not ok))
+
+    def carried(c):
+        left = pg[c] == 0 and pm[c] >= min_identity * pa[c]
+        right = (pg[ncol] - pg[c + 1] == 0
+                 and (pm[ncol] - pm[c + 1]) >= min_identity * (pa[ncol] - pa[c + 1]))
+        return (left or right) and beside(c, -1) and beside(c, 1)
+
+    def beside(c, step, w=10, short=20):
+        """The w bases beside the position match along both sequences, or an indel sits right there: a short one
+        (at most `short` bases), or a long one where the position and the 2w bases on its other side occur only
+        once in the stretch. At the edge of a long indel in a repeat, the gap-free stretch can as well line up
+        with the next unit of the repeat, and then they occur again."""
+        a, b = cols[c]
+        n = m_ = 0
+        for d in range(1, w + 1):
+            i, j = a + step * d, b + step * d
+            if 0 <= i < len(s) and 0 <= j < len(t):
+                n += 1
+                m_ += s[i] == t[j] and s[i] != "N"
+        if n == w and m_ >= min_identity * w:
+            return True
+        k_, run, seen = c + step, 0, 0
+        while 0 <= k_ < ncol and seen < w:                # the nearest gap run within w columns
+            if al_ok[k_]:
+                if run:
+                    break
+                seen += 1
+            else:
+                run += 1
+            k_ += step
+        if not run:
+            return False                                  # mismatches, and no indel to account for them
+        return run <= short or once(a, -step, 2 * w)
+
+    def once(a, step, w):
+        """The position and up to w source bases on the given side (at least 10) match the target stretch at
+        min_identity in one place only."""
+        lo_, hi_ = (max(0, a - w), a) if step < 0 else (a, min(len(s) - 1, a + w))
+        if hi_ - lo_ < 10:
+            return False
+        probe = s[lo_:hi_ + 1]
+        need, n = min_identity * len(probe), 0
+        for x in range(len(t) - len(probe) + 1):
+            if sum(1 for u, v in zip(probe, t[x:x + len(probe)]) if u == v) >= need:
+                n += 1
+                if n > 1:
+                    return False
+        return n == 1
+
+    def flank_ok(c, step):
+        """The 10 aligned columns next to a gap run, walking away from it, match at 90% or more."""
+        n_al = n_m = 0
+        while 0 <= c < ncol and n_al < 10:
+            if al_ok[c]:
+                n_al += 1
+                n_m += same[c]
+            elif cols[c][0] is None:                     # a gap the source lacks right beside it: a replacement
+                return False
+            c += step
+        return n_al == 10 and n_m >= 9
+
+    def tpos(b):
+        return t0 + b if orient == 1 else t1 - b
+
+    out, c = {}, 0
+    while c < ncol:
+        a, b = cols[c]
+        if a is not None and b is not None:
+            p = s0 + a
+            if al < p < ar and carried(c):
+                out[p] = tpos(b)
+            c += 1
+        elif a is not None:                              # a run of source bases the target lacks
+            run_end = c
+            while run_end < ncol and cols[run_end][1] is None and cols[run_end][0] is not None:
+                run_end += 1
+            only_gap = pg[ncol] - (pg[run_end] - pg[c]) == 0      # the one indel between the two anchors
+            if clean_flanks and only_gap and flank_ok(c - 1, -1) and flank_ok(run_end, 1):
+                for cc in range(c, run_end):
+                    p = s0 + cols[cc][0]
+                    if al < p < ar:
+                        out[p] = None
+            c = run_end
+        else:
+            c += 1
+    return out
+
+
 def _lift_chain_multi(args, named):
     """Whole-genome anchor-chain liftover. Anchors = k-mers unique in both genomes. Each SOURCE CONTIG gets its
     own chains: a FORWARD chain (LIS) as its collinear backbone and several REVERSE chains (successive longest
@@ -487,7 +690,29 @@ def _lift_chain_multi(args, named):
             return None, None                                   # the gap runs from one target contig into another
         return int(round(bl + (p - al) * (br - bl) / a_gap)), a_gap
 
-    good, n_fwd, n_rev, n_drop = {}, 0, 0, n_outside
+    align = getattr(args, "align_gaps", False)
+    max_align = getattr(args, "max_align_gap", 20000)
+    gaps = {}                                                    # (contig, chain, j) -> {position: target or None}
+
+    def aligned(ci, n_chain, ca, cb, orient, g):
+        """(target position or None for absent, source gap) from an alignment of the stretch between the two
+        consecutive anchors of this chain around g, or (False, None) when it cannot say."""
+        j = bisect.bisect_left(ca, g)
+        if j == 0 or j >= len(ca) or ca[j] == g:
+            return False, None
+        al, ar, bl, br = ca[j - 1], ca[j], cb[j - 1], cb[j]
+        if ar - al > max_align or abs(br - bl) > max_align:
+            return False, None
+        if (T.local(bl) or (None,))[0] != (T.local(br) or (-1,))[0]:
+            return False, None                                  # from one target contig into another
+        key = (ci, n_chain, j)
+        if key not in gaps:
+            clean = bisect.bisect_right(allpos, al) >= bisect.bisect_left(allpos, ar)
+            gaps[key] = _gap_positions(src, tgt, al, ar, bl, br, orient, k, args.align_min_identity, clean)
+        got = gaps[key]
+        return (got[g], ar - al) if g in got else (False, None)
+
+    good, n_fwd, n_rev, n_drop, n_aligned, n_absent = {}, 0, 0, n_outside, 0, 0
     for ci, p in positions:
         g = S.starts[ci] + p
         best, best_gap, best_orient = None, None, 0
@@ -498,11 +723,29 @@ def _lift_chain_multi(args, named):
             if c is not None and (gp == 0 or _homologous(src, tgt, g, c, orient, vw, args.min_identity)):
                 if best is None or gp < best_gap:
                     best, best_gap, best_orient = c, gp, orient  # tightest verified bracketing gap wins
+        by_alignment = absent = False
+        if best is None and align:
+            # Not interpolable (an indel between the anchors, or no anchor for longer than 2k): the stretch
+            # between the anchors is aligned instead, and the tightest chain that places the position wins.
+            for n_chain, (ca, cb, orient) in enumerate(chains.get(ci, ())):
+                c, gp = aligned(ci, n_chain, ca, cb, orient, g)
+                if c is False:
+                    continue
+                if c is None:
+                    absent = True
+                elif best is None or gp < best_gap:
+                    best, best_gap, best_orient = c, gp, orient
+            by_alignment = best is not None
         loc = T.local(best) if best is not None else None
         if loc is None:
-            n_drop += 1
+            if absent:
+                good[(S.names[ci], p)] = None                   # the target has no counterpart: inserted here
+                n_absent += 1
+            else:
+                n_drop += 1
             continue
         good[(S.names[ci], p)] = (T.names[loc[0]], loc[1], "+" if best_orient == 1 else "-")
+        n_aligned += by_alignment
         if best_orient == 1:
             n_fwd += 1
         else:
@@ -513,22 +756,26 @@ def _lift_chain_multi(args, named):
                 name = args.source_contig if (single and args.source_contig) else S.names[ci]
                 w.write("%s\t%d\t%d\tRD_deletion\n" % (name, a0 - S.starts[ci], a1 - S.starts[ci]))
     return good, {"fwd": n_fwd, "rev": n_rev, "drop": n_drop, "unknown_contig": n_unknown, "anchors": n_anchor,
-                  "inv_chains": n_inv, "inv_anchors": n_inv_anchor, "rd": len(rd),
-                  "source_contigs": S.names, "target_contigs": T.names}
+                  "inv_chains": n_inv, "inv_anchors": n_inv_anchor, "rd": len(rd), "aligned": n_aligned,
+                  "absent": n_absent, "source_contigs": S.names, "target_contigs": T.names}
 
 
 def _lift_chain(args, positions):
     """_lift_chain_multi for plain positions on a single-contig source: ({position: target position}, stats)."""
     good, st = _lift_chain_multi(args, [(None, p) for p in positions])
-    return {p: t for (_, p), (_, t, _) in good.items()}, st
+    return {p: v[1] for (_, p), v in good.items() if v is not None}, st
 
 
 def _write_map(good, path, source_contigs):
-    """The contig-aware map: src_contig src_pos tgt_contig tgt_pos strand, in source order."""
+    """The contig-aware map: src_contig src_pos tgt_contig tgt_pos strand, in source order. A position the
+    target has no counterpart of (a stretch inserted relative to it) is written with '.' as its target."""
     order = {n: i for i, n in enumerate(source_contigs)}
     with open(path, "w", encoding="utf-8") as w:
         w.write("src_contig\tsrc_pos\ttgt_contig\ttgt_pos\tstrand\n")
         for sc, sp in sorted(good, key=lambda x: (order.get(x[0], len(order)), x[1])):
+            if good[(sc, sp)] is None:                           # the target has no counterpart
+                w.write("%s\t%d\t.\t.\t.\n" % (sc, sp))
+                continue
             tc, tp, strand = good[(sc, sp)]
             w.write("%s\t%d\t%s\t%d\t%s\n" % (sc, sp, tc, tp, strand))
 
@@ -537,8 +784,9 @@ def _write_bed(good, path, target_contigs, name, contig=None):
     """The lifted positions collapsed into BED intervals in the target's coordinates, contig by contig. `contig`
     renames the target's contig when the target has only one (what callers passing --contig have always meant)."""
     by = defaultdict(set)
-    for tc, tp, _ in good.values():
-        by[tc].add(tp)
+    for v in good.values():
+        if v is not None:
+            by[v[0]].add(v[1])
     order = {n: i for i, n in enumerate(target_contigs)}
     with open(path, "w", encoding="utf-8") as w:
         for tc in sorted(by, key=lambda c: order.get(c, len(order))):
@@ -569,8 +817,11 @@ def cmd_lift(args):
         sys.stderr.write("[liftover] lift(anchor-chain): %d fwd + %d inverted = %d lifted ; %d dropped "
                          "(indel shadow / RD / desert / boundary) ; %d collinear anchors, %d inversion "
                          "chain(s)/%d anchors, %d RD deletion(s)\n"
-                         % (st["fwd"], st["rev"], len(good), st["drop"],
+                         % (st["fwd"], st["rev"], st["fwd"] + st["rev"], st["drop"],
                             st["anchors"], st["inv_chains"], st["inv_anchors"], st["rd"]))
+        if getattr(args, "align_gaps", False):
+            sys.stderr.write("[liftover] %d of them placed by aligning the stretch between two anchors ; %d the "
+                             "target has no counterpart of (inserted relative to it)\n" % (st["aligned"], st["absent"]))
         if st["unknown_contig"]:
             sys.stderr.write("[liftover] WARN %d position(s) name a contig %s does not have, or none while it has "
                              "%d; left out\n" % (st["unknown_contig"], args.source_fasta,
@@ -701,6 +952,16 @@ def main():
                         "sampling, non-homologous filler, net-zero double-indel, diverged decoy) and it drops. "
                         "Higher = catches smaller rearrangements (a ~3 bp inversion perturbs ~2 bp/half, caught "
                         "at 0.9 but not 0.8) at ~no coverage cost on low-divergence MTBC references")
+    l.add_argument("--align-gaps", action="store_true",
+                   help="--global-chain: where a position cannot be interpolated (an indel between its anchors, or no "
+                        "anchor for longer than --max-gap), align the stretch between the two anchors and place it "
+                        "from the alignment, or report it as absent from the target where the target lacks that "
+                        "stretch (written with '.' as its target)")
+    l.add_argument("--align-min-identity", type=float, default=0.9,
+                   help="--align-gaps: min identity of the gap-free columns joining a position to the anchor that "
+                        "carries it")
+    l.add_argument("--max-align-gap", type=int, default=20000,
+                   help="--align-gaps: longest stretch between two anchors (bp) that is aligned")
     l.add_argument("--sample", type=int, default=1,
                    help="--global-chain: keep ~1/N of k-mers as anchors (FracMinHash) -> ~N x less memory")
     l.add_argument("--rd-out", default=None,

@@ -1,4 +1,5 @@
-// Matching a trajectory's variant to the drug-resistance catalogue (10_dynamics.js).
+// Matching a trajectory's variant to the drug-resistance catalogue (10_dynamics.js), and the H37Rv coordinate
+// shown beside a variant's own (01_prelude.js).
 //
 // The catalogue writes a protein change as I66M (or LoF for any loss of function of the gene) and names
 // genes as H37Rv does. A variant carries HGVS (p.Ile66Met), in the numbering and gene names of the
@@ -60,5 +61,18 @@ describe("dynDRmatch", () => {
     const fn = load();
     assert.equal(fn.dynDRmatch(fn.dynDRindex(), { gene: "atpE", aa: "p.Ala63Val" }), null);
     assert.equal(fn.dynDRmatch(fn.dynDRindex(), { gene: "atpE", aa: "" }), null);
+  });
+});
+
+describe("refPos, the H37Rv coordinate beside the mapping one", () => {
+  it("shows the lifted coordinate where it differs, and nothing where it is the same", () => {
+    const { refPos } = loadFunctions(["refPos"], emptyReport());
+    assert.match(refPos(762828, "H37Rv:761155"), /762828 .*\[H37Rv 761155\]/);
+    assert.equal(refPos(761155, "H37Rv:761155"), "761155");
+  });
+
+  it("says a stretch H37Rv lacks is not in H37Rv, rather than giving it no coordinate at all", () => {
+    const { refPos } = loadFunctions(["refPos"], emptyReport());
+    assert.match(refPos(1800, "H37Rv:absent"), /\[not in H37Rv\]/);
   });
 });

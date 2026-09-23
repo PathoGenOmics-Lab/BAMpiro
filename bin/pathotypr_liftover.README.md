@@ -20,6 +20,22 @@ source it may name any (a BED in NC_000962.3 coordinates read on an ancestor FAS
 multi-contig one a position without a contig, or on a contig the source lacks, is left out and counted. The
 other modes read only the first contig of each FASTA.
 
+**`--align-gaps` (what `LIFT_VARIANTS` uses).** Interpolation only crosses an exactly colinear gap of ≤ ~2k, so a
+position beside an indel, or in a stretch with no shared unique k-mer (SNP-dense, repeated), drops. With
+`--align-gaps` the stretch between the two anchors is aligned instead (global, affine gaps with BWA-MEM's scores,
+banded, indels left-aligned as VCF normalisation does; pure Python, `--max-align-gap` 20 kb):
+
+- a position is placed when a gap-free run of the alignment at ≥ `--align-min-identity` (0.9) joins it to one of
+  the two anchors, and its own 10 bases on each side match — or, on the side where they do not, a short indel
+  (≤ 20 bp) sits right there, or a long one beside which its context occurs only once in the stretch;
+- a position inside a run the target lacks is written as absent (`.` as its target) when that run is the only
+  indel between the anchors, its flanks align at ≥ 90% and no anchor inside the gap points elsewhere;
+- anything else — between two indels, beside a long indel in a repeat — is left out.
+
+Against minimap2 on two MTBC assemblies (L7 and A4) lifted to H37Rv, every position of 27 resistance genes lands
+on minimap2's coordinate, 99.8% of random positions do, and of those that differ none fits H37Rv worse than
+minimap2's; about 0.2% are left out, in PE_PGRS-type repeats. It adds ~10 s to a 4.4 Mb lift.
+
 **`--global-chain` (recommended, what BAMpiro uses)** builds a whole-genome coordinate map: every k-mer
 unique in BOTH genomes is an anchor (~97 % of the MTBC genome — anchors roughly every base), chained into a
 collinear order (LIS), and any position is placed by **interpolating between its flanking anchors**. So a
