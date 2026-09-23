@@ -48,7 +48,7 @@ _JS_MODULES = [
     "js/01_prelude.js", "js/02_qcspace.js", "js/03_state.js", "js/04_helpers.js",
     "js/05_insights_qc.js", "js/06_insights_genome.js", "js/07_render_core.js", "js/07b_summary.js",
     "js/08_curation.js", "js/09_genome_genes.js", "js/09b_coverage.js", "js/09c_relatedness.js",
-    "js/10_dynamics.js", "js/10b_series.js",
+    "js/10_dynamics.js", "js/10b_series.js", "js/10c_minority.js",
     "js/11_epistasis.js",
     "js/12_snpmatrix.js", "js/13_drug_kraken.js", "js/14_boot.js",
 ]
@@ -116,6 +116,13 @@ SECTION_INFO = {
              "allele, which the SNP matrix's depth says; where it was not read the SNP is 'unknown' rather "
              "than new. 'Lost' is the other way round: fixed at the start, read and absent later. SNPs "
              "only, from the variant calls.",
+    "minority": "Variant calls below fixation (allele fraction under 0.9), the reads they rest on and "
+                "their spread of fractions. Three alternate reads or fewer is where a sequencing error "
+                "and a real minority look the same. When the samplesheet names libraries of the same DNA "
+                "(dna_id, extract, biosample...), each library's calls are looked up in the others: a real "
+                "minority is in the DNA and is reproduced, an error is not. Pairs that share a FASTQ file "
+                "share reads and are left out, and a call only counts as missed where the other library "
+                "was read (the SNP matrix's depth).",
     "drseries": "The resistance mutations (WHO grade 1-2, from pathotypr) at every time point of every "
                 "series, with those acquired since the first time point set apart and those no longer "
                 "called crossed out. Answers when resistance appears along a series and whether it "

@@ -213,6 +213,22 @@ function findRelatedness(){
     note:'SNPs between consensus sequences; the threshold is a convention of the organism.',
     short:g.out.length?(g.out.length+' '+_plural(g.out.length,'sample sits','samples sit')+' outside '+_plural(g.out.length,'its group','their groups')+'.'):''};
 }
+// Minority variants: how many calls below fixation rest on a handful of reads, and how far down
+// libraries of the same DNA reproduce them.
+function findMinority(){
+  var M=R.minority; if(!M)return null;
+  var tot=M.hist.reduce(function(a,b){return a+b;},0); if(!tot||!M.with_dp)return null;
+  var pct=Math.round(100*M.le3/M.with_dp),r=M.replicates,body=[];
+  var head='<b>'+pct+'%</b> of the '+tot.toLocaleString('en-US')+' calls below fixation rest on three alternate reads or fewer';
+  if(r&&r.tested){var low=r.tested[0]+r.tested[1],rl=r.reproduced[0]+r.reproduced[1],fl=minFloor(M);
+    body.push('Another library of the same DNA calls '+(low?Math.round(100*rl/low)+'%':'none')+' of those under allele fraction '+M.edges[2]+
+      (r.fixed_tested?' and '+Math.round(100*r.fixed_reproduced/r.fixed_tested)+'% of the fixed ones':'')+'.');
+    body.push(fl==null||fl<0?'No band below fixation reaches 80% reproduced.':(fl===0?'Every band is reproduced 80% or more.':'Calls reproduce 80% or more from allele fraction '+M.edges[fl]+' up.'));}
+  else if(r)body.push('Libraries of the same DNA are named ('+esc(r.column)+') but need the SNP matrix to be compared.');
+  else body.push('Naming each sample&#39;s DNA extract in the samplesheet would measure where the noise ends.');
+  return {k:'minor',eyebrow:'Minority variants',tone:'',head:head,body:body.join(' '),link:{href:'#minority',t:'See the calls'},
+    note:'Below a few reads, an error and a real minority look the same.'};
+}
 function findCoverage(){
   var S=R.samples; if(!S.length)return null;
   function med(k){return _median(S.map(function(s){return s.m[k];}));}
@@ -222,7 +238,7 @@ function findCoverage(){
   var body=(rd?'Depth ranges from '+fmt(rd[0],'float')+'&#215; to '+fmt(rd[1],'float')+'&#215;. ':'')+(c!=null?'The median consensus has '+c.toFixed(1)+'% of the genome as confident bases.':'');
   return {k:'cov',eyebrow:'Coverage',tone:'',head:head,body:body,link:{href:'#dist',t:'See the distributions'}};
 }
-function findings(){return [findQC(),findIdentity(),findRelatedness(),findResistance(),findDynamics(),findLineage(),findGconv(),findCoverage()].filter(function(f){return f;});}
+function findings(){return [findQC(),findIdentity(),findRelatedness(),findResistance(),findDynamics(),findMinority(),findLineage(),findGconv(),findCoverage()].filter(function(f){return f;});}
 function findingCard(f){
   var nums=(f.nums&&f.nums.length)?'<div class="f-nums">'+f.nums.map(function(x){return '<div class="f-num'+(x.t&&x.n?' '+x.t:'')+'"><b>'+x.n+'</b><span>'+esc(x.l)+'</span></div>';}).join('')+'</div>':'';
   return '<article class="finding'+(f.tone?' f-'+f.tone:'')+'" data-k="'+f.k+'"><div class="f-eyebrow">'+esc(f.eyebrow)+'</div>'+

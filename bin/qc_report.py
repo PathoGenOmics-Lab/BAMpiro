@@ -36,6 +36,8 @@ from qcreport.parsers import (NBINS, clean_str, consensus_stats, mapdamage_stats
                               parse_kraken, parse_lineage_colors, parse_metadata, parse_pnps, parse_profile,
                               parse_sample_meta, parse_summary, parse_vcfs, to_float)
 from qcreport.relatedness import build_relatedness, group_mismatches, parse_pairs
+from qcreport.minority import build_minority, replicate_pairs, replicate_sets
+from qcreport.minority import needed_cells as replicate_cells
 from qcreport.series import build_series, needed_cells, read_matrix_cells
 from qcreport.render import REPO_URL, SECTION_INFO, build_html
 
@@ -332,8 +334,17 @@ def build_payload(args, thr, anc_thr):
     # comparison needs, and without it a site not called at the start cannot be told from one not read.
     matrix_ok = bool(args.snp_matrix and os.path.exists(args.snp_matrix)
                      and not os.path.basename(args.snp_matrix).startswith("NO_FILE"))
-    _cells = read_matrix_cells(args.snp_matrix, needed_cells(series_meta, _variants)) if matrix_ok else {}
+    # Libraries of the same DNA, for how far down a minority call reproduces. The matrix is read once
+    # for the cells both comparisons need.
+    rep_col, rep_val, rep_reads = replicate_sets(args.metadata)
+    rep_pairs, rep_shared = (replicate_pairs(rep_val, rep_reads, set(_variants), ref_of)
+                             if rep_col else ([], 0))
+    _need = needed_cells(series_meta, _variants)
+    for site, who in replicate_cells(rep_pairs, _variants).items():
+        _need.setdefault(site, set()).update(who)
+    _cells = read_matrix_cells(args.snp_matrix, _need) if matrix_ok else {}
     _series = build_series(series_meta, _variants, _cells, _sample_meta, args.min_dp, checked=matrix_ok)
+    _minority = build_minority(_variants, rep_pairs, rep_shared, _cells, rep_col, args.min_dp, checked=matrix_ok)
     _dynamics = build_dynamics(series_meta, _variants, _sample_meta)   # feeds dynamics + epistasis
     # front-load 'dose' so it survives the correlation matrix's top-N view
     dist_keys = (["dose"] + DIST) if dose_map else DIST
@@ -360,6 +371,7 @@ def build_payload(args, thr, anc_thr):
                "coverage": coverage,
                "relatedness": build_relatedness(distances, groups, args.cluster_snps),
                "series": _series,
+               "minority": _minority,
                "sample_meta": _sample_meta,
                "metrics": [{"key": k, "label": l, "kind": kind, "dir": d} for k, l, kind, d in METRICS],
                "extra": extra_metrics,

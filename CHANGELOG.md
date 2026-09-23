@@ -8,6 +8,15 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Added
 
+- **How low an allele frequency can be trusted.** A *Minority variants* panel counts each
+  sample's calls below fixation, their spread of allele fractions and how many rest on three
+  alternate reads or fewer, where an error and a real minority look the same. When the
+  samplesheet names each sample's DNA extract (a column such as `dna_id`, `extract` or
+  `biosample`), libraries of the same DNA are compared: a real minority is in the DNA and another
+  library calls it too, an error is not reproduced. Pairs that share a FASTQ file (a merged sample
+  and its runs) or were mapped against different references are left out, and a call only counts
+  as missed where the other library was read.
+
 - **What each series gained since its first time point.** For every samplesheet group followed
   over time (a patient, a passage line), the report lists the SNPs each later sample carries
   fixed that the group's first time point did not: *new* where that first time point was read at
