@@ -1,7 +1,7 @@
 function insGenome(){
-  var S=(R.samples)||[]; if(!S.length) return '';
+  var S=((R.samples)||[]).filter(onGenome); if(!S.length) return '';   // the reference in view, where there are several
   var thr=R.thresholds||{};
-  var gl=R.genome_len||0;
+  var G=genome(), gl=G.len||0;
   // ---- cohort callability: prefer callable_pct, else 100 - missing_pct ----
   var cvals=[];
   for(var i=0;i<S.length;i++){var m=S[i].m||{},c=null;
@@ -12,7 +12,7 @@ function insGenome(){
   // ---- low-callability windows: cohort mean missing per bin vs missing_max cut-off (masked bins excluded, mirroring the plot) ----
   var missRows=S.filter(function(s){return s.miss&&s.miss.length;});
   var nb=missRows.length?missRows[0].miss.length:0;
-  var mb=(R.mask_bins&&R.mask_bins.length===nb)?R.mask_bins:null;
+  var mb=(G.mask_bins&&G.mask_bins.length===nb)?G.mask_bins:null;
   var missMaxPct=(thr.missing_max!=null)?thr.missing_max:10;
   var lowN=0,evalBins=0;
   for(var b=0;b<nb;b++){
@@ -32,7 +32,7 @@ function insGenome(){
   var peakGene=null,pMb=0,p0Mb=0,p1Mb=0;
   if(peakBin>=0&&snb&&gl){
     var p0=peakBin/snb*gl,p1=(peakBin+1)/snb*gl; pMb=(p0+p1)/2/1e6; p0Mb=p0/1e6; p1Mb=p1/1e6;
-    var genes=R.genes||[];
+    var genes=G.genes||[];
     for(var g=0;g<genes.length;g++){var ge=genes[g];
       if(ge.start!=null&&ge.end!=null&&ge.start<=p1&&ge.end>=p0){peakGene=ge.name;break;}}
   }
@@ -42,7 +42,7 @@ function insGenome(){
   var ctone=(medCall==null)?'':(medCall<80?' class="tone-bad"':medCall<90?' class="tone-warn"':'');
   var narr='';
   if(medCall!=null){
-    narr+='Cohort median callability is <b'+ctone+'>'+medCall.toFixed(1)+'%</b>'+(gl?(' of the '+(gl/1e6).toFixed(2)+' Mb reference'):'')+'.';
+    narr+='Cohort median callability is <b'+ctone+'>'+medCall.toFixed(1)+'%</b>'+(gl?(' of the '+(gl/1e6).toFixed(2)+' Mb reference'+(genomeRefs().length>1?(' '+esc(genomeRef())):'')):'')+'.';
   }
   if(evalBins){
     narr+=' '+(lowN>0
@@ -123,7 +123,7 @@ function insGeneBurden(){
   return insBox('Gene burden', narr, chips);
 }
 function insHotspots(){
-  var S=R.samples||[]; if(!S.length) return '';
+  var S=(R.samples||[]).filter(onGenome); if(!S.length) return '';
   var agg=null,ns=0;
   for(var i=0;i<S.length;i++){
     var t=S[i].trk&&S[i].trk.snp; if(!t||!t.length) continue;
@@ -133,9 +133,9 @@ function insHotspots(){
     ns++;
   }
   if(!agg||!ns) return '';
-  var nb=R.nbins||agg.length, gl=R.genome_len||nb, binbp=gl/nb;
+  var G=genome(), nb=R.nbins||agg.length, gl=G.len||nb, binbp=gl/nb;
   function b0of(p){return Math.max(0,Math.min(nb-1,Math.floor(p/gl*nb)));}
-  var genes=R.genes||[]; if(!genes.length) return '';
+  var genes=G.genes||[]; if(!genes.length) return '';
   var items=[];
   for(var gi=0;gi<genes.length;gi++){
     var g=genes[gi],s=Math.max(1,g.start),e=Math.max(s,g.end),len=(e-s+1)||1,b0=b0of(s),b1=b0of(e),tot=0;

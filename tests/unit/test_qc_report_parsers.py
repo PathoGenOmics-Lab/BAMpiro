@@ -771,6 +771,30 @@ def test_parse_gff_prefers_a_gene_feature_over_a_cds_of_the_same_name(tmp_path):
     assert qc_parsers.parse_gff(path) == [{"name": "abc", "start": 10, "end": 100}]
 
 
+def test_parse_gff_reads_a_placeholder_name_as_no_name(tmp_path):
+    """3,001 CDS of one real reference say Name=nan: read as a name, they were one gene called nan."""
+    path = write(tmp_path / "ref.gff3",
+                 "chr\tt\tCDS\t1\t90\t.\t+\t0\tID=Rv0001_1-90;Name=nan\n"
+                 "chr\tt\tCDS\t100\t190\t.\t+\t0\tID=Rv0002_100-190;Name=NaN\n"
+                 "chr\tt\tCDS\t200\t290\t.\t+\t0\tID=X3;Name=dnaN\n")
+    assert [g["name"] for g in qc_parsers.parse_gff(path)] == ["Rv0001_1-90", "Rv0002_100-190", "dnaN"]
+
+
+def test_parse_gff_reads_a_refseq_cds_as_part_of_its_gene(tmp_path):
+    """RefSeq names each CDS after its protein; with its Parent a gene of the file, it is that gene."""
+    path = write(tmp_path / "ref.gff3",
+                 "NC_000962.3\tRefSeq\tgene\t1\t1524\t.\t+\t.\tID=gene-Rv0001;Name=dnaA;locus_tag=Rv0001\n"
+                 "NC_000962.3\tRefSeq\tCDS\t1\t1524\t.\t+\t0\tID=cds-NP_214515.1;Parent=gene-Rv0001;Name=NP_214515.1\n")
+    assert qc_parsers.parse_gff(path) == [{"name": "dnaA", "start": 1, "end": 1524}]
+
+
+def test_parse_gff_keeps_two_genes_that_share_a_name_apart(tmp_path):
+    path = write(tmp_path / "ref.gff3",
+                 "chr\tt\tgene\t10\t100\t.\t+\t.\tName=IS6110\n"
+                 "chr\tt\tgene\t5000\t6300\t.\t+\t.\tName=IS6110\n")
+    assert [(g["name"], g["start"]) for g in qc_parsers.parse_gff(path)] == [("IS6110", 10), ("IS6110", 5000)]
+
+
 def test_parse_gff_falls_back_through_the_attribute_keys_then_to_the_coordinates(tmp_path):
     path = write(tmp_path / "ref.gff3",
                  "chr\tt\tgene\t10\t20\t.\t+\t.\tlocus_tag=LT1\n"

@@ -42,7 +42,7 @@ function renderDeletions(){
     var who=_list(names.map(function(s){return esc(s);}),4);
     var tipS=r.samples.map(function(x){return x[0]+': '+x[1].toLocaleString('en-US')+'-'+x[2].toLocaleString('en-US');}).join('\n');
     var genes=r.genes.length?_list(r.genes.map(function(g){return esc(g)+geneRvTag(g);}),6):'<span class="na">none</span>';
-    return '<tr data-b0="'+bb[0]+'" data-b1="'+bb[1]+'" data-id="'+esc(r.id)+'">'+
+    return '<tr data-b0="'+bb[0]+'" data-b1="'+bb[1]+'" data-id="'+esc(r.id)+'" data-ref="'+esc(r.ref||'')+'">'+
       '<td class="s" style="text-align:left">'+delWhere(r)+'</td>'+
       '<td>'+r.len.toLocaleString('en-US')+'</td>'+
       '<td title="'+esc(tipS)+'">'+r.n+' of '+r.of+'</td>'+
@@ -73,6 +73,7 @@ function renderDeletions(){
     dl(lines.join('\n')+'\n','deletions.tsv','text/tab-separated-values');};
   Array.prototype.forEach.call(host.querySelectorAll('#deltable tbody tr[data-b0]'),function(tr){tr.onclick=function(){
     var b0=+tr.getAttribute('data-b0'),b1=+tr.getAttribute('data-b1'),nb=R.nbins||200,pad=Math.max(3,Math.round((b1-b0)*0.6)+2);
+    genomeSwitch(tr.getAttribute('data-ref'));   // the landscape of the stretch's own reference
     // A stretch nearly nobody reads is left out of the Deletions track by design, so it is shown
     // on the Missing one, where it is visible in every sample.
     var want=delView=='cohort'?'missing':'del'; if(gtrackHas(want))st.gtrack=want;

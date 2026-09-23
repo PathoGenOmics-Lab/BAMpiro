@@ -3,8 +3,35 @@ var GTRACKS=[{k:'missing',lab:'Missing',base:[214,64,58]},{k:'del',lab:'Deletion
              {k:'het',lab:'Het',base:[221,138,26]},{k:'indel',lab:'Indels',base:[124,92,191]}];
 // A track whose values are a share of the bin (0-1) rather than a count: drawn on a fixed 0-100% scale.
 function gtrackFrac(k){return k=='missing'||k=='del';}
-function gtrackHas(k){return R.samples.some(function(s){return k=='missing'?!!s.miss:(s.trk&&s.trk[k]);});}
-function gtrackMax(k){var mx=0;R.samples.forEach(function(s){var p=k=='missing'?s.miss:(s.trk&&s.trk[k]);if(p)p.forEach(function(v){if(v!=null&&v>mx)mx=v;});});return mx;}
+function gtrackHas(k){return R.samples.some(function(s){return onGenome(s)&&(k=='missing'?!!s.miss:(s.trk&&s.trk[k]));});}
+function gtrackMax(k){var mx=0;R.samples.forEach(function(s){if(!onGenome(s))return;var p=k=='missing'?s.miss:(s.trk&&s.trk[k]);if(p)p.forEach(function(v){if(v!=null&&v>mx)mx=v;});});return mx;}
+// The genome the landscape draws. A cohort mapped against several references has one per reference
+// (R.genomes): its own length, genes and masked regions, under its own samples, one reference at a time.
+// Each sample's profile is binned over its own reference, so drawing them together put one reference's
+// genes under the other's samples. A report without R.genomes has the single genome it always had.
+var GEN={ref:null};
+function genomeRefs(){return R.genomes?Object.keys(R.genomes).sort():[];}
+function genomeRef(){var ks=genomeRefs();if(!ks.length)return null;
+  if(!GEN.ref||!R.genomes[GEN.ref]){var n={};R.samples.forEach(function(s){if(s.ref)n[s.ref]=(n[s.ref]||0)+1;});
+    GEN.ref=ks.slice().sort(function(a,b){return (n[b]||0)-(n[a]||0)||(a<b?-1:a>b?1:0);})[0];}
+  return GEN.ref;}
+function genome(){var r=genomeRef();
+  return r?R.genomes[r]:{len:R.genome_len,genes:R.genes||[],mask_bins:R.mask_bins,mask_pct:R.mask_pct,mask_iv:R.mask_iv};}
+function onGenome(s){return genomeRefs().length<2||!s.ref||s.ref===genomeRef();}
+function genomeSwitch(r){if(!R.genomes||!R.genomes[r]||r===GEN.ref)return;
+  GEN.ref=r;st.gzoom=null;st.gsel=null;st.geneMark=null;var rd=el('gselreadout');if(rd)rd.innerHTML='';
+  genomeMaskBtn();renderGenome();renderHotspots();if(typeof renderInsights=='function')renderInsights();}
+// One button per reference, with how many samples it has, where there are several.
+function renderGenomeRefs(){var host=el('grefs');if(!host)return;var ks=genomeRefs();
+  if(ks.length<2){host.style.display='none';return;}
+  if(!host.firstChild){var n={};R.samples.forEach(function(s){if(s.ref)n[s.ref]=(n[s.ref]||0)+1;});
+    host.innerHTML=ks.map(function(k){return '<button data-r="'+esc(k)+'" title="the samples mapped against '+esc(k)+', with its genes and masked regions">'+esc(k)+' ('+(n[k]||0)+')</button>';}).join('');
+    Array.prototype.forEach.call(host.querySelectorAll('button'),function(b){b.onclick=function(){genomeSwitch(b.getAttribute('data-r'));};});}
+  Array.prototype.forEach.call(host.querySelectorAll('button'),function(b){b.classList.toggle('on',b.getAttribute('data-r')===genomeRef());});}
+// The mask toggle offers the masked regions of the genome in view, and hides where it has none.
+function genomeMaskBtn(){var mb=el('maskbtn');if(!mb)return;var g=genome();
+  mb.style.display=g.mask_bins?'':'none';
+  mb.title=(g.mask_pct||0)+'% of the reference masked (PE/PPE, IS, DR, repeats); toggle to exclude these zones';}
 function gcol(base,mv){if(mv==null)return TH.cellnull;if(mv>1)mv=1;var a=isDark()?[30,42,56]:[238,244,240];
   return 'rgb('+Math.round(a[0]+(base[0]-a[0])*mv)+','+Math.round(a[1]+(base[1]-a[1])*mv)+','+Math.round(a[2]+(base[2]-a[2])*mv)+')';}
 // ---- Functional annotation (snpEff impact + effect classes per sample) ----
@@ -51,13 +78,14 @@ function renderFunction(){
 var fnZoom=26, genomeZoom=0;   // function per-sample bar row height (px, CSS var); genome row height override (0 = auto)
 function renderGenome(){
   var host=el('genome_body'); if(!host)return;
-  var samp=R.samples.filter(function(s){return s.miss||s.trk;});
+  renderGenomeRefs();
+  var samp=R.samples.filter(function(s){return (s.miss||s.trk)&&onGenome(s);});
   if(!samp.length){host.innerHTML='<span class="nd" style="padding:0">no consensus/variant data for a genome landscape.</span>';return;}
   var tk=st.gtrack||'missing'; if(!gtrackHas(tk)){ var av=GTRACKS.filter(function(g){return gtrackHas(g.k);}); tk=av.length?av[0].k:'missing'; st.gtrack=tk; }   // fall back to the first track that HAS data (e.g. SNP density when there's no consensus/missing track) instead of showing a spurious 'no data'
   var meta=GTRACKS[0]; GTRACKS.forEach(function(g){if(g.k==tk)meta=g;}); var base=meta.base;
   var rows0=samp.filter(function(s){return (tk=='missing')?s.miss:(s.trk&&s.trk[tk]);});
   if(!rows0.length){host.innerHTML='<span class="nd" style="padding:0">no data for this track.</span>';return;}
-  var nb=(tk=='missing')?rows0[0].miss.length:rows0[0].trk[tk].length, gl=R.genome_len||nb;
+  var nb=(tk=='missing')?rows0[0].miss.length:rows0[0].trk[tk].length, gl=genome().len||nb;
   var mx=gtrackFrac(tk)?1:(gtrackMax(tk)||1);
   var vis={}; visible().forEach(function(s){vis[s.s]=1;});
   var rows=rows0.slice().sort(function(a,b){var la=(R.lineages||[]).indexOf(a.lineage),lb=(R.lineages||[]).indexOf(b.lineage);
@@ -69,7 +97,7 @@ function renderGenome(){
   function raw(s,i){if(tk=='missing')return s.miss?s.miss[i]:null;var p=s.trk&&s.trk[tk];return p?p[i]:null;}
   var visRows=rows.filter(function(s){return vis[s.s];}); if(!visRows.length)visRows=rows;
   var agg=[];for(var i=0;i<nb;i++){var sum=0,c=0;visRows.forEach(function(s){var vv=raw(s,i);if(vv!=null){sum+=vv;c++;}});agg.push(c?sum/c:null);}
-  var mb=(st.maskOn&&R.mask_bins)?R.mask_bins:null;
+  var mb=(st.maskOn&&genome().mask_bins)?genome().mask_bins:null;
   if(mb)for(var mi=0;mi<nb;mi++)if(mb[mi]>=0.5)agg[mi]=null;   // masked bins drop out of the density profile
   var y0=profH+14, totH=y0+rows.length*rowH+18;
   // cohort DENSITY PROFILE (area + line) of the selected track along the reference
@@ -115,8 +143,8 @@ function renderGenome(){
 }
 
 // ---- SNP-dense gene / region detection (cohort SNP density along the reference) ----
-function cohortSnp(){var nb=R.nbins||200,agg=zeros(nb),has=false,mb=(st.maskOn&&R.mask_bins)?R.mask_bins:null;
-  R.samples.forEach(function(s){var p=s.trk&&s.trk.snp;if(p){has=true;for(var i=0;i<nb&&i<p.length;i++){if(mb&&mb[i]>=0.5)continue;agg[i]+=p[i]||0;}}});
+function cohortSnp(){var nb=R.nbins||200,agg=zeros(nb),has=false,mb=(st.maskOn&&genome().mask_bins)?genome().mask_bins:null;
+  R.samples.forEach(function(s){var p=onGenome(s)&&s.trk&&s.trk.snp;if(p){has=true;for(var i=0;i<nb&&i<p.length;i++){if(mb&&mb[i]>=0.5)continue;agg[i]+=p[i]||0;}}});
   return has?agg:null;}
 function robustMS(a){var v=a.slice().sort(function(x,y){return x-y;}),n=v.length;if(!n)return[0,1];
   var med=n%2?v[(n-1)/2]:(v[n/2-1]+v[n/2])/2,d=a.map(function(x){return Math.abs(x-med);}).sort(function(x,y){return x-y;});
@@ -127,16 +155,16 @@ function renderHotspots(){
   var host=el('hot_body'),tbl=el('hottable'),note=el('hot_note'); if(!host||!tbl)return;
   var agg=cohortSnp();
   if(!agg){host.style.display='none';return;} host.style.display='';
-  var nb=R.nbins||agg.length, gl=R.genome_len||nb, binbp=gl/nb, genes=R.genes||[], head, body;
+  var G=genome(), nb=R.nbins||agg.length, gl=G.len||nb, binbp=gl/nb, genes=G.genes||[], head, body;
   function b0of(p){return Math.max(0,Math.min(nb-1,Math.floor(p/gl*nb)));}
-  function geneMaskedFrac(s,e){var iv=R.mask_iv;if(!iv)return 0;var len=(e-s+1)||1,ov=0;
+  function geneMaskedFrac(s,e){var iv=G.mask_iv;if(!iv)return 0;var len=(e-s+1)||1,ov=0;
     for(var i=0;i<iv.length;i++){var a=iv[i][0],b=iv[i][1];if(b<=s||a>=e)continue;ov+=Math.max(0,Math.min(e,b)-Math.max(s,a));}
     return ov/len;}
   if(genes.length){
     var items=genes.map(function(g){var s=Math.max(1,g.start),e=Math.max(s,g.end),len=(e-s+1)||1,b0=b0of(s),b1=b0of(e),tot=0;
       for(var b=b0;b<=b1;b++){var binS=b*binbp,binE=(b+1)*binbp,ov=Math.max(0,Math.min(e,binE)-Math.max(s,binS));tot+=agg[b]*(binbp>0?ov/binbp:1);}
       return {name:g.name,start:s,end:e,len:len,snp:tot,dens:tot/(len/1000),b0:b0,b1:b1};});
-    if(st.maskOn&&R.mask_iv)items=items.filter(function(x){return geneMaskedFrac(x.start,x.end)<0.5;});   // drop masked genes
+    if(st.maskOn&&G.mask_iv)items=items.filter(function(x){return geneMaskedFrac(x.start,x.end)<0.5;});   // drop masked genes
     if(st.gsel)items=items.filter(function(x){return x.b1>=st.gsel.b0&&x.b0<=st.gsel.b1;});   // brushed span only
     if(st.hotq){var _hq=st.hotq.toLowerCase();items=items.filter(function(x){return (x.name||'').toLowerCase().indexOf(_hq)>=0;});}   // gene search
     var ms=robustMS(items.map(function(x){return x.dens;}));
@@ -160,7 +188,8 @@ function renderHotspots(){
     body=hot.slice(0,15).map(function(h){return '<tr data-b0="'+h.b0+'" data-b1="'+h.b1+'"><td class="s" style="text-align:left">'+fmtpos(Math.round(h.b0*binbp))+' - '+fmtpos(Math.round((h.b1+1)*binbp))+'</td><td>'+(h.b1-h.b0+1)+'</td><td>'+Math.round(h.snp).toLocaleString('en-US')+'</td></tr>';}).join('');
     note.textContent='SNP-dense regions (robust-z > 3 over the '+(binbp/1000).toFixed(0)+' kb bins). Pass a gene GFF (--gff) to name the genes.';
   }
-  if(st.maskOn&&R.mask_bins)note.textContent+=' Masked regions excluded.';
+  if(st.maskOn&&G.mask_bins)note.textContent+=' Masked regions excluded.';
+  if(genomeRefs().length>1)note.textContent+=' Samples mapped against '+genomeRef()+'.';
   if(st.gsel)note.textContent+=' Restricted to the brushed span.';
   tbl.innerHTML='<thead>'+head+'</thead><tbody>'+(body||'<tr><td colspan="'+(genes.length?6:3)+'" style="text-align:left;color:#16a34a;padding:8px">no SNP-dense outliers.</td></tr>')+'</tbody>';
   Array.prototype.forEach.call(tbl.querySelectorAll('tbody tr[data-b0]'),function(tr){tr.onclick=function(){
@@ -204,12 +233,13 @@ function renderLineages(){
 function genomeSpark(s){
   var miss=s.miss, snp=s.trk&&s.trk.snp;
   if(!miss&&!snp)return '';
-  var nb=(miss?miss.length:snp.length), gl=R.genome_len||nb;
+  var G=(R.genomes&&s.ref&&R.genomes[s.ref])||{len:R.genome_len,mask_bins:R.mask_bins};   // the sample's own reference
+  var nb=(miss?miss.length:snp.length), gl=G.len||nb;
   var W=512,H=46,pl=4,pr=4,pt=6,pb=12,iw=W-pl-pr,ih=H-pt-pb;
   function x(i){return pl+i/nb*iw;}
   var svg='<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="width:100%;height:'+H+'px">';
   svg+='<line x1="'+pl+'" y1="'+(pt+ih)+'" x2="'+(W-pr)+'" y2="'+(pt+ih)+'" stroke="'+TH.grid+'"/>';
-  if(R.mask_bins)for(var mk=0;mk<nb&&mk<R.mask_bins.length;mk++){var mf=R.mask_bins[mk]||0;if(mf<0.5)continue;
+  if(G.mask_bins)for(var mk=0;mk<nb&&mk<G.mask_bins.length;mk++){var mf=G.mask_bins[mk]||0;if(mf<0.5)continue;
     svg+='<rect x="'+x(mk).toFixed(1)+'" y="'+pt+'" width="'+(iw/nb+0.6).toFixed(1)+'" height="'+ih+'" fill="'+TH.faint+'" opacity="0.10"/>';}
   if(miss){var pts=[];for(var i=0;i<nb;i++){var mv=miss[i]==null?0:miss[i];pts.push(x(i).toFixed(1)+','+(pt+ih-mv*ih).toFixed(1));}
     svg+='<path d="M '+pl+' '+(pt+ih)+' L '+pts.join(' L ')+' L '+(W-pr)+' '+(pt+ih)+' Z" fill="rgba(214,64,58,.16)"/>'+
@@ -257,7 +287,7 @@ function renderGeneBurden(){
   note.textContent=gbcount+GENEBURDEN_CAPTION+(rows.some(function(g){return g.start!=null;})?'':' Click-to-mark is available when gene coordinates are joined from a GFF upstream.');
   if(!rows.length)tbl.innerHTML='<tbody><tr><td class="na" colspan="6" style="text-align:left;padding:8px">no gene matches "'+esc(st.gbq||'')+'".</td></tr></tbody>';
   Array.prototype.forEach.call(tbl.querySelectorAll('tbody tr[data-start]'),function(tr){tr.onclick=function(){
-    var gl=R.genome_len||0,nb=R.nbins||200; if(!gl)return;
+    var gl=genome().len||0,nb=R.nbins||200; if(!gl)return;
     var b0=Math.max(0,Math.min(nb-1,Math.floor(+tr.getAttribute('data-start')/gl*nb)));
     var b1=Math.max(0,Math.min(nb-1,Math.floor(+tr.getAttribute('data-end')/gl*nb)));
     st.gtrack='snp'; st.geneMark={b0:b0,b1:b1,name:tr.getAttribute('data-name')||''};

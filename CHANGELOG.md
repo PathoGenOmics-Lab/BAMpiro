@@ -84,6 +84,21 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Fixed
 
+- **The genome page drew one reference's genes under every sample.** The report took the GFF and the
+  masked regions of the first reference of the run, and its length, for the whole landscape, so on a
+  cohort mapped against two assemblies the second one's samples were drawn over the first one's genes,
+  and its gene table, go-to-gene and masked regions were the first one's. Every reference's GFF, masked
+  regions and FASTA index now reach the report, and the page shows one reference at a time, with its
+  own samples, length, genes and masked regions; a multi-contig reference's genes are placed contig
+  after contig, as its samples' profiles are binned.
+
+  Reading those GFFs also showed two faults of the report's GFF reader. A GFF built from a table
+  writes pandas' NaN as `Name=nan`, which it read as a name, and it merged genes by name: on one of the
+  cohort's references 3,001 of 3,989 genes became a single gene called `nan`, so the landscape knew 988
+  genes. A RefSeq GFF names every CDS after its protein, and each of H37Rv's genes came back twice,
+  once as `dnaA` and once as `NP_214515.1`. A placeholder is now read as no name, a CDS is its parent
+  gene's, and genes that share a name at different places stay two.
+
 - **The H37Rv coordinate and numbering were wrong, or missing, on any reference but H37Rv.** On the
   185-sample cohort, mapped against two assemblies, the report gave 15,653 of the second reference's
   16,296 variant sites (97%) a wrong H37Rv coordinate. Four faults:

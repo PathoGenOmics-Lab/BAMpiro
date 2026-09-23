@@ -49,6 +49,6 @@ R.metrics.push({key:'het_frac',label:'Het %',kind:'pct',dir:'hi_bad'});
 R.metrics.push({key:'n_lineages',label:'# lin',kind:'int',dir:'hi_bad'});
 if(DIST.indexOf('het_frac')<0)DIST.push('het_frac');
 // ---- SNP density per callable Mb (guarded: only for a plausible genome length) ----
-if(R.snp_density_ok){var GMB=R.genome_len/1e6;R.samples.forEach(function(s){var snp=s.m.snps,cal=s.m.callable_pct;s.m.snp_density=(snp!=null&&cal!=null&&cal>0)?(snp/(cal/100*GMB)):null;});R.metrics.push({key:'snp_density',label:'SNP/Mb',kind:'float',dir:'neu'});if(DIST.indexOf('snp_density')<0)DIST.push('snp_density');}
+if(R.snp_density_ok){R.samples.forEach(function(s){var GMB=((R.genomes&&s.ref&&R.genomes[s.ref]&&R.genomes[s.ref].len)||R.genome_len)/1e6;var snp=s.m.snps,cal=s.m.callable_pct;s.m.snp_density=(snp!=null&&cal!=null&&cal>0)?(snp/(cal/100*GMB)):null;});R.metrics.push({key:'snp_density',label:'SNP/Mb',kind:'float',dir:'neu'});if(DIST.indexOf('snp_density')<0)DIST.push('snp_density');}
 // ===================== SIGNATURE ANALYSIS LAYER (QC-space PCA + robust Mahalanobis + divergence/completeness + temporal) =====================
 R.defs=R.defs||{};

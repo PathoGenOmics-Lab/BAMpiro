@@ -161,7 +161,7 @@ wireHover(el('plots')); wireHover(el('scatter')); wireHover(el('qcpca_body')); w
 (function(){var g=el('genome_body'); if(!g)return;
   var LAB={missing:'missing',del:'deleted',snp:'homozygous SNPs',snpkb:'SNPs per callable kb',het:'het variants',indel:'indels'};
   g.addEventListener('mousemove',function(e){var t=e.target;
-    if(t.tagName=='rect'&&t.hasAttribute('data-v')){var bin=+t.getAttribute('data-bin'),nb=R.nbins||200,gl=R.genome_len||nb,tk=st.gtrack||'missing';
+    if(t.tagName=='rect'&&t.hasAttribute('data-v')){var bin=+t.getAttribute('data-bin'),nb=R.nbins||200,gl=genome().len||nb,tk=st.gtrack||'missing';
       var p0=Math.round(bin/nb*gl),p1=Math.round((bin+1)/nb*gl),v=t.getAttribute('data-v');
       var val=(v==='')?'NA':(tk=='missing'?v+'% missing':tk=='del'?v+'% in a stretch without reads that other samples read':v+' '+LAB[tk]);
       tip('<b>'+esc(t.getAttribute('data-s')||'cohort (mean)')+'</b><br>'+fmtpos(p0)+' - '+fmtpos(p1)+'<br>'+val,e.clientX,e.clientY);}
@@ -169,10 +169,10 @@ wireHover(el('plots')); wireHover(el('scatter')); wireHover(el('qcpca_body')); w
   g.addEventListener('mouseleave',function(){tip('');});
   g.addEventListener('click',function(e){if(e.target.getAttribute('data-s'))setHi(e.target.getAttribute('data-s'));});})();
 // genome brush: drag to ZOOM the plot into a reference span (and filter the Variable-genes table); nested drags zoom further
-function genomeReadout(b0,b1,zoomed){var nb=R.nbins||200,gl=R.genome_len||nb;
+function genomeReadout(b0,b1,zoomed){var nb=R.nbins||200,gl=genome().len||nb,G=genome();
   var p0=Math.round(b0/nb*gl),p1=Math.round((b1+1)/nb*gl);
-  var ng=(R.genes||[]).filter(function(ge){return ge.end>=p0&&ge.start<=p1;}).length;
-  var rd=el('gselreadout');if(rd)rd.innerHTML=(zoomed?'zoomed ':'')+'<b>'+fmtpos(p0)+' - '+fmtpos(p1)+'</b> &middot; '+(p1-p0).toLocaleString('en-US')+' bp'+(R.genes&&R.genes.length?' &middot; '+ng+' gene'+(ng==1?'':'s'):'')+' <button class="btn" id="gselclear" style="padding:2px 8px;font-size:11px">'+(zoomed?'reset zoom':'release to zoom')+'</button>';}
+  var ng=(G.genes||[]).filter(function(ge){return ge.end>=p0&&ge.start<=p1;}).length;
+  var rd=el('gselreadout');if(rd)rd.innerHTML=(zoomed?'zoomed ':'')+'<b>'+fmtpos(p0)+' - '+fmtpos(p1)+'</b> &middot; '+(p1-p0).toLocaleString('en-US')+' bp'+(G.genes&&G.genes.length?' &middot; '+ng+' gene'+(ng==1?'':'s'):'')+' <button class="btn" id="gselclear" style="padding:2px 8px;font-size:11px">'+(zoomed?'reset zoom':'release to zoom')+'</button>';}
 function genomeResetZoom(){st.gsel=null;st.gzoom=null;st.geneMark=null;var gg=el('genegoto');if(gg)gg.value='';renderGenome();renderHotspots();var rd=el('gselreadout');if(rd)rd.innerHTML='';}
 (function(){var g=el('genome_body'); if(!g)return;
   var dragging=false,rectL=0,startBin=0,curBin=0,raf=0;
@@ -191,14 +191,18 @@ function genomeResetZoom(){st.gsel=null;st.gzoom=null;st.geneMark=null;var gg=el
   g.addEventListener('mousedown',function(e){if(e.button!==0)return;var svg=g.querySelector('svg');if(!svg)return;
     rectL=svg.getBoundingClientRect().left;dragging=true;startBin=curBin=binAt(e.clientX);
     document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);e.preventDefault();});})();
-// go-to-gene: type a gene name -> zoom the plot to that gene and mark it (needs a GFF, i.e. R.genes)
+// go-to-gene: type a gene name -> zoom the plot to that gene and mark it (needs a GFF). Looked up in the
+// reference in view first, then in the others, switching to the one that has it.
 (function(){var gg=el('genegoto');if(!gg)return;
-  if(!(R.genes&&R.genes.length)){gg.style.display='none';return;}
+  var any=genomeRefs().length?genomeRefs().some(function(r){return (R.genomes[r].genes||[]).length;}):(R.genes&&R.genes.length);
+  if(!any){gg.style.display='none';return;}
+  function find(genes,q){for(var i=0;i<(genes||[]).length;i++){if((genes[i].name||'').toLowerCase().indexOf(q)>=0)return genes[i];}return null;}
   gg.oninput=function(e){var q=e.target.value.trim().toLowerCase();
     if(!q){genomeResetZoom();return;}
-    var g=null,i;for(i=0;i<R.genes.length;i++){if((R.genes[i].name||'').toLowerCase().indexOf(q)>=0){g=R.genes[i];break;}}
+    var g=find(genome().genes,q);
+    if(!g)genomeRefs().some(function(r){var h=find(R.genomes[r].genes,q);if(h){genomeSwitch(r);g=h;}return !!h;});
     if(!g)return;
-    var nb=R.nbins||200,gl=R.genome_len||nb;
+    var nb=R.nbins||200,gl=genome().len||nb;
     var b0=Math.max(0,Math.min(nb-1,Math.floor(g.start/gl*nb))),b1=Math.max(0,Math.min(nb-1,Math.floor(g.end/gl*nb)));
     var pad=Math.max(3,Math.round((b1-b0)*0.6)+2);
     st.gzoom={b0:Math.max(0,b0-pad),b1:Math.min(nb-1,b1+pad)}; st.geneMark={b0:b0,b1:b1,name:g.name};
@@ -236,8 +240,7 @@ if(!(R.kraken&&R.kraken.samples&&R.kraken.samples.length)){var kkx=el('kraken');
     Array.prototype.forEach.call(host.querySelectorAll('button'),function(x){x.classList.toggle('on',x==b);});renderGenome();};});})();
 // mask-regions toggle (mtbc_mask etc.): grey the masked zones + exclude them from the SNP density + variable-gene ranking
 (function(){var mb=el('maskbtn'); if(!mb)return;
-  if(!R.mask_bins){mb.style.display='none';return;}
-  mb.title=(R.mask_pct||0)+'% of the reference masked (PE/PPE, IS, DR, repeats); toggle to exclude these zones';
+  genomeMaskBtn();
   mb.onclick=function(){st.maskOn=!st.maskOn;mb.classList.toggle('on',st.maskOn);renderGenome();renderHotspots();};})();
 var rz;window.addEventListener('resize',function(){clearTimeout(rz);rz=setTimeout(function(){renderPlots();renderScatter();renderCorr();renderQCspace();renderRefBias();renderGenome();renderTemporal();renderGconv();if(curPage=='related')renderRelatedness();},120);});
 // metric help panel
@@ -303,7 +306,8 @@ function applyMetaFilter(field,val){
 }
 // provenance / run-manifest header (self-documenting for a citable exclusion set)
 (function(){var p=R.provenance||{},items=[];
-  items.push('reference '+(p.reference||'NA')+(R.genome_len?' ('+R.genome_len.toLocaleString('en-US')+' bp)':''));
+  if(genomeRefs().length>1)genomeRefs().forEach(function(r){var g=R.genomes[r];items.push('reference '+r+(g.len?' ('+g.len.toLocaleString('en-US')+' bp)':''));});
+  else items.push('reference '+(p.reference||'NA')+(R.genome_len?' ('+R.genome_len.toLocaleString('en-US')+' bp)':''));
   if(p.container&&p.container!='none')items.push('container '+p.container);
   if(p.commit)items.push('commit '+p.commit);
   items.push(R.samples.length+' samples'+(R.n_ancient?' · '+R.n_ancient+' aDNA':''));
