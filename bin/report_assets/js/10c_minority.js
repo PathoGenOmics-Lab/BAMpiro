@@ -33,7 +33,7 @@ function renderMinority(){
         '<div class="hot-note">'+(fl==null||fl<0?(fl==null?'No band of allele fraction was compared 20 times, too few to say where the noise ends':'Even the highest band compared is not reproduced 80% of the time')+(fx!=null?'; fixed calls reach '+Math.round(fx*100)+'%':'')+'.':
           ((fl===0?'At every allele fraction, 80% or more of the calls are reproduced':'From allele fraction '+M.edges[fl]+' up, 80% or more of the calls are reproduced')+(fl>0?('; below it, '+Math.round(100*(rates.slice(0,fl).reduce(function(a,v,i){return a+(v||0)*r.tested[i];},0)/Math.max(1,r.tested.slice(0,fl).reduce(function(a,b){return a+b;},0))))+'% are'):'')+
           (fx!=null?'. Fixed calls: '+Math.round(fx*100)+'%, the ceiling':'')+'.'))+
-        ' Only calls the other library was read at count; a site it did not read says nothing.</div>';}}
+        ' A call only counts, reproduced or not, where the other library was read deeply enough to have made it.</div>';}}
   else html+='<div class="hot-note" style="margin:10px 0">Add a column naming each sample&#39;s DNA extract to the samplesheet (<code>dna_id</code>, <code>extract</code>, <code>biosample</code>...) and libraries of the same DNA are compared to measure where the noise ends.</div>';
   var rows=Object.keys(M.samples).map(function(s){var x=M.samples[s];return {s:s,x:x};}).sort(function(a,b){return b.x.n-a.x.n;});
   var big=el('minorityPanel')&&el('minorityPanel').classList.contains('expanded'),cap=big?rows.length:25;

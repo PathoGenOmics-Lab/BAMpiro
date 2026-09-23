@@ -10,10 +10,12 @@ DNA, so another library of it calls it too, while an error is not reproduced. Th
 one library makes that another library of the same DNA also makes, in each band of allele
 fraction, is where the noise ends. Two samples that share a FASTQ file share reads, so their
 agreement proves nothing and they are not compared; a merged sample and the runs it was merged
-from are the usual case. A call is only counted as missing from the other library where that
-library was read at the site above --consensus_min_dp reads (the SNP matrix's depth) and deeply
-enough to have called it: at least five alternate reads expected at the call's fraction, since
-at 8x a 5% minority is not there to see, real or not.
+from are the usual case. A call is only compared where the other library was read deeply
+enough to have called it: above --consensus_min_dp reads, with at least five alternate reads
+expected at the call's fraction, since at 8x a 5% minority is not there to see, real or not.
+The depth is the other library's, from its call where it made one and from the SNP matrix
+where it did not, and the test is the same either way: counting its calls wherever they fall
+but its misses only where it was deep enough would fill the thin bands with lucky calls.
 """
 from __future__ import annotations
 
@@ -148,7 +150,8 @@ def build_minority(variants, pairs=(), shared=0, cells=None, column=None, min_dp
 
 def _reproducibility(variants, pairs, shared, cells, column, min_dp, fixed):
     """Per band of allele fraction, the calls of one library the other library of its pair
-    also makes, among those the other library was read at; and the same for fixed calls."""
+    also makes, among those the other library was read deeply enough to make; and the same for
+    fixed calls."""
     tested, repro = [0] * (len(EDGES) - 1), [0] * (len(EDGES) - 1)
     fx_t = fx_r = 0
     for a, b in pairs:
@@ -158,15 +161,17 @@ def _reproducibility(variants, pairs, shared, cells, column, min_dp, fixed):
                 af = v.get("af")
                 if not af:
                     continue
-                if site in vy and (vy[site].get("af") or 0) > 0:
-                    hit = True
+                w = vy.get(site)
+                if w and (w.get("af") or 0) > 0:
+                    hit, dp = True, w.get("dp")
                 else:
                     cell = cells.get((site, y))
-                    if cell is None or cell[1] is None or cell[1] <= min_dp:
-                        continue          # the other library was not read there: nothing to learn
-                    if not cell[0] and af * cell[1] < MIN_EXPECTED_ALT:
-                        continue          # read, but too thinly to have called it at this fraction
-                    hit = bool(cell[0])   # an NA cell (CALLED) is a call too, of unknown fraction
+                    if cell is None:
+                        continue
+                    hit, dp = bool(cell[0]), cell[1]   # an NA cell (CALLED) is a call too
+                # whether the other library could have made the call, judged on its depth alone
+                if dp is None or dp <= min_dp or af * dp < MIN_EXPECTED_ALT:
+                    continue
                 if af >= fixed:
                     fx_t += 1
                     fx_r += hit

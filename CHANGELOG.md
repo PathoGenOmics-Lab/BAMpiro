@@ -14,9 +14,9 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
   samplesheet names each sample's DNA extract (a column such as `dna_id`, `extract` or
   `biosample`), libraries of the same DNA are compared: a real minority is in the DNA and another
   library calls it too, an error is not reproduced. Pairs that share a FASTQ file (a merged sample
-  and its runs) or were mapped against different references are left out, and a call only counts
-  as missed where the other library could have called it: above `--consensus_min_dp` reads, with
-  at least five alternate reads expected at the call's fraction.
+  and its runs) or were mapped against different references are left out, and a call only counts,
+  reproduced or not, where the other library could have called it: above `--consensus_min_dp`
+  reads, with at least five alternate reads expected at the call's fraction.
 
 - **What each series gained since its first time point.** For every samplesheet group followed
   over time (a patient, a passage line), the report lists the SNPs each later sample carries fixed

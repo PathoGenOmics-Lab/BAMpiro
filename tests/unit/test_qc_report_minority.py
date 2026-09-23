@@ -85,6 +85,20 @@ def test_reproducibility_counts_only_where_the_other_library_could_have_called_i
     assert (rep["fixed_tested"], rep["fixed_reproduced"]) == (2, 2)
 
 
+def test_a_call_the_other_library_made_counts_only_where_it_could_have_made_it():
+    """Its depth decides, not its call: counting its calls wherever they fall but its misses only
+    where it was deep enough fills the thin bands with lucky calls (100% reproduced at 5%)."""
+    variants = {"A": {"c:1": call(0.05, 40), "c:2": call(0.05, 200), "c:3": call(0.05, 40),
+                      "c:4": call(0.05, 40)},
+                "B": {"c:1": call(0.05, 40), "c:2": call(0.05, 200), "c:3": call(0.4, 6)}}
+    cells = {("c:4", "B"): (0.0, 40)}
+
+    rep = mn.build_minority(variants, [("A", "B")], 0, cells, "dna_id", min_dp=7)["replicates"]
+
+    assert (rep["tested"][0], rep["reproduced"][0]) == (2, 2), "c:2 both ways; 5% of 40 or of 6 is too thin"
+    assert (rep["tested"][3], rep["reproduced"][3]) == (1, 1), "B's 40% at c:3, which A's 40 reads see"
+
+
 def test_an_na_cell_of_the_other_library_is_a_call_it_made():
     """NA in the matrix is a call whose fraction the files do not keep, not a site read without it."""
     from qcreport.series import CALLED
