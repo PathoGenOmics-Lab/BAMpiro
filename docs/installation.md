@@ -113,7 +113,8 @@ and with no spaces: `-profile local,docker`, `-profile slurm,generic`.
     `conf/garnatxa.sbatch` asks for one core and 4 GB for Nextflow itself, which submits every
     task as its own job and waits. Its `--time` is set explicitly and deliberately: **every QoS
     on Garnatxa defaults to six hours**, and a driver killed at its limit orphans whatever it
-    was waiting on.
+    was waiting on. It runs `main`, pulled again on every launch, so a relaunch gets what has
+    been merged since; set `REVISION` in it to a release tag or a commit to pin a run.
 
     !!! tip "The Kraken2 database is already set there"
 

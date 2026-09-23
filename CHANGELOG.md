@@ -84,6 +84,13 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Fixed
 
+- **The Garnatxa launcher asked for a branch that no longer exists.** `conf/garnatxa.sbatch` ran
+  `feat/gene-conversion`, deleted once it was merged, which Nextflow can no longer pull. It now
+  runs `main`, pulled again on every launch (`-latest`): without that, Nextflow runs the copy it
+  cloned the first time, and a fix merged since does not arrive. Set `REVISION` in it to a release
+  tag or a commit to pin a run; the driver log names the commit that ran. The log's Nextflow line
+  also showed the word "build" instead of the version.
+
 - **The blind-spot mask missed a third of the blind spots on any other reference.** Lifted onto
   the run's reference by interpolating between shared unique k-mers, a blind spot was dropped
   wherever the anchors around it were far apart, and blind spots are repeats, where anchors are
