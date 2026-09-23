@@ -1,5 +1,5 @@
 # Rewrite a FreeBayes SNP VCF into the reduced form the backbone merge and the consensus step
-# expect: INFO becomes ADP/WT/HET/HOM/NC and the sample column becomes GT:DP.
+# expect: INFO becomes ADP/WT/HET/HOM/NC and the sample column becomes GT:DP:AD.
 #
 #   awk -v HETMIN=0.10 -f format_snps_for_backbone.awk valid_snps.vcf
 #
@@ -45,7 +45,10 @@ BEGIN { OFS = "\t" }
   else if (gtype == "1/1") hom = 1
 
   $8  = "ADP=" dp ";WT=0;HET=" het ";HOM=" hom ";NC=0"
-  $9  = "GT:DP"
-  $10 = gtype ":" dp
+  # AD = RO,AO, as the backbone header declares for variant records. The consensus reads only the
+  # genotype of a variant record, but the SNP matrix reads its allele fraction from here: without
+  # it a 15% minority kept as 0/1 would read 0.5, its genotype dosage.
+  $9  = "GT:DP:AD"
+  $10 = gtype ":" dp ":" ro "," ao
   print
 }

@@ -374,7 +374,7 @@ def test_read_depths_reads_the_matrix_sites_and_nothing_else(tmp_path):
     ])
     index, n = _index(("chr1", 100), ("chr1", 300), ("chr2", 50))
 
-    sample, depths, calls = bsm._read_depths(str(p), index, n)
+    sample, depths, calls, _ = bsm._read_depths(str(p), index, n)
 
     assert sample == "SA"
     assert list(depths) == [45, 0, -1], "a site of another reference has no record, not depth 0"
@@ -389,7 +389,7 @@ def test_read_depths_takes_a_variant_record_as_a_call(tmp_path):
     ])
     index, n = _index(("chr1", 200))
 
-    _, depths, calls = bsm._read_depths(str(p), index, n)
+    _, depths, calls, _ = bsm._read_depths(str(p), index, n)
 
     assert list(depths) == [40]
     assert calls[0][0] == "T"
@@ -473,17 +473,83 @@ def test_end_to_end_a_sample_read_without_the_allele_is_zero_with_the_depth(tmp_
     assert "no depths for SD" in err
 
 
-def test_end_to_end_a_call_spelled_as_a_longer_allele_is_not_denied(tmp_path, repo_root):
-    """SB's MNP at 199-200 is not in the matrix as written, but its all-positions VCF holds the
-    atomised SNP at 200: the cell takes its fraction, not a 0 the reads contradict."""
+def test_end_to_end_an_mnp_is_atomised_with_its_own_fraction(tmp_path, repo_root):
+    """SB's dinucleotide change GC>AT at 199 is two SNPs carried by the same reads. Skipped, the
+    sample read as absent at a site where it carries the allele."""
     vcfs, depth = _two_reference_cohort(tmp_path)
 
     rows, _, err = _run(tmp_path, repo_root, "--vcfs", *vcfs, "--depth-vcfs", *depth)
 
+    assert rows["chr1:199"][3:5] == ["G", "A"] and rows["chr1:199"][10:12] == ["0.9500", "40"]
     assert rows["chr1:200"][10:12] == ["0.9500", "40"]
-    assert rows["chr1:200"][4] == "T"
     assert rows["chr1:200"][8:10] == ["0", "38"]
-    assert "1 call(s) recovered from an MNP or complex record" in err
+    assert "0 call(s) recovered" in err, "taken from the variant VCF itself, not recovered"
+
+
+def _complex_cohort(tmp_path, recovered_format, recovered_value):
+    """SB's variant VCF writes a complex record the matrix cannot split; its all-positions VCF
+    holds the SNP at 200 in the given FORMAT. SA calls the SNP outright, so the site exists."""
+    vcfs = [
+        _vcf(tmp_path / "SA.vcf", "SA", [_row("chr1", 200, "C", "T", ".", "GT:AD:DP", "1:0,30:30")]),
+        _vcf(tmp_path / "SB.vcf", "SB", [_row("chr1", 199, "GCA", "AT", ".", "GT:AD:DP", "1:2,38:40")]),
+    ]
+    depth = [
+        _allpos(tmp_path / "SA.all.pos.vcf", "SA", [_backbone("chr1", 1, 30)]),
+        _allpos(tmp_path / "SB.all.pos.vcf", "SB", [
+            "\t".join(["chr1", "200", ".", "C", "T", "50", ".", ".", recovered_format, recovered_value])]),
+    ]
+    return vcfs, depth
+
+
+def test_end_to_end_a_call_in_a_complex_record_is_recovered_with_its_read_counts(tmp_path, repo_root):
+    vcfs, depth = _complex_cohort(tmp_path, "GT:DP:AD", "0/1:40:34,6")
+
+    rows, _, err = _run(tmp_path, repo_root, "--vcfs", *vcfs, "--depth-vcfs", *depth)
+
+    assert rows["chr1:200"][10:12] == ["0.1500", "40"], "6 of 40 reads, not the genotype's 0.5"
+    assert "1 call(s) recovered" in err
+
+
+def test_end_to_end_a_recovered_heterozygote_without_read_counts_has_no_known_fraction(tmp_path, repo_root):
+    """All-positions VCFs written before the formatter kept AD hold a variant as GT:DP only."""
+    vcfs, depth = _complex_cohort(tmp_path, "GT:DP", "0/1:40")
+
+    rows, _, _ = _run(tmp_path, repo_root, "--vcfs", *vcfs, "--depth-vcfs", *depth)
+
+    assert rows["chr1:200"][10:12] == ["NA", "40"], "a dosage of 0.5 is not an allele fraction"
+
+
+def test_end_to_end_a_recovered_homozygote_without_read_counts_is_fixed(tmp_path, repo_root):
+    vcfs, depth = _complex_cohort(tmp_path, "GT:DP", "1/1:40")
+
+    rows, _, _ = _run(tmp_path, repo_root, "--vcfs", *vcfs, "--depth-vcfs", *depth)
+
+    assert rows["chr1:200"][10:12] == ["1.0000", "40"]
+
+
+def test_end_to_end_reads_carrying_a_deletion_do_not_count_as_read_without_the_allele(tmp_path, repo_root):
+    """The pileup's DP counts reads with a deletion over the site; none of them shows a base."""
+    vcfs = [_vcf(tmp_path / "SA.vcf", "SA", [_row("chr1", 100, "A", "G", ".", "GT:AD:DP", "1:0,30:30")]),
+            _vcf(tmp_path / "SB.vcf", "SB", [])]
+    deletion = "\t".join(["chr1", "100", ".", "A", ".", ".", ".", "ADP=30", "GT:DP:AD", "0:30:0,0"])
+    depth = [_allpos(tmp_path / "SB.all.pos.vcf", "SB", [deletion])]
+
+    rows, _, _ = _run(tmp_path, repo_root, "--vcfs", *vcfs, "--depth-vcfs", *depth)
+
+    assert rows["chr1:100"][10:12] == ["", "0"]
+
+
+def test_end_to_end_warns_when_two_references_share_a_contig_name(tmp_path, repo_root):
+    vcfs = [_vcf(tmp_path / "SA.vcf", "SA", [_row("chr", 100, "A", "G", ".", "GT:AD:DP", "1:0,30:30")]),
+            _vcf(tmp_path / "SB.vcf", "SB", [])]
+    depth = [_allpos(tmp_path / "SA.all.pos.vcf", "SA", [_backbone("chr", 100, 30)], contigs=("chr",)),
+             _allpos(tmp_path / "SB.all.pos.vcf", "SB", [_backbone("chr", 100, 30)], contigs=("chr",))]
+    for p, n in ((depth[0], 5000), (depth[1], 7000)):
+        p.write_text(p.read_text().replace("##contig=<ID=chr>", f"##contig=<ID=chr,length={n}>"))
+
+    _, _, err = _run(tmp_path, repo_root, "--vcfs", *vcfs, "--depth-vcfs", *depth)
+
+    assert "share a contig name" in err
 
 
 def test_end_to_end_without_depths_the_cells_stay_blank(tmp_path, repo_root):

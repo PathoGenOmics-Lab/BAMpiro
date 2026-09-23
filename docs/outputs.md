@@ -71,18 +71,25 @@ sample, `<sample>|AF` and `<sample>|DP`. A cell says what that sample's reads sh
 | :--- | :--- | :--- |
 | a fraction | the depth | The alternate allele was called, carried by that fraction of the reads |
 | `0` | the depth | The sample was read there and no alternate allele was called: absent, not unknown |
-| empty | `0` | No read covers the site in that sample, so its absence says nothing |
+| `NA` | the depth | A call the files keep no read counts for, so its fraction is not known (see below) |
+| empty | `0` | No read shows a base at the site in that sample, so its absence says nothing |
 | empty | empty | The site is not in that sample's genome: it was mapped against another reference |
 
 The depth of a `0` cell comes from the sample's all-positions VCF, the pileup the consensus is
-built from. That pileup does not apply the caller's mapping-quality floor
+built from, and counts the reads that show a base there: a read carrying a deletion over the
+site says nothing about the allele. That pileup does not apply the caller's mapping-quality floor
 (`--freebayes_min_map_qual`), so in a repeat it can read higher than the depth of a called cell.
 Read a `0` together with its depth: at three reads it says little, and at or below
 `--consensus_min_dp` the consensus leaves the site uncalled.
 
-A call the variant VCF writes as part of a longer allele (an MNP or a complex record) is not a
-single-base SNP as written, so the matrix skips it; the all-positions VCF holds it as one, and the
-cell takes its allele fraction from there rather than showing a `0` the reads contradict.
+An MNP is split into the single-base SNPs it is made of, each with the MNP's allele fraction. A
+call the variant VCF writes as part of a complex record is taken from the all-positions VCF,
+which holds it as a SNP, with its own read counts; an all-positions VCF written before it kept
+read counts gives a homozygous call `1.0000` and a heterozygous one `NA`, rather than the
+genotype's dosage passed off as a fraction.
+
+Rows are keyed on contig and position, so two references that share a contig name cannot be told
+apart; the matrix step warns when it sees one.
 
 ## Gene conversion
 

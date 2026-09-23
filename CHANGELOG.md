@@ -125,11 +125,13 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
   cohort 98% of the cells were blank. The matrix now reads every sample's all-positions VCF, so a
   sample read at a site without the allele gets AF `0` and the site's depth. A cell is left blank
   only where no read covers the site (AF empty, DP `0`) or where the sample was mapped against
-  another reference (both empty). The depth is the pileup the consensus is built from, which does
-  not apply the caller's mapping-quality floor. A call the variant VCF writes as part of an MNP or
-  a complex record, which the matrix skipped, now comes from the same file with its allele
-  fraction instead of reading `0`. Reading the files takes about a second and a half per 4.4 Mb
-  genome, spread over 4 CPUs.
+  another reference (both empty). The depth is the pileup the consensus is built from, counting
+  the reads that show a base at the site, which does not apply the caller's mapping-quality
+  floor. An MNP, which the matrix skipped, is split into its single-base SNPs with the MNP's
+  allele fraction, and a call the variant VCF writes as part of a complex record comes from the
+  all-positions VCF with its own read counts instead of reading `0`; a call whose read counts
+  the files do not keep reads `NA` rather than a genotype passed off as a fraction. Reading the
+  files takes about a second and a half per 4.4 Mb genome, spread over 4 CPUs.
 
 - **The QC report reads as seven pages, starting from what the run found.** On a 185-sample
   cohort it was one scroll of 27 panels about 150,000 pixels long: the SNP dynamics alone drew

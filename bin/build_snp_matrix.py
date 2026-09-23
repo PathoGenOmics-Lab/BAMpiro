@@ -108,18 +108,50 @@ def _site_index(keys):
     return index
 
 
-def _read_depths(path, index=None, n_sites=None):
-    """(sample, depths, calls) from one all-positions VCF, or None when it cannot be read.
+def _ints(v):
+    """[int] of a comma-separated FORMAT value, or None when absent or unparseable."""
+    if not v or v in ('.', ''):
+        return None
+    try:
+        return [int(x) for x in v.split(',') if x not in ('.', '')] or None
+    except ValueError:
+        return None
 
-    `depths` holds one entry per matrix row: the sample's depth at the site, or -1 where the
-    file has no record for it. `calls` maps a row to (allele, AF, DP) where the record there is
-    a variant rather than the reference backbone. A file that fails part-way yields nothing:
+
+def _record(fmt, val):
+    """(depth, allele fraction, genotype alleles) of one all-positions record.
+
+    The depth counts the reads that show a base at the site, RO+AO from AD: the pileup's DP also
+    counts reads carrying a deletion over it, and those say nothing about the allele. The
+    fraction comes from the read counts; without them it is only known for a homozygous
+    genotype, and None otherwise (an older all-positions VCF wrote a variant as GT:DP alone).
+    """
+    d = dict(zip(fmt.split(':'), val.split(':')))
+    ad = _ints(d.get('AD'))
+    dp = _ints(d.get('DP'))
+    depth = sum(ad) if ad else (dp[0] if dp else None)
+    gt = [a for a in d.get('GT', '').replace('|', '/').split('/') if a not in ('.', '')]
+    if ad and len(ad) >= 2 and sum(ad) > 0:
+        af = sum(ad[1:]) / sum(ad)
+    else:
+        af = 1.0 if gt and all(a != '0' for a in gt) else None
+    return depth, af, gt
+
+
+def _read_depths(path, index=None, n_sites=None):
+    """(sample, depths, calls, contig lengths) from one all-positions VCF, or None when it
+    cannot be read.
+
+    `depths` holds one entry per matrix row: the reads showing a base at the site, or -1 where
+    the file has no record for it. `calls` maps a row to (allele, AF, depth) where the record
+    there is a variant rather than the reference backbone; AF is None when the record keeps no
+    read counts and the genotype is not homozygous. A file that fails part-way yields nothing:
     half a sample's depths would read as the other half being uncovered.
     """
     index = _INDEX if index is None else index
     n_sites = _NSITES if n_sites is None else n_sites
     depths = array('i', [-1]) * n_sites
-    calls = {}
+    calls, lengths = {}, {}
     sample = None
     try:
         with _open(path) as fh:
@@ -128,6 +160,10 @@ def _read_depths(path, index=None, n_sites=None):
                     if line.startswith('#CHROM'):
                         cols = line.rstrip('\n').split('\t')
                         sample = cols[9] if len(cols) > 9 else None
+                    elif line.startswith('##contig='):
+                        fields = dict(f.split('=', 1) for f in line.strip()[10:-1].split(',') if '=' in f)
+                        if fields.get('ID') and fields.get('length', '').isdigit():
+                            lengths[fields['ID']] = int(fields['length'])
                     continue
                 parts = line.split('\t', 2)
                 if len(parts) < 3:
@@ -139,20 +175,20 @@ def _read_depths(path, index=None, n_sites=None):
                 c = line.rstrip('\n').split('\t')
                 if len(c) < 10:
                     continue
-                af, dp = _af_dp(c[8], c[9])
-                if dp is None:
+                depth, af, gt = _record(c[8], c[9])
+                if depth is None:
                     continue
-                depths[i] = dp
+                depths[i] = depth
                 alt = c[4].split(',')[0]
-                if alt not in ('.', '') and len(alt) == 1 and len(c[3]) == 1 and af is not None:
-                    calls[i] = (alt, af, dp)
+                if alt not in ('.', '') and len(alt) == 1 and len(c[3]) == 1 and gt and any(a != '0' for a in gt):
+                    calls[i] = (alt, af, depth)
     except (OSError, EOFError, zlib.error) as e:
         sys.stderr.write(f"[snp_matrix] WARN could not read depths from {path}: {e}\n")
         return None
     if sample is None:
         sys.stderr.write(f"[snp_matrix] WARN {path} names no sample; its depths are not used\n")
         return None
-    return sample, depths, calls
+    return sample, depths, calls, lengths
 
 
 def _ann(info):
@@ -200,28 +236,39 @@ def main():
                     if len(c) < 8:
                         continue
                     contig, pos, ref, alt = c[0], c[1], c[3], c[4]
-                    if alt in ('.', '') or len(ref) != 1:
+                    if alt in ('.', ''):
                         continue
                     alt1 = alt.split(',')[0]
-                    if len(alt1) != 1:
-                        continue  # SNPs only
+                    try:
+                        start = int(pos)
+                    except ValueError:
+                        continue
+                    if len(ref) == 1 and len(alt1) == 1:
+                        changes = [(start, ref, alt1)]
+                    elif len(ref) == len(alt1) > 1:
+                        # An MNP: every base it changes is a SNP at its own position, carried by the
+                        # same reads. Skipped, the site read as absent in a sample that carries it.
+                        changes = [(start + k, ref[k], alt1[k]) for k in range(len(ref))
+                                   if ref[k].upper() != alt1[k].upper()]
+                    else:
+                        continue  # indels and complex records are not SNPs
                     af, dp = _af_dp(c[8], c[9]) if len(c) >= 10 else (1.0, None)
                     if af is None:
                         continue
                     gene, eff, aa = _ann(c[7])
-                    try:
-                        key = (contig, int(pos))
-                    except ValueError:
-                        continue
-                    st = sites.setdefault(key, {'ref': ref, 'alt': set(), 'gene': '', 'eff': '', 'aa': '', 'cells': {}})
-                    st['alt'].add(alt1)
-                    if gene and not st['gene']:
-                        st['gene'] = gene
-                    if eff and not st['eff']:
-                        st['eff'] = eff
-                    if aa and not st['aa']:
-                        st['aa'] = aa
-                    st['cells'][sample] = (af, dp)
+                    for at, r1, a1 in changes:
+                        st = sites.setdefault((contig, at), {'ref': r1, 'alt': set(), 'gene': '', 'eff': '',
+                                                             'aa': '', 'cells': {}})
+                        if sample in st['cells']:
+                            continue   # an overlapping record already gave this sample's call here
+                        st['alt'].add(a1)
+                        if gene and not st['gene']:
+                            st['gene'] = gene
+                        if eff and not st['eff']:
+                            st['eff'] = eff
+                        if aa and not st['aa']:
+                            st['aa'] = aa
+                        st['cells'][sample] = (af, dp)
         except OSError as e:
             sys.stderr.write(f"[snp_matrix] WARN could not read {p}: {e}\n")
 
@@ -236,10 +283,13 @@ def main():
                 results = list(pool.map(_read_depths, depth_vcfs))
         else:
             results = [_read_depths(p, index, len(keys)) for p in depth_vcfs]
+        seen_len = {}
         for res in results:
             if res is None:
                 continue
-            sample, d, calls = res
+            sample, d, calls, lengths = res
+            for contig, n in lengths.items():
+                seen_len.setdefault(contig, set()).add(n)
             if sample not in samples:
                 continue   # the columns are the samples whose variants were given
             have = depths.get(sample)
@@ -256,6 +306,13 @@ def main():
                     st['cells'][sample] = (af, dp)
                     n_recovered += 1
 
+        clash = sorted(c for c, ns in seen_len.items() if len(ns) > 1)
+        if clash:
+            sys.stderr.write(
+                f"[snp_matrix] WARN contig name(s) {', '.join(clash[:5])} have different lengths in "
+                f"different all-positions VCFs: two references share a contig name, and the matrix, "
+                f"keyed on contig and position, cannot tell their sites apart\n")
+
     header = ['reference', 'contig', 'pos', 'ref_allele', 'alt_allele', 'gene', 'effect', 'aa_change']
     for s in samples:
         header += [f'{s}|AF', f'{s}|DP']
@@ -269,7 +326,8 @@ def main():
             for s in samples:
                 if s in st['cells']:
                     af, dp = st['cells'][s]
-                    row += [f'{af:.4f}', ('' if dp is None else str(dp))]
+                    # NA: a call the files keep no read counts for, so its fraction is not known
+                    row += ['NA' if af is None else f'{af:.4f}', ('' if dp is None else str(dp))]
                     continue
                 d = depths.get(s)
                 dp = d[i] if d is not None else -1

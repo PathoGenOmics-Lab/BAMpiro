@@ -61,10 +61,12 @@ class TestOutputShape:
         [f] = run([row("DP=30;RO=2;AO=28", "1/1", "30")], tmp_path=tmp_path)
         assert f[7] == "ADP=30;WT=0;HET=0;HOM=1;NC=0"
 
-    def test_format_is_reduced_to_genotype_and_depth(self, tmp_path):
+    def test_format_is_reduced_to_genotype_depth_and_read_counts(self, tmp_path):
+        """AD keeps the allele fraction, which the SNP matrix reads off a call it recovers from
+        the all-positions VCF; the genotype alone would give a minority the dosage 0.5."""
         [f] = run([row("DP=30;RO=2;AO=28", "1/1", "30")], tmp_path=tmp_path)
-        assert f[8] == "GT:DP"
-        assert f[9] == "1/1:30"
+        assert f[8] == "GT:DP:AD"
+        assert f[9] == "1/1:30:2,28"
 
     def test_the_leading_columns_are_untouched(self, tmp_path):
         [f] = run([row("DP=30;RO=2;AO=28", "1/1", "30", pos=4411532)], tmp_path=tmp_path)
