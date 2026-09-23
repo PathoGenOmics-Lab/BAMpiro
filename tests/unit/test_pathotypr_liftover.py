@@ -629,8 +629,94 @@ def test_cmd_lift_global_chain_dispatches_to_lift_chain(tmp_path, capsys):
                       min_identity=0.9, rd_min=50, rd_out=None, source_contig="A")
     lift.cmd_lift(args)
 
-    assert (tmp_path / "lift.map").read_text() == "src_pos\ttgt_pos\n100\t100\n400\t436\n"
+    assert (tmp_path / "lift.map").read_text() == (
+        "src_contig\tsrc_pos\ttgt_contig\ttgt_pos\tstrand\nA\t100\tB\t100\t+\nA\t400\tB\t436\t+\n")
     assert "lift(anchor-chain): 2 fwd + 0 inverted = 2 lifted" in capsys.readouterr().err
+
+
+# ------------------------------------------------- several contigs (a draft assembly, a split target)
+
+
+def _write_multi_fasta(path, records, width=60):
+    lines = []
+    for name, seq in records:
+        lines.append(">%s" % name)
+        lines += [seq[i:i + width] for i in range(0, len(seq), width)]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return str(path)
+
+
+def test_named_positions_reads_contig_lists_beds_and_plain_positions(tmp_path):
+    p = tmp_path / "pos.txt"
+    p.write_text("chromosome\t12\nctg2\t5\t7\tx\n30\ntrack name=x\nchrom\tstart\tend\n")
+    assert lift._named_positions(str(p)) == [
+        (None, 30), ("chromosome", 12), ("ctg2", 6), ("ctg2", 7)]
+
+
+def test_a_draft_is_lifted_contig_by_contig_in_any_order_and_orientation(tmp_path):
+    """A draft assembly's contigs lie anywhere in the target, and some reverse-complemented: each is
+    chained on its own, so every one lands, with the strand it lands on."""
+    genome = _random_seq(3000, seed=21)
+    c1, c2, c3 = genome[:1000], genome[1000:2000], genome[2000:]
+    src = _write_multi_fasta(tmp_path / "draft.fa", [("c3", c3), ("c1", c1), ("c2rc", _rc(c2))])
+    tgt = _write_fasta(tmp_path / "ref.fa", "chr", genome)
+
+    good, stats = lift._lift_chain_multi(_chain_args(src, tgt), [("c1", 500), ("c3", 100), ("c2rc", 300)])
+
+    assert good[("c1", 500)] == ("chr", 500, "+")
+    assert good[("c3", 100)] == ("chr", 2100, "+")
+    assert good[("c2rc", 300)] == ("chr", 1000 + (1000 - 300 + 1), "-")
+    assert stats["drop"] == 0 and stats["unknown_contig"] == 0
+
+
+def test_a_position_is_placed_on_the_target_contig_it_belongs_to(tmp_path):
+    genome = _random_seq(2000, seed=22)
+    src = _write_fasta(tmp_path / "src.fa", "chr", genome)
+    tgt = _write_multi_fasta(tmp_path / "tgt.fa", [("t1", genome[:1000]), ("t2", genome[1000:])])
+
+    good, _ = lift._lift_chain_multi(_chain_args(src, tgt), [(None, 400), (None, 1400)])
+
+    assert good[("chr", 400)] == ("t1", 400, "+")
+    assert good[("chr", 1400)] == ("t2", 400, "+")
+
+
+def test_a_multi_contig_source_needs_the_contig_named(tmp_path):
+    """A plain position, or one on a contig the source lacks, is left out rather than read on the first
+    contig: that used to lift a variant of contig 2 with the sequence of contig 1."""
+    genome = _random_seq(2000, seed=23)
+    src = _write_multi_fasta(tmp_path / "src.fa", [("a", genome[:1000]), ("b", genome[1000:])])
+    tgt = _write_fasta(tmp_path / "tgt.fa", "chr", genome)
+
+    good, stats = lift._lift_chain_multi(_chain_args(src, tgt), [(None, 500), ("zz", 500), ("b", 500)])
+
+    assert good == {("b", 500): ("chr", 1500, "+")}
+    assert stats["unknown_contig"] == 2
+
+
+def test_a_single_contig_source_takes_positions_whatever_contig_they_name(tmp_path):
+    """The H37Rv blind-spot BED names NC_000962.3 and is read on an ancestor FASTA named otherwise."""
+    seq = _random_seq(600, seed=11)
+    src = _write_fasta(tmp_path / "anc.fa", "MTB_anc", seq)
+    tgt = _write_fasta(tmp_path / "ref.fa", "E1", seq)
+
+    good, _ = lift._lift_chain_multi(_chain_args(src, tgt), [("NC_000962.3", 300)])
+
+    assert good == {("MTB_anc", 300): ("E1", 300, "+")}
+
+
+def test_cmd_lift_global_chain_writes_a_bed_per_target_contig(tmp_path, capsys):
+    genome = _random_seq(2000, seed=22)
+    src = _write_fasta(tmp_path / "src.fa", "chr", genome)
+    tgt = _write_multi_fasta(tmp_path / "tgt.fa", [("t1", genome[:1000]), ("t2", genome[1000:])])
+    positions = tmp_path / "pos.bed"
+    positions.write_text("chr\t399\t402\nchr\t1399\t1401\n")
+
+    args = _lift_args(tmp_path, str(positions), src, tgt, global_chain=True, contig=None,
+                      sample=1, indel_tol=0, max_gap=None, min_chain=10, min_density=0.2,
+                      min_identity=0.9, rd_min=50, rd_out=None, source_contig=None)
+    lift.cmd_lift(args)
+
+    assert (tmp_path / "lift.bed").read_text() == "t1\t399\t402\tblindspot\nt2\t399\t401\tblindspot\n"
 
 
 # --------------------------------------------------------------------- cmd_markers

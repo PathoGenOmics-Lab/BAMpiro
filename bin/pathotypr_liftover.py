@@ -30,10 +30,19 @@ of each context half-window -- at k=21, min_identity 0.9 that is a reverse-compl
 -- can be placed at the un-reflected coordinate (error bounded by the event size). Raise --min-identity (near-
 free on low-divergence references) to shrink it further; it is a hard k-mer-resolution limit, not tied to any
 self-similar context.
+
+`lift --global-chain` reads every contig of both FASTAs. Positions name their contig ('contig<TAB>pos', or a BED),
+and each source contig is chained on its own, so a draft assembly's contigs are placed wherever and in whichever
+orientation they lie in the target. The map it writes names both contigs and the strand:
+src_contig  src_pos  tgt_contig  tgt_pos  strand. A single-contig source takes every position whatever contig it
+names (a BED in NC_000962.3 coordinates read on an H37Rv-colinear ancestor named otherwise). The other modes read
+only the first contig of each FASTA.
 """
 from __future__ import annotations
 import argparse
+import bisect
 import sys
+from collections import defaultdict
 
 
 def _read_first_contig(fasta):
@@ -50,6 +59,93 @@ def _read_first_contig(fasta):
             if started:
                 seq.append(line.strip())
     return "".join(seq).upper()
+
+
+def _read_contigs(fasta):
+    """[(name, uppercase sequence)] of every record of a FASTA, in file order. The name is the header up to
+    its first whitespace, as aligners and VCFs write it."""
+    out, name, parts = [], None, []
+    with open(fasta, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if line.startswith(">"):
+                if name is not None:
+                    out.append((name, "".join(parts).upper()))
+                head = line[1:].strip()
+                name, parts = (head.split()[0] if head else ""), []
+            elif name is not None:
+                parts.append(line.strip())
+    if name is not None:
+        out.append((name, "".join(parts).upper()))
+    return out
+
+
+class _Genome:
+    """A FASTA's contigs laid end to end, k bases of N apart, so one coordinate runs through the whole genome
+    and no k-mer spans two contigs (the rolling k-mer code resets on N). Global and contig positions are both
+    1-based. A single contig is its own global coordinate, so a single-contig genome lifts exactly as before."""
+
+    def __init__(self, contigs, k):
+        self.names = [n for n, _ in contigs]
+        self.lengths = [len(s) for _, s in contigs]
+        self.index = {n: i for i, n in enumerate(self.names)}
+        self.starts, parts, off = [], [], 0
+        for i, (_, s) in enumerate(contigs):
+            if i:
+                parts.append("N" * k)
+                off += k
+            self.starts.append(off)
+            parts.append(s)
+            off += len(s)
+        self.seq = "".join(parts)
+
+    def local(self, g):
+        """(contig index, position) of global position g, or None in the gap between two contigs."""
+        i = bisect.bisect_right(self.starts, g - 1) - 1
+        if i < 0:
+            return None
+        p = g - self.starts[i]
+        return (i, p) if 1 <= p <= self.lengths[i] else None
+
+
+def _named_positions(path):
+    """[(contig or None, 1-based position)] from a BED (contig start end ...; 0-based half-open, expanded), a
+    'contig<TAB>pos' list or a plain one-position-per-line list (contig None). Deduplicated, sorted. A line whose
+    coordinates are not digits (a header, a track line, a negative BED coordinate) is skipped, so a contig may be
+    called 'chromosome' without being taken for a header."""
+    pos = set()
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            c = line.replace(",", "\t").split("\t")
+            if len(c) >= 3 and c[1].isdigit() and c[2].isdigit():
+                for p in range(int(c[1]) + 1, int(c[2]) + 1):
+                    pos.add((c[0], p))
+            elif len(c) >= 2 and c[1].isdigit() and not c[0].isdigit():
+                pos.add((c[0], int(c[1])))
+            elif c[0].isdigit():
+                pos.add((None, int(c[0])))
+    return sorted(pos, key=lambda x: (x[0] or "", x[1]))
+
+
+def _resolve(named, genome):
+    """([(contig index, position)], positions on a contig the genome lacks, positions past a contig's end).
+
+    A single-contig genome takes every position whatever contig it names: a BED written in NC_000962.3
+    coordinates is read on an H37Rv-colinear ancestor whose record is named otherwise. A multi-contig genome
+    needs the name, and a position without one, or on a contig it does not have, is left out."""
+    out, unknown, outside = [], 0, 0
+    single = len(genome.names) == 1
+    for name, p in named:
+        i = 0 if single else genome.index.get(name)
+        if i is None:
+            unknown += 1
+        elif not 1 <= p <= genome.lengths[i]:
+            outside += 1
+        else:
+            out.append((i, p))
+    return out, unknown, outside
 
 
 def _positions(path):
@@ -299,22 +395,26 @@ def _chains(pairs, increasing, min_anchors, max_chains=1024):
     return out
 
 
-def _lift_chain(args, positions):
-    """Whole-genome anchor-chain liftover. Anchors = k-mers unique in both genomes. The FORWARD chain (LIS) is
-    the collinear backbone; several REVERSE chains (successive longest decreasing runs of reverse-complement
-    anchors, one per inversion) cover inversions -- a single LIS holds only one, so multiple independent
-    inversions each need their own chain. A position is placed only when BRACKETED by two consecutive anchors
-    of some chain across a COLLINEAR gap (source span == target span +- indel_tol) that CONTAINS NO OTHER anchor
-    of any chain, AND whose interpolated coordinate passes a SEQUENCE-HOMOLOGY check (the anchors prove only the
-    gap ends correspond; the interior is verified by comparing the actual source/target context, so an inversion,
-    non-homologous filler or net-zero double-indel that a length-only test would accept is caught and dropped).
-    Of the verified chains that bracket it, the one with the TIGHTEST gap wins. Everything else DROPS: a
-    non-colinear gap, a gap straddling a rearrangement, an anchor desert, a non-homologous interior, or a
-    position beyond every chain's ends. No extrapolation. So a coordinate is correct or absent -- colinear/SNP
-    sites exact, inverted blocks mapped by the reflected coordinate, indel/RD interiors and rearrangement
-    boundaries dropped. RD deletions (target lost >= rd_min bp) are reported to --rd-out. A parity correction
-    makes the reverse chains exact for even k too."""
-    import bisect
+def _lift_chain_multi(args, named):
+    """Whole-genome anchor-chain liftover. Anchors = k-mers unique in both genomes. Each SOURCE CONTIG gets its
+    own chains: a FORWARD chain (LIS) as its collinear backbone and several REVERSE chains (successive longest
+    decreasing runs of reverse-complement anchors, one per inversion, or one for a whole contig that lies
+    reversed in the target) -- a single LIS holds only one, and a single genome-wide chain would keep the longest
+    run of contigs in the target's order and drop the rest. A position is placed only when BRACKETED by two
+    consecutive anchors of a chain of its contig across a COLLINEAR gap (source span == target span +- indel_tol)
+    that CONTAINS NO OTHER anchor of any chain and does not cross from one target contig to another, AND whose
+    interpolated coordinate passes a SEQUENCE-HOMOLOGY check (the anchors prove only the gap ends correspond; the
+    interior is verified by comparing the actual source/target context, so an inversion, non-homologous filler
+    or net-zero double-indel that a length-only test would accept is caught and dropped). Of the verified chains
+    that bracket it, the one with the TIGHTEST gap wins. Everything else DROPS: a non-colinear gap, a gap
+    straddling a rearrangement, an anchor desert, a non-homologous interior, or a position beyond every chain's
+    ends. No extrapolation. So a coordinate is correct or absent -- colinear/SNP sites exact, inverted blocks
+    mapped by the reflected coordinate, indel/RD interiors and rearrangement boundaries dropped. RD deletions
+    (target lost >= rd_min bp) are reported to --rd-out. A parity correction makes the reverse chains exact for
+    even k too.
+
+    `named` is [(contig name or None, 1-based position)] on the source (see _resolve). Returns
+    ({(source contig, position): (target contig, position, '+' or '-')}, stats)."""
     k = args.kmer_size
     sample = max(1, args.sample)
     tol = max(0, args.indel_tol)
@@ -325,8 +425,10 @@ def _lift_chain(args, positions):
     # sit there and pass a single-coordinate check), so drop it. Scales with sample (sparser anchors -> wider
     # legitimate colinear gaps). An explicit --max-gap overrides.
     mg = args.max_gap if args.max_gap is not None else 2 * k + 2 * sample + 2
-    src = _read_first_contig(args.source_fasta)
-    tgt = _read_first_contig(args.target_fasta)
+    S = _Genome(_read_contigs(args.source_fasta), k)
+    T = _Genome(_read_contigs(args.target_fasta), k)
+    positions, n_unknown, n_outside = _resolve(named, S)
+    src, tgt = S.seq, T.seq
     vw = k // 2                                                  # homology-verification half-window (~k bp)
     uA = _kmer_unique_map(src, k, sample)
     uB = _kmer_unique_map(tgt, k, sample)
@@ -339,26 +441,37 @@ def _lift_chain(args, positions):
         if rc is not None:
             rev.append((a, rc + par)); in_r.add(a)
     amb = in_f & in_r                                            # a source pos anchoring both strands -> drop
-    fa, fb = _lis(sorted((a, b) for a, b in fwd if a not in amb), True)
-    # A real inversion is a DENSE, CONTIGUOUS block of reverse anchors (~1 per `sample` bp of its span); a
-    # chain assembled from scattered spurious reverse anchors (a k-mer whose revcomp happens to be unique
-    # elsewhere) is SPARSE. Keep only dense chains, else a coincidental spurious pair could place a repeat-
-    # desert position at an unrelated coordinate. Density = anchors / (span / sample).
-    rev_chains = [(ca, cb) for ca, cb in _chains(sorted((a, b) for a, b in rev if a not in amb), False, max(2, args.min_chain))
-                  if len(ca) * sample >= args.min_density * (ca[-1] - ca[0] + 1)]
-    chains = ([(fa, fb, 1)] if fa else []) + [(ca, cb, -1) for ca, cb in rev_chains]
+    single = len(S.names) == 1
+    by_f, by_r = defaultdict(list), defaultdict(list)
+    for pairs, by in ((fwd, by_f), (rev, by_r)):
+        for a, b in pairs:
+            if a not in amb:
+                by[0 if single else S.local(a)[0]].append((a, b))
+    chains, rd = {}, []                                          # contig index -> [(ca, cb, orient)]
+    n_anchor = n_inv = n_inv_anchor = 0
+    for ci in range(len(S.names)):
+        fa, fb = _lis(sorted(by_f.get(ci, ())), True)
+        # A real inversion is a DENSE, CONTIGUOUS block of reverse anchors (~1 per `sample` bp of its span); a
+        # chain assembled from scattered spurious reverse anchors (a k-mer whose revcomp happens to be unique
+        # elsewhere) is SPARSE. Keep only dense chains, else a coincidental spurious pair could place a repeat-
+        # desert position at an unrelated coordinate. Density = anchors / (span / sample).
+        rev_chains = [(ca, cb) for ca, cb in _chains(sorted(by_r.get(ci, ())), False, max(2, args.min_chain))
+                      if len(ca) * sample >= args.min_density * (ca[-1] - ca[0] + 1)]
+        chains[ci] = ([(fa, fb, 1)] if fa else []) + [(ca, cb, -1) for ca, cb in rev_chains]
+        n_anchor += len(fa)
+        n_inv += len(rev_chains)
+        n_inv_anchor += sum(len(c[0]) for c in rev_chains)
+        for i in range(1, len(fa)):                              # target lost >= rd_min bp
+            if (fa[i] - fa[i - 1]) - (fb[i] - fb[i - 1]) >= args.rd_min:
+                rd.append((ci, fa[i - 1], fa[i]))
     allpos = sorted((in_f | in_r) - amb)                        # forbid set: EVERY anchored source position
-
-    rd = []                                                     # (a_left, a_right): target lost >= rd_min bp
-    for i in range(1, len(fa)):
-        if (fa[i] - fa[i - 1]) - (fb[i] - fb[i - 1]) >= args.rd_min:
-            rd.append((fa[i - 1], fa[i]))
 
     def bracket(ca, cb, p, orient):
         """(coord, gap) if p sits between two consecutive anchors of this chain across a COLLINEAR gap
-        (|a_gap - orient*b_gap| <= tol, a_gap <= max_gap) that contains NO other anchored position; else
-        (None, None). orient is +1 forward, -1 reverse. No extrapolation past the chain's anchored span. The
-        no-other-anchor rule is what stops a gap from crossing an inversion/indel/rearrangement of ANY size."""
+        (|a_gap - orient*b_gap| <= tol, a_gap <= max_gap) that contains NO other anchored position and whose ends
+        lie on one target contig; else (None, None). orient is +1 forward, -1 reverse. No extrapolation past the
+        chain's anchored span. The no-other-anchor rule is what stops a gap from crossing an inversion/indel/
+        rearrangement of ANY size."""
         j = bisect.bisect_left(ca, p)
         if j < len(ca) and ca[j] == p:
             return cb[j], 0
@@ -370,30 +483,75 @@ def _lift_chain(args, positions):
             return None, None                                   # gap too long, or an indel lives in it -> drop
         if bisect.bisect_right(allpos, al) < bisect.bisect_left(allpos, ar):
             return None, None                                   # another anchor lies in the gap -> it spans a rearrangement
+        if (T.local(bl) or (None,))[0] != (T.local(br) or (-1,))[0]:
+            return None, None                                   # the gap runs from one target contig into another
         return int(round(bl + (p - al) * (br - bl) / a_gap)), a_gap
 
-    good, n_fwd, n_rev, n_drop = {}, 0, 0, 0
-    for p in positions:
+    good, n_fwd, n_rev, n_drop = {}, 0, 0, n_outside
+    for ci, p in positions:
+        g = S.starts[ci] + p
         best, best_gap, best_orient = None, None, 0
-        for ca, cb, orient in chains:
-            c, g = bracket(ca, cb, p, orient)
-            # verify homology at the placed coordinate (skip the exact-anchor hit g==0: a shared unique k-mer
+        for ca, cb, orient in chains.get(ci, ()):
+            c, gp = bracket(ca, cb, g, orient)
+            # verify homology at the placed coordinate (skip the exact-anchor hit gp==0: a shared unique k-mer
             # is homologous by construction); a length-only-colinear but non-homologous interior fails here.
-            if c is not None and (g == 0 or _homologous(src, tgt, p, c, orient, vw, args.min_identity)):
-                if best is None or g < best_gap:
-                    best, best_gap, best_orient = c, g, orient  # tightest verified bracketing gap wins
-        if best is None:
+            if c is not None and (gp == 0 or _homologous(src, tgt, g, c, orient, vw, args.min_identity)):
+                if best is None or gp < best_gap:
+                    best, best_gap, best_orient = c, gp, orient  # tightest verified bracketing gap wins
+        loc = T.local(best) if best is not None else None
+        if loc is None:
             n_drop += 1
-        elif best_orient == 1:
-            good[p] = best; n_fwd += 1
+            continue
+        good[(S.names[ci], p)] = (T.names[loc[0]], loc[1], "+" if best_orient == 1 else "-")
+        if best_orient == 1:
+            n_fwd += 1
         else:
-            good[p] = best; n_rev += 1
+            n_rev += 1
     if args.rd_out:
         with open(args.rd_out, "w", encoding="utf-8") as w:
-            for a0, a1 in rd:
-                w.write("%s\t%d\t%d\tRD_deletion\n" % (args.source_contig, a0, a1))
-    return good, {"fwd": n_fwd, "rev": n_rev, "drop": n_drop, "anchors": len(fa),
-                  "inv_chains": len(rev_chains), "inv_anchors": sum(len(c[0]) for c in rev_chains), "rd": len(rd)}
+            for ci, a0, a1 in rd:
+                name = args.source_contig if (single and args.source_contig) else S.names[ci]
+                w.write("%s\t%d\t%d\tRD_deletion\n" % (name, a0 - S.starts[ci], a1 - S.starts[ci]))
+    return good, {"fwd": n_fwd, "rev": n_rev, "drop": n_drop, "unknown_contig": n_unknown, "anchors": n_anchor,
+                  "inv_chains": n_inv, "inv_anchors": n_inv_anchor, "rd": len(rd),
+                  "source_contigs": S.names, "target_contigs": T.names}
+
+
+def _lift_chain(args, positions):
+    """_lift_chain_multi for plain positions on a single-contig source: ({position: target position}, stats)."""
+    good, st = _lift_chain_multi(args, [(None, p) for p in positions])
+    return {p: t for (_, p), (_, t, _) in good.items()}, st
+
+
+def _write_map(good, path, source_contigs):
+    """The contig-aware map: src_contig src_pos tgt_contig tgt_pos strand, in source order."""
+    order = {n: i for i, n in enumerate(source_contigs)}
+    with open(path, "w", encoding="utf-8") as w:
+        w.write("src_contig\tsrc_pos\ttgt_contig\ttgt_pos\tstrand\n")
+        for sc, sp in sorted(good, key=lambda x: (order.get(x[0], len(order)), x[1])):
+            tc, tp, strand = good[(sc, sp)]
+            w.write("%s\t%d\t%s\t%d\t%s\n" % (sc, sp, tc, tp, strand))
+
+
+def _write_bed(good, path, target_contigs, name, contig=None):
+    """The lifted positions collapsed into BED intervals in the target's coordinates, contig by contig. `contig`
+    renames the target's contig when the target has only one (what callers passing --contig have always meant)."""
+    by = defaultdict(set)
+    for tc, tp, _ in good.values():
+        by[tc].add(tp)
+    order = {n: i for i, n in enumerate(target_contigs)}
+    with open(path, "w", encoding="utf-8") as w:
+        for tc in sorted(by, key=lambda c: order.get(c, len(order))):
+            label = contig if (contig and len(target_contigs) == 1) else tc
+            ps = sorted(by[tc])
+            start = prev = ps[0]
+            for q in ps[1:]:
+                if q == prev + 1:
+                    prev = q
+                else:
+                    w.write("%s\t%d\t%d\t%s\n" % (label, start - 1, prev, name))
+                    start = prev = q
+            w.write("%s\t%d\t%d\t%s\n" % (label, start - 1, prev, name))
 
 
 def cmd_lift(args):
@@ -403,14 +561,20 @@ def cmd_lift(args):
     With --global-chain, use the whole-genome anchor-chain instead (places SNP sites and other positions by
     interpolation between flanking anchors, not by their own k-mer)."""
     if args.global_chain:
-        positions = _positions(args.positions)
-        good, st = _lift_chain(args, positions)
-        _write_outputs(good, args.out_map, args.out_bed, args.contig, args.name)
+        good, st = _lift_chain_multi(args, _named_positions(args.positions))
+        if args.out_map:
+            _write_map(good, args.out_map, st["source_contigs"])
+        if args.out_bed:
+            _write_bed(good, args.out_bed, st["target_contigs"], args.name, args.contig)
         sys.stderr.write("[liftover] lift(anchor-chain): %d fwd + %d inverted = %d lifted ; %d dropped "
                          "(indel shadow / RD / desert / boundary) ; %d collinear anchors, %d inversion "
                          "chain(s)/%d anchors, %d RD deletion(s)\n"
                          % (st["fwd"], st["rev"], len(good), st["drop"],
                             st["anchors"], st["inv_chains"], st["inv_anchors"], st["rd"]))
+        if st["unknown_contig"]:
+            sys.stderr.write("[liftover] WARN %d position(s) name a contig %s does not have, or none while it has "
+                             "%d; left out\n" % (st["unknown_contig"], args.source_fasta,
+                                                 len(st["source_contigs"])))
         return
     import bisect
     k = args.kmer_size
@@ -467,7 +631,7 @@ def cmd_lift(args):
             good[p] = occ_sorted[0]; n_synteny += 1
         else:
             n_drop += 1
-    _write_outputs(good, args.out_map, args.out_bed, args.contig, args.name)
+    _write_outputs(good, args.out_map, args.out_bed, args.contig or "target", args.name)
     sys.stderr.write("[liftover] lift: %d anchored + %d recovered-by-synteny = %d ; %d dropped (of %d)\n"
                      % (n_anchor, n_synteny, len(good), n_drop, len(pkmer)))
 
@@ -505,7 +669,9 @@ def main():
     l.add_argument("target_fasta", help="the reference to lift the positions onto")
     l.add_argument("--out-map", default=None, help="write a src_pos<TAB>tgt_pos table")
     l.add_argument("--out-bed", default=None, help="collapse lifted positions into a BED in target coords")
-    l.add_argument("--contig", default="target", help="contig name for --out-bed")
+    l.add_argument("--contig", default=None,
+                   help="contig name for --out-bed (default: the target's own; with --global-chain it renames the "
+                        "target's contig only when the target has a single one)")
     l.add_argument("--name", default="blindspot", help="BED feature name")
     l.add_argument("--kmer-size", type=int, default=21)
     l.add_argument("--max-shift", type=int, default=100,
@@ -541,7 +707,8 @@ def main():
                    help="--global-chain: write detected RD deletions (target lost sequence) as a BED (source coords)")
     l.add_argument("--rd-min", type=int, default=50,
                    help="--global-chain: minimum size (bp) of a target deletion to call it an RD block")
-    l.add_argument("--source-contig", default="source", help="contig name for the --rd-out BED")
+    l.add_argument("--source-contig", default=None,
+                   help="contig name for the --rd-out BED (default: the source's own; used for a single-contig source)")
     l.set_defaults(func=cmd_lift)
 
     args = ap.parse_args()

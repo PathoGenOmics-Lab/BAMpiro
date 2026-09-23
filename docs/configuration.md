@@ -62,7 +62,7 @@ table below.
 | Flag | Default | Turns on |
 | :--- | :---: | :--- |
 | `--run_pathotypr` | :octicons-x-circle-fill-16:{ .red } off | Alignment-free lineage + WHO drug-resistance typing ([pathotypr](pathotypr.md)) |
-| `--annotate_canonical` | :octicons-x-circle-fill-16:{ .red } off | Dual **amino-acid** numbering (re-annotate vs H37Rv) + Mycobrowser gene links |
+| `--annotate_canonical` | :octicons-x-circle-fill-16:{ .red } off | Dual **amino-acid** numbering (each SNP lifted to H37Rv, then annotated there) + Mycobrowser gene links |
 | `--variant_liftover` | :octicons-x-circle-fill-16:{ .red } off | Dual **coordinate** - the H37Rv position per variant (alignment-free k-mer liftover) |
 | `--mask_blindspots` | :octicons-x-circle-fill-16:{ .red } off | Mask the H37Rv Illumina blind-spots ([Zenodo 3701840](https://zenodo.org/records/3701840)) |
 | `--output_cram` | :octicons-x-circle-fill-16:{ .red } off | Publish alignments as CRAM instead of BAM |
@@ -157,14 +157,15 @@ Two documented, ready-to-use **organism** configs live in
 | | `--pathotypr_markers` | `/opt/pathotypr/lineage_markers.tsv` | Zenodo lineage markers (bundled). |
 | | `--pathotypr_dr_markers` | `/opt/pathotypr/dr_markers.tsv` | Zenodo WHO drug-resistance markers (bundled). |
 | | `--pathotypr_min_alt` | `95` | Min alt-allele % for a DR call. Lower it (10-25) to catch heteroresistant / minority alleles. |
-| **Dual AA numbering** | `--annotate_canonical` | `false` | Re-annotate variants against a canonical snpEff DB for dual (H37Rv) amino-acid numbering. |
+| **Dual AA numbering** | `--annotate_canonical` | `false` | Annotate each SNP against a canonical snpEff DB at its lifted canonical position, for dual (H37Rv) amino-acid numbering and gene names on any reference. |
 | | `--canonical_snpeff_db` | `Mycobacterium_tuberculosis_h37rv` | Canonical snpEff genome for the second annotation. |
+| | `--canonical_chrom` | `Chromosome` | The name that database gives its chromosome, written for a single-contig `--canonical_ref`; empty keeps the FASTA's names. |
 | | `--canonical_label` | `H37Rv` | How that numbering is labelled in the report. |
-| **Canonical coords & masking** | `--variant_liftover` | `false` | Fill the H37Rv **coordinate** per variant via the alignment-free k-mer liftover (report SNP tables); works for any reference. |
+| **Canonical coords & masking** | `--variant_liftover` | `false` | Fill the H37Rv **coordinate** per variant via the alignment-free k-mer liftover (report SNP tables); every reference of the run from its own sequence, every contig of it. |
 | | `--canonical_ref` | `/opt/pathotypr/reference.fasta` | FASTA the canonical (H37Rv-colinear) coordinates are defined on - the liftover / blind-spot **target**. |
 | | `--mask_blindspots` | `false` | Add the H37Rv Illumina blind-spots ([Zenodo 3701840](https://zenodo.org/records/3701840)) to the exclusion mask. |
 | | `--blindspot_bed` | `assets/H37Rv_blindspots.bed` | The blind-spots BED (H37Rv / NC_000962.3 coordinates). |
-| | `--blindspot_liftover` | `true` | Lift the blind-spots onto the run reference (k-mer liftover) so the mask is correct on **any** reference. |
+| | `--blindspot_liftover` | `true` | Lift the blind-spots onto the run reference, every contig of it (k-mer liftover), so the mask is correct on **any** reference. |
 | **QC Report** | `--make_qc_report` | `true` | Build the interactive HTML QC report + `qc_flags.tsv`. |
 | | `--make_snp_matrix` | `true` | Also emit the master SNP-matrix TSV. |
 | | `--depth_window` | `1000` | Window (bp) of each sample's depth profile, behind the deletions and SNPs per callable kb. |

@@ -112,8 +112,8 @@ these from the run's own outputs; you only get what you have.
 | `--mask-bed <mask.bed>` | Mask-region toggle in the genome-landscape panel |
 | `--consensus <sample.fa …>` | Consensus-completeness panel |
 | `--lineage-colors <palette.tsv>` | Canonical lineage palette (`lineage<TAB>#hex`, e.g. *mycolorsTB*) |
-| `--vcfs-h37rv <sample.vcf …>` | Canonical (H37Rv) **amino-acid** numbering shown beside the used-reference one |
-| `--pos-liftover <map.tsv>` | Canonical (H37Rv) **coordinate** per variant, alignment-free (`pathotypr_liftover.py`) |
+| `--vcfs-h37rv <sample.vcf …>` | Canonical (H37Rv) **amino-acid** numbering and gene shown beside the used-reference ones (records lifted to H37Rv, paired by `INFO/OPOS`) |
+| `--pos-liftover <map.tsv>` | Canonical (H37Rv) **coordinate** per variant, alignment-free (`pathotypr_liftover.py lift --global-chain`; `src_contig src_pos tgt_contig tgt_pos strand`, looked up by contig) |
 | `--aa2-label <name>` | Label for the canonical numbering (default `H37Rv`) |
 
 ## Optional metadata

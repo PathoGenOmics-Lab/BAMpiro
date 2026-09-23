@@ -103,11 +103,22 @@ workflow COHORT_REPORT {
         def dr_report = asBool(params.run_pathotypr)
             ? COLLECT_DR(patho_dr_results.map { sId, f -> f }.collect().ifEmpty([]), tsv_name).dr
             : file("${projectDir}/assets/NO_FILE_DR")
+        // Canonical (H37Rv) coordinates of the variant positions: one liftover per reference, each from its
+        // own sequence and for the positions on its own contigs, joined into one map keyed by contig. The
+        // report's SNP tables read it, and so does the canonical annotation below, which needs each record's
+        // canonical position. Lifting every reference with the first one's sequence put 96% of another
+        // reference's positions at a wrong coordinate.
+        def lift_needed  = asBool(params.variant_liftover) || asBool(params.annotate_canonical)
+        def pos_liftover = lift_needed
+            ? LIFT_VARIANTS(ref_bundle.map { rId, fa, idx, excl -> tuple(rId, fa) }, report_vcfs).map
+                  .collectFile(name: "${tsv_name}_pos_liftover.tsv", keepHeader: true)
+                  .first()
+            : file("${projectDir}/assets/NO_FILE_LIFTOVER")
         // Canonical-reference-annotated VCFs for the dual amino-acid numbering (off unless annotate_canonical).
-        // vcf_for_stats is the per-sample (sId,rId,vcf) channel; its positions match report_vcfs, so the
-        // report's sample+position merge finds each variant's canonical amino-acid change.
+        // Each record is moved to its canonical position before it is annotated and keeps its mapping
+        // coordinate in OPOS, which is how the report pairs it with its variant.
         def report_vcfs_h37rv = asBool(params.annotate_canonical)
-            ? ANNOTATE_CANONICAL(vcf_for_stats, params.canonical_snpeff_db).out
+            ? ANNOTATE_CANONICAL(vcf_for_stats, pos_liftover, params.canonical_snpeff_db).out
                              .map { sId, vcf -> vcf }.collect().ifEmpty([])
             : file("${projectDir}/assets/NO_FILE_H37RV")
         // Kraken2 per-sample reports (deduped) -> Taxonomic composition panel; empty when Kraken is off.
@@ -116,13 +127,6 @@ workflow COHORT_REPORT {
         // Empty when the stage is off, and QC_REPORT only passes --gene-conversion for a non-empty
         // file, so the panel hides itself rather than rendering an empty table.
         def report_gconv = gconv_cohort.ifEmpty([])
-        // Alignment-free canonical COORDINATE per variant via pathotypr (alternative to the --vcfs-h37rv path):
-        // lift the run's variant positions (mapping-reference coords) onto H37Rv and hand the map to the report.
-        def report_ref_fa = ref_bundle.filter { rId, fa, idx, excl -> rId == report_ref }
-                                      .map { rId, fa, idx, excl -> fa }.first()
-        def pos_liftover  = asBool(params.variant_liftover)
-            ? LIFT_VARIANTS(report_vcfs, report_ref_fa, report_ref, tsv_name).map
-            : file("${projectDir}/assets/NO_FILE_LIFTOVER")
         QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
                   report_meta, report_vcfs, report_vcfs_h37rv, pos_liftover, dr_report, report_gconv,
                   report_kraken, depth_profiles, snp_dist, snp_matrix, provenance, tsv_name)
