@@ -71,9 +71,15 @@ def needed_cells(meta, variants, fixed=FIXED, excluded=()):
     return need
 
 
+# An NA cell of the SNP matrix: the sample was called there, at a fraction its files do not keep.
+# It is neither absent nor a known fraction, so it is kept apart from an empty cell.
+CALLED = "called"
+
+
 def read_matrix_cells(path, need):
     """{(site, sample): (af, dp)} of the SNP matrix TSV (build_snp_matrix.py) for the cells in
-    `need`. af and dp are None where the cell is empty. Reads only the rows it needs."""
+    `need`. af and dp are None where the cell is empty, af is CALLED where it reads NA. Reads
+    only the rows it needs."""
     out = {}
     if not need or not path or not os.path.exists(path) or os.path.basename(path).startswith("NO_FILE"):
         return out
@@ -94,7 +100,7 @@ def read_matrix_cells(path, need):
                     i = col.get(s)
                     if i is None or i + 1 >= len(c):
                         continue
-                    af = float(c[i]) if c[i] not in ("", "NA") else None
+                    af = CALLED if c[i] == "NA" else (float(c[i]) if c[i] else None)
                     dp = int(float(c[i + 1])) if c[i + 1] not in ("", "NA") else None
                     out[(site, s)] = (af, dp)
     except (OSError, ValueError):
@@ -111,6 +117,8 @@ def _state(site, sample, variants, cells, min_dp, fixed):
     if cell is None:
         return "unchecked"
     af, dp = cell
+    if af == CALLED:
+        return "unchecked"        # carried, at a fraction nobody knows: not absent, not fixed
     if af is not None and af > 0:
         return "fixed" if af >= fixed else "minority"
     if dp is None:

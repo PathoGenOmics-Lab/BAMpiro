@@ -166,7 +166,7 @@ def _reproducibility(variants, pairs, shared, cells, column, min_dp, fixed):
                         continue          # the other library was not read there: nothing to learn
                     if not cell[0] and af * cell[1] < MIN_EXPECTED_ALT:
                         continue          # read, but too thinly to have called it at this fraction
-                    hit = bool(cell[0])
+                    hit = bool(cell[0])   # an NA cell (CALLED) is a call too, of unknown fraction
                 if af >= fixed:
                     fx_t += 1
                     fx_r += hit

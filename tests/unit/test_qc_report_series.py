@@ -122,6 +122,22 @@ def test_read_matrix_cells_reads_only_what_is_needed(tmp_path):
     assert cells == {("c:10", "p0"): (0.0, 40), ("c:20", "p0"): (None, 0)}
 
 
+def test_an_na_cell_is_a_call_of_unknown_fraction_not_an_absence(tmp_path):
+    """The matrix writes NA for a call whose read counts its files do not keep: the start carried
+    the allele, so a later fixed call is not new, only not known to have risen."""
+    p = tmp_path / "m.tsv"
+    p.write_text("reference\tcontig\tpos\tref_allele\talt_allele\tgene\teffect\taa_change\t"
+                 "p0|AF\tp0|DP\n"
+                 "R\tc\t10\tA\tT\t\t\t\tNA\t40\n")
+    cells = ser.read_matrix_cells(str(p), {"c:10": {"p0"}})
+    variants = {"p0": {}, "p3": {"c:10": var(1.0)}, "p6": {}}
+
+    row = ser.build_series(M, variants, cells)["groups"][0]["rows"][0]
+
+    assert cells == {("c:10", "p0"): (ser.CALLED, 40)}
+    assert (row["new"], row["risen"], row["unknown"]) == ([], [], 1)
+
+
 def test_a_failed_or_swapped_first_sample_is_not_the_start():
     """A swapped first time point lacks the line's SNPs and carries its own: read against it,
     every later sample 'gains' the line and 'loses' the stranger."""

@@ -85,6 +85,17 @@ def test_reproducibility_counts_only_where_the_other_library_could_have_called_i
     assert (rep["fixed_tested"], rep["fixed_reproduced"]) == (2, 2)
 
 
+def test_an_na_cell_of_the_other_library_is_a_call_it_made():
+    """NA in the matrix is a call whose fraction the files do not keep, not a site read without it."""
+    from qcreport.series import CALLED
+    variants = {"A": {"c:1": call(0.4)}, "B": {}}
+
+    rep = mn.build_minority(variants, [("A", "B")], 0, {("c:1", "B"): (CALLED, 80)}, "dna_id",
+                            min_dp=7)["replicates"]
+
+    assert rep["tested"][3] == 1 and rep["reproduced"][3] == 1
+
+
 def test_without_the_matrix_the_replicates_are_not_measured():
     variants = {"A": {"c:1": call(0.05)}, "B": {}}
 
