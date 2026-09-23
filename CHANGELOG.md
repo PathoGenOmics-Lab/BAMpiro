@@ -31,6 +31,50 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Fixed
 
+- **Kraken counted runs and read species, so a clean cohort looked contaminated.** One report
+  per run became one row per run, so 185 samples gave 225 rows, and a sample's "primary taxon"
+  was its top species: Kraken2 leaves most *M. tuberculosis* reads on the complex, so the
+  species held about 5% and every sample fell under the 90% line. The report summarised 225 of
+  185 samples as possibly contaminated, while the cultures that were really another organism sat
+  unnoticed among them. A sample's reports are now merged by their reads, each sample is placed
+  in the clade its reads actually sit in, and contamination is measured as the share of the
+  classified reads in the clade most samples are dominated by: below 90% a sample is mixed,
+  below 50% it is another organism.
+
+- **The lineage read-out called every typed sample mixed.** It counted the samples carrying a
+  lineage breakdown, which every typed sample does, and reported 176 mixed-lineage samples
+  above a table that correctly counted none. It now counts the `MIXED` flag.
+
+- **The report dropped `LINEAGE_MISMATCH` as soon as it loaded.** Loading the page, and every
+  threshold change, rebuilt the flags from the thresholds alone, so a flag decided from evidence
+  the page does not hold vanished: the report never showed a wrong-reference sample and its
+  verdicts could disagree with `qc_flags.tsv`. Flags the page cannot recompute are now kept, and
+  the report says what was compared (*types as A4; the rest of E1ASM0035 types as L7*).
+
+- **A sample's collection date was the day the pipeline ran.** The summary's `date` is
+  `DAT_OUT`, stamped at processing, and the temporal panel read it as a collection date: a whole
+  cohort "sampled in 2026, a span of 0 years". The date now comes only from a samplesheet column
+  that names one (`collection_date`, `sampling_date`, `date`, `year`...).
+
+- **The reference-bias screen accused samples mapped to their own ancestor.** Its cut is
+  relative to the cohort median, and where that median is a handful of SNPs, 2 SNPs against 5
+  made 18 passing samples "reference-bias suspects". Below 10 SNPs per callable Mb (50 SNPs when
+  there is no density) the screen is off, and the panel says so and points at the samples far
+  above the rest instead.
+
+- **The resistance read-out counted lineage markers as resistance.** pncA H57D is in every
+  *M. bovis*, so every A4 sample of a cohort was "resistant to PZA" and the mutations that
+  arose during the experiment were a minority of what the panel reported. A grade 1-2 mutation
+  carried by at least 90% of a lineage's samples is now listed as that lineage's marker, apart
+  from the rest.
+
+- **Smaller read-out and drawing faults.** The correlation read-outs headlined pairs that are one
+  quantity measured twice (*Mapped %* against *Unmapped %* at r = -1); the gene-conversion panel
+  had no verdict for `divergent_sample`, the most common one on the cohort that introduced it, so
+  its 2,430 rows read "verdict not recognised"; the metric scatter drew its top values above the
+  axis; the genome landscape carried a fixed purple key over a red heatmap; and a printed report
+  came out under the grey backdrop of the mobile sidebar.
+
 - **A GFF attribute spelled `nan` was read as a gene name.** A GFF built from a table writes
   pandas' NaN as four ordinary characters, and the attribute cascade in `gconv_annotate` only
   asked whether a key was PRESENT. On a real MTBC reference 3,001 CDS lines carry `Name=nan`
@@ -43,6 +87,24 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
   case-insensitively, and a real symbol such as `dnaN` still wins over the ID.
 
 ### Changed
+
+- **The QC report reads as seven pages, starting from what the run found.** On a 185-sample
+  cohort it was one scroll of 27 panels about 150,000 pixels long: the SNP dynamics alone drew
+  800 trajectory cards, the resistance panel listed all 4,986 calls, the table of all samples
+  had 48 columns with a bar in every cell, and the flags were codes. It now opens on a
+  *Summary* that says what the run shows in sentences with their numbers (the samples to
+  exclude and why, those that are another organism or were mapped to the wrong reference, the
+  resistance mutations beyond each lineage's own, the alleles that swept, the gene conversion
+  called), each linking to the page that holds the evidence and saying what it does not prove.
+  The rest is split into *Sample QC*, *Genome & genes*, *Variants over time*, *Resistance*,
+  *Gene conversion* and *Diagnostics*, with a badge in the sidebar where a page needs attention.
+
+  A flag reads as what went wrong and the value against its rule (*Low depth 2.2x, needs 10x*),
+  and the codes stay in every export. The table of all samples opens on the 14 metrics a
+  verdict is made of and colours only the cells that tripped a flag. The resistance panel groups
+  the calls by mutation and opens on grades 1-2; the contamination panel is one row per sample,
+  flagged ones first. The big panels draw a first screenful and keep the rest one click away:
+  24 trajectory cards at a time, 40 gene chips, 12 parallel genes. Printing lays out every page.
 
 - **Garnatxa submits four times faster.** `submitRateLimit` goes from 50 to 200 jobs a minute,
   because it binds whenever the tasks are shorter than the interval between submissions. A

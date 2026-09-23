@@ -29,9 +29,9 @@ iqtree2 -s cohort.snps.fasta -m GTR+G -B 1000 -T AUTO
 sample's `stats/*.mask_sites.tsv` and the reference `Locus_to_exclude_*.txt` (repeats /
 mappability), and — for MTBC — the H37Rv blind-spots (`assets/H37Rv_blindspots.bed`).
 
-## Applying the report's exclusion basket
+## Applying the report's exclusion list
 
-The interactive report exports two files from the exclusion basket:
+The interactive report exports two files from the exclusion list (on its *Sample QC* page):
 
 - **`keep_list.txt`** — the sampleIds that survived (one per line).
 - **`exclusion.tsv`** — the dropped samples and the reason (which QC flag).
