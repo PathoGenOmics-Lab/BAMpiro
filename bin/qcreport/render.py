@@ -108,8 +108,8 @@ SECTION_INFO = {
               "sample. Brush a region to list the genes under it. Reveals systematically low-callability "
               "regions (repeats, deletions) shared across samples. 'Deletions' shows the share of each bin "
               "in a stretch the sample has no reads for while other samples read it; 'SNPs / kb' divides "
-              "the SNPs of a bin by the positions deep enough to call, so a half-read bin does not look "
-              "half as variable.",
+              "the SNPs of a bin by the positions deep enough for the consensus to call a base "
+              "(--allpos_min_cov reads), so a half-read bin does not look half as variable.",
     "gains": "For every group of the samplesheet followed over time (a patient, a passage line), the SNPs "
              "each later sample carries fixed (allele fraction 0.9 or more) that the group's first time "
              "point did not. 'New' needs the first time point to have been read at the site without the "

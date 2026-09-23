@@ -87,13 +87,13 @@ def _arrays(values):
 def test_windows_measure_only_the_positions_with_a_record():
     depth, known = _arrays([10, 0, None, 20] + [8] * 4)
 
-    rows = dp.windows(depth, known, 4, min_dp=7)
+    rows = dp.windows(depth, known, 4, callable_dp=10)
 
     assert rows[0][:3] == ("chr", 1, 4)
     assert rows[0][3] == pytest.approx(10.0)            # (10 + 0 + 20) / 3
     assert rows[0][4] == pytest.approx(1 / 3)
-    assert rows[0][5] == pytest.approx(2 / 3)           # 10 and 20 are above 7; 0 is not
-    assert rows[1][5] == pytest.approx(1.0)
+    assert rows[0][5] == pytest.approx(2 / 3)           # 10 and 20 reach 10; 0 does not
+    assert rows[1][5] == pytest.approx(0.0), "8x is under the depth the consensus calls at"
 
 
 def test_a_window_without_records_has_no_values():
@@ -149,7 +149,7 @@ def test_read_genes_without_a_gff_is_empty(tmp_path, name):
 def test_gene_depths_measure_breadth_callable_depth_and_depth_against_the_median():
     depth, known = _arrays([0, 0, 10, 30, 20, 20])
 
-    row = dp.gene_depths(depth, known, [("chr", 1, 4, "g", "")], min_dp=7, median=20.0)[0]
+    row = dp.gene_depths(depth, known, [("chr", 1, 4, "g", "")], callable_dp=10, median=20.0)[0]
 
     assert row[5] == 4
     assert row[6] == pytest.approx(0.5)                 # two of four positions read at all

@@ -5,8 +5,8 @@ The all-positions VCF has a record for every reference position, so it holds the
 whole genome. This reduces it to three small tables for the cohort report:
 
   <prefix>.depth_windows.tsv  one row per window: mean depth, the share of positions no read
-                              covers, and the share deep enough for the consensus to call
-                              (depth above --min-dp)
+                              covers, and the share deep enough for the consensus to call a
+                              base (depth of --callable-dp or more)
   <prefix>.zero_depth.tsv     every stretch of at least --min-run positions no read covers
   <prefix>.gene_depth.tsv     per gene of the GFF: the share of its positions read at all, the
                               share the consensus can call, its mean depth, and that depth
@@ -105,7 +105,7 @@ def read_depths(path):
     return sample, {c: depth[c] for c in order}, {c: known[c] for c in order}
 
 
-def windows(depth, known, size, min_dp):
+def windows(depth, known, size, callable_dp):
     """[(contig, start, end, mean depth, zero fraction, callable fraction)], 1-based inclusive.
 
     Fractions are of the positions with a record; a window with none has no values.
@@ -122,7 +122,7 @@ def windows(depth, known, size, min_dp):
                 continue
             dk = dm[km]
             out.append((contig, s + 1, e, float(dk.mean()), float((dk == 0).mean()),
-                        float((dk > min_dp).mean())))
+                        float((dk >= callable_dp).mean())))
     return out
 
 
@@ -169,11 +169,12 @@ def read_genes(path):
     return sorted(genes or cds, key=lambda g: (g[0], g[1]))
 
 
-def gene_depths(depth, known, genes, min_dp, median):
+def gene_depths(depth, known, genes, callable_dp, median):
     """[(contig, start, end, name, locus_tag, length, breadth, callable, mean depth, relative)].
 
-    breadth is the share of the gene's read positions at depth 1 or more, callable the share
-    above `min_dp`, relative the mean depth against the genome-wide median (None at median 0).
+    breadth is the share of the gene's read positions at depth 1 or more, callable the share at
+    `callable_dp` or more, relative the mean depth against the genome-wide median (None at
+    median 0).
     """
     out = []
     for contig, start, end, name, locus in genes:
@@ -190,7 +191,7 @@ def gene_depths(depth, known, genes, min_dp, median):
             continue
         mean = float(dk.mean())
         out.append((contig, start, end, name, locus, end - start + 1, float((dk > 0).mean()),
-                    float((dk > min_dp).mean()), mean, (mean / median) if median else None))
+                    float((dk >= callable_dp).mean()), mean, (mean / median) if median else None))
     return out
 
 
@@ -204,8 +205,12 @@ def main(argv=None):
     ap.add_argument('--gff', default=None, help="the reference's GFF3, for the per-gene table")
     ap.add_argument('--reference', default='', help="the reference id, written into each table")
     ap.add_argument('--window', type=int, default=1000, help="window size in bp")
-    ap.add_argument('--min-dp', type=int, default=7,
-                    help="depth at or below which the consensus calls nothing (--consensus_min_dp)")
+    # The consensus writes a reference base only where the backbone calls a confident reference,
+    # which it does from --allpos_min_cov reads (30); between --consensus_min_dp and that it
+    # writes N. A position read at 20x is not callable, and counting it so would make every
+    # SNP-per-callable-kb density read low.
+    ap.add_argument('--callable-dp', type=int, default=30,
+                    help="depth from which the consensus can call a base (--allpos_min_cov)")
     ap.add_argument('--min-run', type=int, default=50,
                     help="shortest stretch without reads that is written out")
     ap.add_argument('--out-prefix', required=True)
@@ -221,13 +226,13 @@ def main(argv=None):
     head = [f"# sample={sample}", f"# reference={a.reference}", f"# genome_len={int(read.size)}",
             f"# median_dp={median:g}", f"# mean_dp={mean:.2f}",
             f"# zero_frac={float((read == 0).mean()) if read.size else 0:.4f}",
-            f"# callable_frac={float((read > a.min_dp).mean()) if read.size else 0:.4f}",
-            f"# min_dp={a.min_dp}", f"# window={a.window}", f"# min_run={a.min_run}",
+            f"# callable_frac={float((read >= a.callable_dp).mean()) if read.size else 0:.4f}",
+            f"# callable_dp={a.callable_dp}", f"# window={a.window}", f"# min_run={a.min_run}",
             "# contigs=" + ",".join(f"{c}:{len(depth[c])}" for c in depth)]
 
     with open(f"{a.out_prefix}.depth_windows.tsv", 'w') as fh:
         fh.write("\n".join(head) + "\ncontig\tstart\tend\tmean_dp\tzero_frac\tcallable_frac\n")
-        for row in windows(depth, known, a.window, a.min_dp):
+        for row in windows(depth, known, a.window, a.callable_dp):
             fh.write("\t".join(_fmt(v, 2 if i == 3 else 4) for i, v in enumerate(row)) + "\n")
     runs = zero_runs(depth, known, a.min_run)
     with open(f"{a.out_prefix}.zero_depth.tsv", 'w') as fh:
@@ -239,7 +244,7 @@ def main(argv=None):
         with open(f"{a.out_prefix}.gene_depth.tsv", 'w') as fh:
             fh.write("\n".join(head) + "\ncontig\tstart\tend\tgene\tlocus_tag\tlength\tbreadth\t"
                                        "callable\tmean_dp\trel_depth\n")
-            for row in gene_depths(depth, known, genes, a.min_dp, median):
+            for row in gene_depths(depth, known, genes, a.callable_dp, median):
                 fh.write("\t".join(_fmt(v, 2 if i == 8 else 4) for i, v in enumerate(row)) + "\n")
     sys.stderr.write(f"[depth_profile] {sample}: {int(read.size)} positions, median depth {median:g}, "
                      f"{len(runs)} stretch(es) of {a.min_run}+ bp without reads"

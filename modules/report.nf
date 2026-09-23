@@ -213,7 +213,7 @@ process DEPTH_PROFILE {
         --gff ${gff} \\
         --reference ${refId} \\
         --window ${params.depth_window} \\
-        --min-dp ${params.consensus_min_dp} \\
+        --callable-dp ${params.allpos_min_cov} \\
         --out-prefix ${sampleId}.${refId}
     """
 
