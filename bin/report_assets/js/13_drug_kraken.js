@@ -301,7 +301,7 @@ var GCONV_V=[{k:'gene_conversion',lab:'gene conversion',c:'#2ea36b',r:0,
              {k:'coverage_shift',lab:'coverage shift',c:'#8b6fd6',r:3,
               tip:'the acceptor lost its reads to the donor over a run of sites. Consistent with a conversion longer than the library insert, and equally with a deletion. Not a conversion call'},
              {k:'reference_artifact',lab:'reference artifact',c:'#7a8794',r:4,
-              tip:'present in nearly every sample of the cohort. The reference being wrong here, or the aligner doing this to everybody, explains that more simply than the same conversion arising in every isolate. In a CLONAL cohort it may instead be shared ancestry, which recurrence alone cannot distinguish. Only a cohort can make this call at all'},
+              tip:'present in nearly every sample mapped to the same reference. The reference being wrong here, or the aligner doing this to everybody, explains that more simply than the same conversion arising in every isolate. In a CLONAL cohort it may instead be shared ancestry, which recurrence alone cannot distinguish. Only a cohort can make this call at all'},
              {k:'reciprocal_exchange',lab:'reciprocal exchange',c:'#c77d3a',r:6,
               tip:'the donor carries the ACCEPTOR\'s bases over the same stretch, so both copies changed. That is an exchange between them rather than one being overwritten, and gene conversion is non-reciprocal by definition'},
              {k:'reference_derived',lab:'reference derived',c:'#4a90b8',r:5,
@@ -442,7 +442,7 @@ function renderGconv(){
       '<div class="epitbl-wrap gcv-tablewrap"><table class="epitbl gcv-table"><thead><tr>'+
         th('s','Sample')+th('locus','Locus','','the acceptor locus and the donor its alleles came from')+th('verdict','Verdict')+
         th('bf','BF','gcv-num','log10 Bayes factor for a conversion tract over the best alternative: an independent substitution at the same sites, or reads that arrived from the donor. 3 is decisive')+
-        th('n_ev','Samples','gcv-num','how many samples of the cohort carry this event, and what fraction that is. One or two is a finding; nearly all of them means the reference or the aligner, not the isolates')+
+        th('n_ev','Samples','gcv-num','how many samples carry this event, and what fraction that is of the samples mapped to the same reference. One or two is a finding; nearly all of them means the reference or the aligner, not the isolates')+
         th('tract_af','Carried by','gcv-num','fraction of the reads that carry the tract. Below 1 means either a mixed infection or a third copy of the family contributing unconverted reads; nothing in short reads tells those apart. The model does not go below 20%, so a thinner share is shown as 20%: AF in is what the reads themselves carry')+
         th('mismap','Donor reads','gcv-num','fraction of reads at this locus the model had to assume came from the donor')+
         th('start','Tract','gcv-num','start position and length of the tract')+

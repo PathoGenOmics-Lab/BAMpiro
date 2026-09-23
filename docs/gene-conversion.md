@@ -136,8 +136,15 @@ the per-sample stage; there is nothing to turn on.
 same tract at the same coordinates in all fifty is not the same conversion happening fifty times:
 the reference carries the wrong base there, or the aligner puts the same reads in the same wrong
 place for everybody. Nothing inside a single sample tells those apart, because mismapped reads
-look identical either way. Events at or above `--gconv_ubiquitous` of the cohort are reported as
-`reference_artifact`.
+look identical either way. Events at or above `--gconv_ubiquitous` of the samples **mapped to the
+same reference** are reported as `reference_artifact`.
+
+The fraction is taken per reference because an event on one genome can only ever appear in the
+samples mapped to it. Taken over the whole cohort, a reference carrying 113 of 185 samples could
+never put an artefact above 61%, and the rule never fired. Samples marked `divergent_sample` (see
+below) count on neither side: they carry the donor's base at every paralogous locus by
+inheritance, so they would join every event on their reference and say nothing about how often
+the reference misleads.
 
 !!! warning "That is an inference from recurrence, not a proof"
 
@@ -345,9 +352,10 @@ before these checks is enough to correct a run.
 | `mismapping` | The locus is explained by a fitted fraction of reads arriving from the donor, with nothing left for a tract to account for |
 | `ambiguous` | Reported, but not called. The `reason` column says what came closest |
 | `coverage_shift` | The acceptor lost its reads to the donor over a run of sites: it falls well below its own level elsewhere AND the donor rises above its own. Consistent with a conversion longer than the library insert, and equally with a deletion. See below |
-| `reference_artifact` | Present in nearly every sample of the cohort. Only a cohort can say this |
+| `reference_artifact` | Present in nearly every sample mapped to the same reference. Only a cohort can say this |
 | `reference_derived` | An outgroup says the REFERENCE carries the derived base over this stretch and the reads carry the ancestral one. The sample changed nothing. Only an outgroup can say this |
 | `reciprocal_exchange` | The donor carries the ACCEPTOR's bases over the same stretch, so both copies changed. That is an exchange, and gene conversion is non-reciprocal |
+| `divergent_sample` | The SAMPLE calls tracts in more than `--max-locus-frac` (10%) of the stretches its reference reports anything in. Conversion is local; a sample converting that much at once is a different genotype from its reference (often a sample mapped to the wrong lineage), and none of its tracts is read as a conversion. Only a cohort can say this |
 
 A tract covering **every** diagnostic site of the locus is a special case that needs no special
 handling: "the whole locus was converted" and "every read here came from the donor" predict
@@ -394,10 +402,12 @@ cannot tell "nothing there" from "not written out".
 
     The pipeline always passes both. If you run `bin/gconv_cohort.py` yourself, pass `--loci` as
     well as `--tracts`, or state `--cohort-size`. The recurrence rule is a fraction of the samples
-    that were run, and a sample with a clean genome writes no tract row at all: counting only the
-    samples the tract files name turns an event in 5 of 8 into an event in 5 of 5 and demotes a
-    real conversion to `reference_artifact`. Given neither, the cohort size is unknown rather than
-    assumed, `event_frac` is left empty and no event is demoted.
+    mapped to the event's reference, and a sample with a clean genome writes no tract row at all:
+    counting only the samples the tract files name turns an event in 5 of 8 into an event in 5 of 5
+    and demotes a real conversion to `reference_artifact`. The per-locus files are also what say
+    which samples were mapped to which reference; `--cohort-size` counts the whole run against
+    every reference, which is right only when there is one. Given neither, the cohort size is
+    unknown rather than assumed, `event_frac` is left empty and no event is demoted.
 
 The cohort file `<samplesheet>_gene_conversion.tsv` is the same rows with the cohort columns
 appended. Columns: `sample`, `pair_id`, `contig`,
@@ -431,7 +441,7 @@ the donor/acceptor graph of your reference.
 | `--gconv_min_depth` | `5` | Depth below which a site is undetermined. A tract most of whose sites are undetermined is not called |
 | `--gconv_min_bq` | `13` | Base-quality floor when reading an allele off a read |
 | `--gconv_reciprocal_af` | `0.5` | Share of the DONOR's reads carrying the acceptor's bases at which the event is an exchange rather than a conversion |
-| `--gconv_ubiquitous` | `0.9` | Fraction of the cohort at which an event is a reference artifact |
+| `--gconv_ubiquitous` | `0.9` | Fraction of the samples mapped to the same reference at which an event is a reference artifact |
 | `--gconv_corroborated_bf` | `2.0` | Bayes factor a sub-threshold tract needs before another sample's outright call can vouch for it |
 | `--gconv_cohort_min_samples` | `5` | Cohort size below which recurrence says too little to act on |
 | `--gconv_donor_margin` | `1.0` | Evidence per marker the best donor must beat the next distinct one by before the source is called resolved |

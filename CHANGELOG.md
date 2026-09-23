@@ -24,10 +24,12 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
   it calls them in too many loci at once, since conversion is local and a diverged genotype
   carries the donor base at every paralogous locus by inheritance. The threshold is
   `--max-locus-frac`, default 0.1: on the cohort that surfaced this the mislabelled samples called
-  tracts in 20 to 39 percent of their loci and every correctly mapped sample in at most 8 percent.
-  It is counted in loci rather than rows, because one tract is emitted once per candidate donor,
-  and it takes precedence over the corroboration rule, which diverged samples would otherwise
-  satisfy by sharing their artefacts with each other at identical coordinates.
+  tracts in 16 to 29 percent of the stretches their reference reports anything in, and every
+  correctly mapped sample in at most 1 percent. It is counted in distinct stretches of the
+  acceptor rather than in rows or pairs, because one tract is emitted once per candidate donor
+  and a gene family reports one stretch through a pair per relative, and it takes precedence over
+  the corroboration rule, which diverged samples would otherwise satisfy by sharing their
+  artefacts with each other at identical coordinates.
 
 ### Fixed
 
@@ -47,6 +49,15 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
   the reads rather than the floor, and neither kind takes part in corroboration. The cohort pass
   applies the same check, so re-running only that step corrects a run. On that cohort the calls
   drop from 38 events to 4, two of them in the mixed cultures the QC also fails.
+
+- **The cohort's recurrence rule was measured against the wrong cohort.** It divided by every
+  sample in the run, so on a cohort mapped against two references an artefact of one could never
+  reach the 90% that marks a `reference_artifact`: 113 of 185 samples is 61%. It now divides by
+  the samples mapped to the same reference, leaving out the samples that are diverged from it.
+  The pooled locus statistics were keyed on the pair number alone, which pooled pair 61 of one
+  reference with pair 61 of the other; they are keyed on the contig as well. The reason on a
+  corroborated row quoted the Bayes factor as short of the threshold on rows at log10 BF 5.6 and a
+  threshold of 3; it now says what the row fell short of.
 
 - **Kraken counted runs and read species, so a clean cohort looked contaminated.** One report
   per run became one row per run, so 185 samples gave 225 rows, and a sample's "primary taxon"

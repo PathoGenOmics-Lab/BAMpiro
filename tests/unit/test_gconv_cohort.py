@@ -34,8 +34,8 @@ def tract(sample, pair="1", contig="chr", start=1000, end=1200, verdict="gene_co
     return row
 
 
-def locus(sample, pair="1", mismap="0.01", bf="1.0"):
-    return {"sample": sample, "pair_id": pair, "contig": "chr", "donor": "chr",
+def locus(sample, pair="1", mismap="0.01", bf="1.0", contig="chr"):
+    return {"sample": sample, "pair_id": pair, "contig": contig, "donor": contig,
             "log10_bf": bf, "mismap_frac": mismap, "mut_rate": "0.0003"}
 
 
@@ -458,6 +458,67 @@ def test_corroboration_says_what_the_sample_fell_short_of():
     assert out[1]["reason"].startswith("carried by 22% of the reads, under the 25% one sample "
                                        "needs on its own, but the same tract is called outright")
     assert "Bayes factor" not in out[1]["reason"]
+
+
+# ------------------------------------------------ the samples of one reference
+
+
+def test_an_event_in_every_sample_of_its_reference_is_the_reference():
+    """Measured against the whole cohort, an artefact of a reference carrying 113 of 185 samples
+    could never pass 61%, and the ubiquity rule never fired on a two-reference cohort."""
+    rows = [tract(f"A{i}", contig="refA") for i in range(10)]
+    loci = ([locus(f"A{i}", contig="refA") for i in range(10)]
+            + [locus(f"B{i}", contig="refB") for i in range(10)])
+
+    out, _ = gcc.annotate(rows, loci)
+
+    assert all(r["cohort_verdict"] == "reference_artifact" for r in out)
+    assert "10 of 10 samples mapped to this reference" in out[0]["reason"]
+    assert out[0]["event_frac"] == 1.0
+
+
+def test_the_same_pair_number_on_two_references_is_two_loci():
+    """Pair ids number one reference's paralog map, so pair 7 of one genome is not pair 7 of the
+    other, and pooling their mismapping rates described neither."""
+    loci = ([locus(f"A{i}", pair="7", mismap="0.30", contig="refA") for i in range(5)]
+            + [locus(f"B{i}", pair="7", mismap="0.01", contig="refB") for i in range(5)])
+    rows = [tract("A0", pair="7", contig="refA"), tract("B0", pair="7", contig="refB")]
+
+    out, _ = gcc.annotate(rows, loci)
+
+    assert out[0]["cohort_mismap"] == pytest.approx(0.30)
+    assert out[1]["cohort_mismap"] == pytest.approx(0.01)
+
+
+def _diverged_cohort():
+    """30 stretches with something reported, a sample calling tracts in ten of them (diverged
+    from its reference), and a real event at 500-600 in two clean samples and the diverged one."""
+    rows = [tract("F", pair=str(p), start=10_000 + 1_000 * p, end=10_000 + 1_000 * p + 50,
+                  verdict="ambiguous") for p in range(30)]
+    rows += [tract("D", pair=str(p), start=10_000 + 1_000 * p, end=10_000 + 1_000 * p + 50)
+             for p in range(10)]
+    rows += [tract(s, pair="99", start=500, end=600) for s in ("S1", "S2", "D")]
+    return rows
+
+
+def test_a_sample_diverged_from_its_reference_does_not_count_towards_an_event():
+    """It carries the donor's base at every paralogous locus by inheritance, so it would join
+    every event on its reference and say nothing about how often the reference misleads."""
+    out, _ = gcc.annotate(_diverged_cohort(), cohort(20))
+
+    event = [r for r in out if r["pair_id"] == "99"]
+    assert {r["cohort_verdict"] for r in event if r["sample"] == "D"} == {"divergent_sample"}
+    assert all(r["event_samples"] == 2 for r in event)
+
+
+def test_one_stretch_seen_through_many_relatives_is_one_locus():
+    """A gene family reports one converted stretch through a pair per relative. Counted in pairs,
+    one conversion seen through eleven relatives put a clean sample on the divergence threshold."""
+    rows = [tract("F", pair=str(p), start=10_000 + 1_000 * p, end=10_000 + 1_000 * p + 50,
+                  verdict="ambiguous") for p in range(100)]
+    rows += [tract("S", pair=str(p), start=500, end=600) for p in range(100, 112)]
+
+    assert gcc.divergent_samples(rows, 0.1, event_of=gcc.group_events(rows)) == {}
 
 
 # ------------------------------------------------------------- the background
