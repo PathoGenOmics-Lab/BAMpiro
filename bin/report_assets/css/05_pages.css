@@ -165,11 +165,11 @@ table.drmut td{text-align:left} table.drmut td.num,table.drmut th.num{text-align
 /* relatedness: distance heatmap, its controls and the distance histogram */
 .rel-ctl{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .rel-thr{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;color:var(--txt2)}
-.rel-thr input[type=number]{width:72px;padding:4px 6px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--txt)}
+.rel-thr input[type=number]{width:72px;padding:4px 6px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--ink)}
 .rel-wrap{overflow:auto;max-height:78vh;margin:6px 0}
 .rel-wrap canvas{display:block;cursor:crosshair}
-.rel-hist{display:flex;gap:6px;align-items:flex-end;margin:14px 0 4px;min-height:96px}
-.rel-bar{display:flex;flex-direction:column;align-items:center;flex:1;min-width:34px}
+.rel-hist{display:flex;gap:6px;align-items:flex-end;margin:14px 0 4px;min-height:96px;overflow-x:auto}
+.rel-bar{display:flex;flex-direction:column;align-items:center;flex:1;min-width:22px}
 .rel-bar i{display:block;width:70%;border-radius:3px 3px 0 0}
 .rel-bv{font-size:10px;color:var(--txt2)}
 .rel-bl{font-size:10px;color:var(--txt2);margin-top:3px;white-space:nowrap}

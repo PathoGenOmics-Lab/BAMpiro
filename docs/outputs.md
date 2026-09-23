@@ -101,6 +101,7 @@ apart; the matrix step warns when it sees one.
 
 `<samplesheet>_snp_distances.tsv` is the square matrix of SNPs between every two consensus
 sequences, `NA` between samples mapped against different references, which share no coordinates.
+A sample mapped against two references has a row and a column for each, named `sample@reference`.
 Two samples differ at a position only where both called a base (`A`, `C`, `G` or `T`) and the
 bases differ: a no-call, a masked position or an ambiguity code at a mixed site is never a
 difference, whichever sample it is in. These are the distances a tree built on the same

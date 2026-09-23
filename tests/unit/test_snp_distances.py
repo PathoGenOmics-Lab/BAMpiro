@@ -100,3 +100,34 @@ def test_the_matrix_is_symmetric_with_a_zero_diagonal(tmp_path):
     m = {r[0]: dict(zip(head, r[1:])) for r in square[1:]}
     assert all(m[s][s] == "0" for s in head)
     assert all(m[a][b] == m[b][a] for a in head for b in head)
+
+
+def test_a_sample_on_two_references_is_one_row_per_reference(tmp_path):
+    """Named once per reference, with each reference's distances in its own row and column."""
+    fasta(tmp_path / "A1.fa", "ACGTACGTAC", "A")
+    fasta(tmp_path / "B.fa", "ACGTACGTAA", "B")
+    fasta(tmp_path / "A2.fa", "TTTTTTTT", "A")
+    fasta(tmp_path / "C.fa", "TTTTTTTA", "C")
+    (tmp_path / "m.tsv").write_text("A\tR1\tA1.fa\nB\tR1\tB.fa\nA\tR2\tA2.fa\nC\tR2\tC.fa\n")
+
+    assert sd.main(["--manifest", str(tmp_path / "m.tsv"), "--dir", str(tmp_path),
+                    "-o", str(tmp_path / "sq.tsv")]) == 0
+
+    rows = [r.split("\t") for r in (tmp_path / "sq.tsv").read_text().splitlines()]
+    assert rows[0] == ["sample", "A@R1", "B", "A@R2", "C"]
+    m = {r[0]: dict(zip(rows[0][1:], r[1:])) for r in rows[1:]}
+    assert m["A@R1"]["B"] == "1" and m["A@R2"]["C"] == "1" and m["A@R1"]["C"] == "NA"
+
+
+def test_a_truncated_consensus_is_left_out_by_name_and_the_rest_compared(tmp_path, capsys):
+    fasta(tmp_path / "A.fa", "ACGTAC", "A")
+    fasta(tmp_path / "B.fa", "ACGTAA", "B")
+    fasta(tmp_path / "C.fa", "ACG", "C")
+    (tmp_path / "m.tsv").write_text("C\tR\tC.fa\nA\tR\tA.fa\nB\tR\tB.fa\n")
+
+    assert sd.main(["--manifest", str(tmp_path / "m.tsv"), "--dir", str(tmp_path),
+                    "-o", str(tmp_path / "sq.tsv"), "--pairs", str(tmp_path / "p.tsv")]) == 0
+
+    err = capsys.readouterr().err
+    assert "C: " in err and "left out" in err, "the short file, not the next one, is named"
+    assert (tmp_path / "p.tsv").read_text().splitlines()[1].split("\t")[:4] == ["A", "B", "R", "1"]

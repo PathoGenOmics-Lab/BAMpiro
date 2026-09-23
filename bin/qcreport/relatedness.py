@@ -18,12 +18,18 @@ three members, since with two there is no telling which one is out of place.
 """
 from __future__ import annotations
 
+import math
 import os
 
 
 def parse_pairs(path):
-    """{"ref": {sample: reference}, "variable": {reference: n}, "pairs": {(a, b): (snps, compared)}}."""
-    out = {"ref": {}, "variable": {}, "pairs": {}}
+    """{"refs": {reference: {samples}}, "variable": {reference: n},
+        "pairs": {(reference, a, b): (snps, compared)}}.
+
+    Keyed on the reference as well as the pair: a sample mapped against two references has a
+    distance to the same other sample on each, and they are different comparisons.
+    """
+    out = {"refs": {}, "variable": {}, "pairs": {}}
     if not path or not os.path.exists(path) or os.path.basename(path).startswith("NO_FILE"):
         return out
     try:
@@ -42,16 +48,26 @@ def parse_pairs(path):
                 except ValueError:
                     continue
                 a, b, ref = c[col["sample_a"]], c[col["sample_b"]], c[col["reference"]]
-                out["ref"][a] = out["ref"][b] = ref
+                out["refs"].setdefault(ref, set()).update((a, b))
                 out["variable"][ref] = var
-                out["pairs"][(a, b)] = (snps, comp)
+                out["pairs"][(ref, a, b)] = (snps, comp)
     except OSError:
         return out
     return out
 
 
-def _dist(pairs, a, b):
-    return pairs.get((a, b)) or pairs.get((b, a))
+def _dist(pairs, ref, a, b):
+    return pairs.get((ref, a, b)) or pairs.get((ref, b, a))
+
+
+def _share(comp, var):
+    """The share of the reference's variable positions a pair compared, in whole percent rounded
+    down, so the page never counts a pair the flag below leaves out (495 of 1000 is 49, not 50).
+    A reference with no variable position at all has samples identical wherever they were
+    called: every pair of them compared everything there was to compare."""
+    if not var:
+        return 100
+    return math.floor(100.0 * comp / var)
 
 
 def build_relatedness(dist, groups=None, threshold=12, min_compared=0.5):
@@ -62,22 +78,20 @@ def build_relatedness(dist, groups=None, threshold=12, min_compared=0.5):
     """
     if not dist["pairs"]:
         return None
-    by_ref = {}
-    for s, ref in dist["ref"].items():
-        by_ref.setdefault(ref, []).append(s)
-    refs = {}
-    for ref, samples in sorted(by_ref.items()):
-        samples.sort()
+    refs, present = {}, set()
+    for ref, members in sorted(dist["refs"].items()):
+        samples = sorted(members)
+        present.update(samples)
         var = dist["variable"].get(ref) or 0
         snps, cmp = [], []
         for i, a in enumerate(samples):
             for b in samples[i + 1:]:
-                d = _dist(dist["pairs"], a, b)
+                d = _dist(dist["pairs"], ref, a, b)
                 snps.append(d[0] if d else None)
-                cmp.append(round(100.0 * d[1] / var) if d and var else None)
+                cmp.append(_share(d[1], var) if d else None)
         refs[ref] = {"samples": samples, "variable": var, "snps": snps, "cmp": cmp}
     return {"threshold": threshold, "min_compared": min_compared, "refs": refs,
-            "group": {s: g for s, g in (groups or {}).items() if g and s in dist["ref"]}}
+            "group": {s: g for s, g in (groups or {}).items() if g and s in present}}
 
 
 def group_mismatches(dist, groups, threshold=12, min_compared=0.5):
@@ -90,42 +104,43 @@ def group_mismatches(dist, groups, threshold=12, min_compared=0.5):
     groupmate is further than `threshold`. The detail names that groupmate, and the nearest
     sample of any other group with its group (None when there is none on the reference).
     """
-    pairs, var = dist["pairs"], dist["variable"]
-    groups = {s: g for s, g in (groups or {}).items() if g and s in dist["ref"]}
+    pairs = dist["pairs"]
+    groups = {s: g for s, g in (groups or {}).items() if g}
     if not pairs or not groups:
         return {}
-
-    def ok(a, b):
-        d = _dist(pairs, a, b)
-        v = var.get(dist["ref"].get(a)) or 0
-        return d if d and v and d[1] >= min_compared * v else None
-
-    near_in, near_out = {}, {}
-    samples = sorted(dist["ref"])
-    for a in samples:
-        if a not in groups:
-            continue
-        for b in samples:
-            if b == a or dist["ref"].get(b) != dist["ref"].get(a):
-                continue
-            d = ok(a, b)
-            if not d:
-                continue
-            same = groups.get(b) == groups[a]
-            best = (near_in if same else near_out).get(a)
-            if best is None or d[0] < best[0]:
-                (near_in if same else near_out)[a] = (d[0], b)
-
-    by_group = {}
-    for s, (d, _) in near_in.items():
-        by_group.setdefault(groups[s], []).append(d)
-    tight = {g for g, ds in by_group.items() if len(ds) >= 3 and sorted(ds)[len(ds) // 2] <= threshold}
-
     out = {}
-    for s, (d_in, t_in) in near_in.items():
-        if groups[s] not in tight or d_in <= threshold:
-            continue
-        d_out, t_out = near_out.get(s, (None, None))
-        out[s] = {"g": groups[s], "din": d_in, "nin": t_in, "dout": d_out, "nout": t_out,
-                  "gout": groups.get(t_out, "") if t_out else ""}
+    for ref, members in sorted(dist["refs"].items()):
+        var = dist["variable"].get(ref) or 0
+        samples = sorted(members)
+
+        def ok(a, b):
+            d = _dist(pairs, ref, a, b)
+            return d if d and _share(d[1], var) >= 100 * min_compared else None
+
+        near_in, near_out = {}, {}
+        for a in samples:
+            if a not in groups:
+                continue
+            for b in samples:
+                if b == a:
+                    continue
+                d = ok(a, b)
+                if not d:
+                    continue
+                same = groups.get(b) == groups[a]
+                best = (near_in if same else near_out).get(a)
+                if best is None or d[0] < best[0]:
+                    (near_in if same else near_out)[a] = (d[0], b)
+
+        by_group = {}
+        for s, (d, _) in near_in.items():
+            by_group.setdefault(groups[s], []).append(d)
+        tight = {g for g, ds in by_group.items() if len(ds) >= 3 and sorted(ds)[len(ds) // 2] <= threshold}
+
+        for s, (d_in, t_in) in near_in.items():
+            if groups[s] not in tight or d_in <= threshold or s in out:
+                continue
+            d_out, t_out = near_out.get(s, (None, None))
+            out[s] = {"g": groups[s], "ref": ref, "din": d_in, "nin": t_in, "dout": d_out, "nout": t_out,
+                      "gout": groups.get(t_out, "") if t_out else ""}
     return out

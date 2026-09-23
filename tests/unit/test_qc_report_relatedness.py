@@ -13,11 +13,11 @@ from qcreport import relatedness as rel
 
 def dist(pairs, variable=100, ref="R"):
     """A parse_pairs() result from {(a, b): snps}, every pair comparing all variable positions."""
-    out = {"ref": {}, "variable": {ref: variable}, "pairs": {}}
+    out = {"refs": {}, "variable": {ref: variable}, "pairs": {}}
     for (a, b), v in pairs.items():
         snps, comp = v if isinstance(v, tuple) else (v, variable)
-        out["pairs"][(a, b)] = (snps, comp)
-        out["ref"][a] = out["ref"][b] = ref
+        out["pairs"][(ref, a, b)] = (snps, comp)
+        out["refs"].setdefault(ref, set()).update((a, b))
     return out
 
 
@@ -43,7 +43,7 @@ def test_a_sample_far_from_its_group_and_close_to_another_is_flagged():
     out = rel.group_mismatches(full(LINES, override=over), LINES, threshold=12)
 
     assert list(out) == ["a4"]
-    assert out["a4"] == {"g": "A", "din": 2000, "nin": "a1", "dout": 3, "nout": "b1", "gout": "B"}
+    assert out["a4"] == {"g": "A", "ref": "R", "din": 2000, "nin": "a1", "dout": 3, "nout": "b1", "gout": "B"}
 
 
 def test_a_sample_far_from_its_group_and_from_everyone_else_is_flagged_too():
@@ -90,11 +90,41 @@ def test_a_pair_resting_on_few_positions_does_not_count():
 def test_samples_of_another_reference_are_never_compared():
     d = full(LINES, override={("a1", "a4"): 2000, ("a2", "a4"): 2000, ("a3", "a4"): 2000,
                               ("a4", "b1"): 900, ("a4", "b2"): 900, ("a4", "b3"): 900})
-    d["ref"]["x"] = "OTHER"
-    d["pairs"][("a4", "x")] = (1, 100)
+    d["refs"]["OTHER"] = {"a4", "x"}
+    d["variable"]["OTHER"] = 100
+    d["pairs"][("OTHER", "a4", "x")] = (1, 100)
     groups = dict(LINES, x="B")
 
     assert rel.group_mismatches(d, groups)["a4"]["nout"] == "b1", "x is on another reference"
+
+
+def test_a_sample_on_two_references_keeps_both_sets_of_distances(tmp_path):
+    """A is mapped against R1 and R2: its distance to B on each is a separate comparison."""
+    p = tmp_path / "pairs.tsv"
+    p.write_text("sample_a\tsample_b\treference\tsnps\tcompared\tvariable_sites\n"
+                 "A\tB\tR1\t4\t90\t100\nA\tB\tR2\t40\t90\t100\nA\tC\tR2\t7\t88\t100\n")
+
+    sec = rel.build_relatedness(rel.parse_pairs(str(p)))
+
+    assert sec["refs"]["R1"]["samples"] == ["A", "B"] and sec["refs"]["R1"]["snps"] == [4]
+    assert sec["refs"]["R2"]["samples"] == ["A", "B", "C"] and sec["refs"]["R2"]["snps"] == [40, 7, None]
+
+
+def test_identical_samples_compared_everything_there_was():
+    """With no variable position at all, snp_distances writes compared 0 of 0: that is every
+    sample identical wherever it was called, not a pair that compared nothing."""
+    d = dist({("a", "b"): (0, 0)}, variable=0)
+
+    sec = rel.build_relatedness(d)
+
+    assert sec["refs"]["R"]["cmp"] == [100]
+
+
+def test_the_share_compared_is_rounded_down_like_the_flag_counts_it():
+    """495 of 1000 is under half: the page must not cluster a pair the flag leaves out."""
+    d = dist({("a", "b"): (1, 495)}, variable=1000)
+
+    assert rel.build_relatedness(d)["refs"]["R"]["cmp"] == [49]
 
 
 def test_parse_pairs_reads_the_distances_tsv(tmp_path):
@@ -104,15 +134,15 @@ def test_parse_pairs_reads_the_distances_tsv(tmp_path):
 
     d = rel.parse_pairs(str(p))
 
-    assert d["pairs"][("S1", "S2")] == (4, 90)
-    assert d["ref"] == {"S1": "R", "S2": "R", "S3": "R"} and d["variable"] == {"R": 100}
+    assert d["pairs"][("R", "S1", "S2")] == (4, 90)
+    assert d["refs"] == {"R": {"S1", "S2", "S3"}} and d["variable"] == {"R": 100}
 
 
 def test_parse_pairs_of_a_placeholder_is_empty(tmp_path):
     p = tmp_path / "NO_FILE_DISTANCES"
     p.write_text("")
 
-    assert rel.parse_pairs(str(p)) == {"ref": {}, "variable": {}, "pairs": {}}
+    assert rel.parse_pairs(str(p)) == {"refs": {}, "variable": {}, "pairs": {}}
 
 
 def test_build_relatedness_lays_out_each_references_upper_triangle():
@@ -127,4 +157,4 @@ def test_build_relatedness_lays_out_each_references_upper_triangle():
 
 
 def test_build_relatedness_without_distances_is_none():
-    assert rel.build_relatedness({"ref": {}, "variable": {}, "pairs": {}}) is None
+    assert rel.build_relatedness({"refs": {}, "variable": {}, "pairs": {}}) is None

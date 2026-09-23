@@ -8,7 +8,10 @@ gap as a difference. The consensus already carries every masking decision of the
 is why the distances are taken from it rather than from the VCFs.
 
 Only samples mapped against the same reference are compared: their consensus sequences share
-the reference's coordinates, and sequences of different references do not.
+the reference's coordinates, and sequences of different references do not. A sample mapped
+against two references appears once per reference, labelled sample@reference in the matrix.
+A consensus of another length than most of its reference's is left out with a warning naming it
+(a truncated file), rather than stopping every reference's distances.
 
 Two outputs:
   -o       square matrix, samples x samples, NA between samples of different references
@@ -27,6 +30,7 @@ import argparse
 import gzip
 import os
 import sys
+from collections import Counter
 
 import numpy as np
 
@@ -45,6 +49,17 @@ def read_fasta(path):
             chunks.append(line.strip())
     seq = "".join(chunks).upper().encode("ascii", "replace")
     return names, np.frombuffer(seq, dtype=np.uint8)
+
+
+def seq_length(path):
+    """The number of sequence characters in a FASTA, without building the sequence."""
+    op = gzip.open if str(path).endswith(".gz") else open
+    n = 0
+    with op(path, "rt", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if not line.startswith(">"):
+                n += len(line.strip())
+    return n
 
 
 def entries(args):
@@ -129,28 +144,41 @@ def main(argv=None):
             sys.stderr.write(f"[snp_distances] WARN {sample}: {path} not found\n")
             continue
         groups.setdefault(ref, []).append((sample, path))
-    samples = [s for ref in sorted(groups) for s, _ in groups[ref]]
-    index = {s: i for i, s in enumerate(samples)}
-    full = [["NA"] * len(samples) for _ in samples]
+    for ref, members in list(groups.items()):
+        lengths = [seq_length(p) for _, p in members]
+        usual = Counter(lengths).most_common(1)[0][0]
+        for (s, p), n in zip(members, lengths):
+            if n != usual:
+                sys.stderr.write(f"[snp_distances] WARN {s}: {p} is {n} bp where the other consensus "
+                                 f"sequences of {ref} have {usual}; left out\n")
+        groups[ref] = [m for m, n in zip(members, lengths) if n == usual]
+
+    # One matrix row per sample and reference; a sample on two references is named for each.
+    refs_of = Counter(s for members in groups.values() for s, _ in members)
+    labels = [(ref, s, f"{s}@{ref}" if refs_of[s] > 1 else s) for ref in sorted(groups) for s, _ in groups[ref]]
+    index = {(ref, s): i for i, (ref, s, _) in enumerate(labels)}
+    full = [["NA"] * len(labels) for _ in labels]
     rows = []
     for ref in sorted(groups):
         members = groups[ref]
+        if not members:
+            continue
         paths = [p for _, p in members]
         pos, length = variable_positions(paths)
         codes = codes_at(paths, pos)
         snps, compared = distances(codes)
         for i, (si, _) in enumerate(members):
             for j, (sj, _) in enumerate(members):
-                full[index[si]][index[sj]] = str(int(snps[i, j]))
+                full[index[(ref, si)]][index[(ref, sj)]] = str(int(snps[i, j]))
                 if j > i:
                     rows.append((si, sj, ref, int(snps[i, j]), int(compared[i, j]), len(pos)))
         sys.stderr.write(f"[snp_distances] {ref}: {len(members)} sample(s), {length} bp, "
                          f"{len(pos)} variable position(s)\n")
 
     with open(a.output, "w", encoding="utf-8") as fh:
-        fh.write("sample\t" + "\t".join(samples) + "\n")
-        for s in samples:
-            fh.write(s + "\t" + "\t".join(full[index[s]]) + "\n")
+        fh.write("sample\t" + "\t".join(lab for _, _, lab in labels) + "\n")
+        for i, (_, _, lab) in enumerate(labels):
+            fh.write(lab + "\t" + "\t".join(full[i]) + "\n")
     if a.pairs:
         with open(a.pairs, "w", encoding="utf-8") as fh:
             fh.write("sample_a\tsample_b\treference\tsnps\tcompared\tvariable_sites\n")
