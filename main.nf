@@ -292,5 +292,5 @@ Run Pathotypr    : ${params.run_pathotypr}
     // 11. Cohort-level outputs (QC report + master SNP matrix).
     COHORT_REPORT(legacy.legacy_log, consensus.fasta, refs.bundle, reads.kraken_reports,
                   typing.dr_mutations, annotated.stats_vcf, annotated.freebayes_vcf,
-                  gconv.cohort_tsv, refMap, refGffMap, tsv_name)
+                  variants.allpos, gconv.cohort_tsv, refMap, refGffMap, tsv_name)
 }

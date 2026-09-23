@@ -180,11 +180,19 @@ process QC_REPORT {
 process SNP_MATRIX {
     tag "SNP matrix"
     publishDir "${params.outdir}", mode: params.publish_mode
-    cpus 1
+    // Reading every sample's all-positions VCF is the cost: about a second and a half per
+    // 4.4 Mb genome, read in parallel.
+    cpus 4
     memory { 4.GB * task.attempt }
 
     input:
     path(vcfs)              // all per-sample annotated VCFs
+    // Every sample's all-positions VCF (may be empty). It has a record for each reference position,
+    // so a sample with no call at a site reads AF 0 at the depth it was read, where a blank also
+    // meant "never read". Staged in a folder of its own: with annotate_legacy_vcfs and
+    // annotate_main_vcf both off the VCFs above ARE these files, and one task cannot stage two
+    // inputs under one name.
+    path(depth_vcfs, stageAs: 'depth/*')
     val(reference)          // reference id the samples were mapped against
     val(basename)
 
@@ -194,9 +202,12 @@ process SNP_MATRIX {
     script:
     """
     set -euo pipefail
+    DEPTH_ARG=""; [ -n "${depth_vcfs}" ] && DEPTH_ARG="--depth-vcfs ${depth_vcfs}"
     python3 ${projectDir}/bin/build_snp_matrix.py \\
         --vcfs ${vcfs} \\
         --reference "${reference}" \\
+        \$DEPTH_ARG \\
+        --threads ${task.cpus} \\
         -o ${basename}_snp_matrix.tsv
     """
 

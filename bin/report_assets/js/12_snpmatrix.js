@@ -38,7 +38,7 @@ function renderSnpMatrix(){
     '<div class="snpmx-controls">'+
       '<input id="snpmxq" class="dyn-search" type="search" placeholder="filter by gene / position / amino acid...">'+
       '<label class="snpmx-toggle"><input type="checkbox" id="snpmxdp" checked> show depth</label>'+
-      '<button class="dyn-btn" id="snpmxdl" title="Download the full matrix (all samples) as a wide TSV">'+icon('download')+'download matrix (TSV)</button>'+
+      '<button class="dyn-btn" id="snpmxdl" title="Download the matrix as the report holds it (all samples, called cells only) as a wide TSV. The run&#39;s own snp_matrix.tsv also gives AF 0 and the depth where a sample was read without the allele">'+icon('download')+'download matrix (TSV)</button>'+
       '<button class="dyn-btn snpmx-allbtn" id="snpmxallbtn" style="display:none" title="Toggle between the top most-shared sites and a scrollable view of every site"></button>'+
       '<label class="dyn-zoom" title="Resize the matrix cells - drag to widen the columns"><span>'+icon('search','sort')+'&#8211;/+</span><input type="range" id="snpmxzoom" min="26" max="80" step="2" value="'+snpmxZoom+'"></label>'+
       '<span class="dyn-count" id="snpmxcount"></span></div>'+
@@ -73,7 +73,7 @@ function renderSnpMatrix(){
     function rowHTML(r){
       var lbl='<b>'+esc(r.gene||r.contig)+'</b>'+geneRvTag(r.gene)+' '+refPos(r.pos,r.pos_h37rv)+' '+esc(r.ref)+'&#8594;'+esc(r.alt)+(r.aa?(' <span class="snpmx-aa">'+aaDual(r.aa,r.aa_h37rv)+'</span>'):'');
       var cells=vi.map(function(i){var c=r.cells[i], s=samples[i];
-        if(!c) return '<td class="snpmx-cell snpmx-empty" title="'+esc(s)+' - not called"></td>';
+        if(!c) return '<td class="snpmx-cell snpmx-empty" title="'+esc(s)+' - no call here. The run&#39;s snp_matrix.tsv says whether it was read: AF 0 with the depth, or empty with no read"></td>';
         var afTxt=c[0].toFixed(2).replace(/^0/,'').replace(/^1\.00$/,'1');
         var dpTxt=(showDP&&c[1]!=null)?('<span class="snpmx-dp">'+c[1]+'</span>'):'';
         return '<td class="snpmx-cell'+(showDP?' wdp':'')+'" style="background:'+snpAfColor(c[0])+'" title="'+esc(s)+'  AF='+c[0].toFixed(3)+(c[1]!=null?('  DP='+c[1]):'')+'"><span class="snpmx-af">'+afTxt+'</span>'+dpTxt+'</td>';
