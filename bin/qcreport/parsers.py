@@ -13,6 +13,7 @@ are their only callers.
 """
 from __future__ import annotations
 
+import datetime
 import gzip
 import os
 import re
@@ -748,6 +749,14 @@ _DYN_TIME_RE   = re.compile(r'(passage|pase|timepoint|time_?point|^time$|^day$|d
 _DYN_GROUP_RE  = re.compile(r'(group|series|patient|host|subject|cluster|experiment|^line$|replicate|chain|pair|lineage_?id|donor|case|animal|^samples$)', re.I)
 _DOSE_RE       = re.compile(r'^(dose|dosis)$', re.I)                           # a numeric annotation -> a metric, not a categorical level
 _TX_RE         = re.compile(r'(treatment|tratamiento|regimen|therapy|^arm$)', re.I)   # the categorical column the dose x treatment test groups by
+# A column naming a sample's DNA extract, or the library it replicates. It ties technical
+# replicates together, not a patient or a line, so it is never read as the group even where its
+# name ('replicate_of') would match the group pattern.
+_TECHREP_RE    = re.compile(r'^(dna[_ ]?id|dna|extract(ion)?([_ ]?id)?|biosample([_ ]?id)?|specimen([_ ]?id)?|'
+                            r'isolate[_ ]?id|library[_ ]?of|replicate[_ ]?of|tech(nical)?[_ ]?rep(licate)?([_ ]?of)?)$', re.I)
+_BASELINE_RE   = re.compile(r'^(baseline|base|start|pre|initial|ancestor|ancestral)$', re.I)
+_ISO_DATE_RE   = re.compile(r'^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})')
+_DMY_DATE_RE   = re.compile(r'^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$')
 
 
 def _dyn_open(path):
@@ -755,10 +764,37 @@ def _dyn_open(path):
         else open(path, 'r', encoding='utf-8', errors='replace')
 
 
+def _day(y, mo, d):
+    try:
+        return float(datetime.date(y, mo, d).toordinal())
+    except ValueError:
+        return None
+
+
 def _dyn_num(x):
+    """A time value as a number that sorts in time order, or None when it has none.
+
+    A date becomes its day number: ISO year-month-day, or day/month/year, read as month/day/year
+    only when the day gives it away (03/15/2020). The first number of a date is the day, and
+    ordering by it put 03/06/2020 before 15/01/2020. A word for the start ('baseline', 'pre')
+    is time 0, which the first number of 'M3' or 'P6' comes after. Anything else is its first
+    number ('P3', 'day 14', 'week 2')."""
     if x is None:
         return None
-    m = re.search(r'-?\d+\.?\d*', str(x))
+    s = str(x).strip()
+    if not s:
+        return None
+    if _BASELINE_RE.match(s):
+        return 0.0
+    m = _ISO_DATE_RE.match(s)
+    if m:
+        return _day(*map(int, m.groups()))
+    m = _DMY_DATE_RE.match(s)
+    if m:
+        a, b, y = map(int, m.groups())
+        d, mo = (b, a) if (b > 12 and a <= 12) else (a, b)
+        return _day(y, mo, d)
+    m = re.search(r'-?\d+\.?\d*', s)
     return float(m.group()) if m else None
 
 
@@ -806,7 +842,8 @@ def parse_sample_meta(path):
     # tag the time / group columns (dynamics axes) and the treatment column (dose x treatment test)
     # so the report can route each correctly; they all stay as SNP-matrix header levels either way.
     time_field = next((h for _, h in fields if _DYN_TIME_RE.search(h.replace(' ', '_'))), None)
-    group_field = next((h for _, h in fields if _DYN_GROUP_RE.search(h.replace(' ', '_'))), None)
+    group_field = next((h for _, h in fields if _DYN_GROUP_RE.search(h.replace(' ', '_'))
+                        and not _TECHREP_RE.match(h.strip())), None)
     tx_field = next((h for _, h in fields if _TX_RE.search(h.replace(' ', '_'))), None)
     return {'fields': [h for _, h in fields], 'rows': out,
             'time_field': time_field, 'group_field': group_field, 'tx_field': tx_field}
@@ -904,13 +941,13 @@ def parse_metadata(path):
         return {}
     if not header:
         return {}
-    def find(rx):
+    def find(rx, skip=None):
         for i, h in enumerate(header):
-            if rx.search(h.replace(' ', '_')):
+            if rx.search(h.replace(' ', '_')) and not (skip and skip.match(h.strip())):
                 return i
         return None
     si = next((i for i, h in enumerate(header) if _DYN_SAMPLE_RE.match(h.strip())), 0)
-    ti, gi = find(_DYN_TIME_RE), find(_DYN_GROUP_RE)
+    ti, gi = find(_DYN_TIME_RE), find(_DYN_GROUP_RE, skip=_TECHREP_RE)
     out = {}
     for r in rows:
         if si >= len(r):

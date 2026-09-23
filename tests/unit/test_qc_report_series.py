@@ -120,3 +120,39 @@ def test_read_matrix_cells_reads_only_what_is_needed(tmp_path):
     cells = ser.read_matrix_cells(str(p), {"c:10": {"p0"}, "c:20": {"p0"}})
 
     assert cells == {("c:10", "p0"): (0.0, 40), ("c:20", "p0"): (None, 0)}
+
+
+def test_a_failed_or_swapped_first_sample_is_not_the_start():
+    """A swapped first time point lacks the line's SNPs and carries its own: read against it,
+    every later sample 'gains' the line and 'loses' the stranger."""
+    m = meta(bad=("L", 0), p3=("L", 3), p6=("L", 6), p9=("L", 9))
+    line = {f"c:{i}": var(1.0) for i in range(5)}
+    variants = {"bad": {"c:900": var(1.0)}, "p3": dict(line), "p6": dict(line, **{"c:50": var(1.0)}),
+                "p9": dict(line, **{"c:50": var(1.0)})}
+
+    g = ser.build_series(m, variants, {("c:50", "p3"): (0.0, 40)}, excluded={"bad"})["groups"][0]
+
+    assert g["base"] == ["p3"]
+    assert [r["s"] for r in g["rows"]] == ["p6", "p9"], "the excluded first sample is not a row either"
+    assert g["rows"][0]["new"] == ["c:50"]
+
+
+def test_a_sample_whose_time_cannot_be_read_has_no_place_in_the_series():
+    m = meta(a=("L", 0), b=("L", 3))
+    m["x"] = {"group": "L", "time": "", "tnum": None}
+    variants = {"a": {}, "b": {}, "x": {"c:1": var(1.0)}}
+
+    g = ser.build_series(m, variants, {})["groups"][0]
+
+    assert [r["s"] for r in g["rows"]] == ["b"]
+
+
+def test_a_site_read_at_exactly_the_consensus_minimum_is_not_read():
+    """The consensus leaves a site uncalled at --consensus_min_dp reads or fewer."""
+    variants = {"p0": {}, "p3": {"c:10": var(1.0)}, "p6": {}}
+
+    at, above = (ser.build_series(M, variants, {("c:10", "p0"): (0.0, dp)}, min_dp=7)["groups"][0]["rows"][0]
+                 for dp in (7, 8))
+
+    assert (at["new"], at["unknown"]) == ([], 1)
+    assert above["new"] == ["c:10"]

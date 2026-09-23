@@ -231,3 +231,19 @@ describe("findGconv", () => {
     assert.deepEqual(host(g.failSamples), ["C"], "B shares chr:1 with a kept sample");
   });
 });
+
+describe("seriesGainSummary, what the series gained since their first time point", () => {
+  it("summarises series without the samples the chart leaves out, and with a true median", () => {
+    const row = (s, time, n) => ({ s, time, tnum: +time, new: Array(n).fill("c:1"), risen: [], unknown: 0, lost: [] });
+    const rep = report([sample("a1", "L7"), sample("a2", "L7"), sample("bad", "L7", {}, { v: "WARN", f: ["LINEAGE_MISMATCH"] }),
+                        sample("b1", "L7")], {
+      series: { checked: true, groups: [
+        { group: "A", rows: [row("a1", "6", 0), row("a2", "6", 10), row("bad", "9", 2462)] },
+        { group: "B", rows: [row("b1", "6", 3)] },
+      ] },
+    });
+    const g = host(load(["seriesGainSummary", "serOutside"], rep).seriesGainSummary());
+    assert.equal(g.max, 5, "A's last counted time point is 6, median of 0 and 10");
+    assert.equal(g.median, 4, "the median of 5 and 3");
+  });
+});

@@ -166,18 +166,22 @@ function findResistance(){
     link:{href:'#drug',t:'See every mutation'},note:'WHO catalogue grades 1&#8211;2, called from the reads. A genomic screen, not a drug-susceptibility result.',short:shortTxt};
 }
 // Per series, the fixed SNPs gained by its last time point: the median across series and the most.
+// Samples the QC fails or places outside their series are left out, as the chart leaves them out.
 function seriesGainSummary(){var S=R.series;if(!(S&&S.groups&&S.groups.length))return null;
-  var last=S.groups.map(function(g){var r=g.rows[g.rows.length-1];return {g:g.group,n:r?r['new'].length+r.risen.length:0};});
-  var ns=last.map(function(x){return x.n;}).sort(function(a,b){return a-b;}),top=last.slice().sort(function(a,b){return b.n-a.n;})[0];
-  return {median:ns[Math.floor(ns.length/2)],max:top.n,top:top.g,checked:S.checked};}
+  var last=[];S.groups.forEach(function(g){var kept=g.rows.filter(function(r){return !serOutside(r.s);});
+    if(!kept.length)return;var t=kept[kept.length-1].time,at=kept.filter(function(r){return r.time===t;});
+    last.push({g:g.group,n:_median(at.map(function(r){return r['new'].length+r.risen.length;}))});});
+  if(!last.length)return null;
+  var top=last.slice().sort(function(a,b){return b.n-a.n;})[0];
+  return {median:_median(last.map(function(x){return x.n;})),max:top.n,top:top.g,checked:S.checked};}
 function findDynamics(){
   var d=dynSummary(); if(!d)return null;
   var head='<b>'+d.sweep.length+'</b> '+_plural(d.sweep.length,'allele','alleles')+' swept toward fixation and <b>'+d.rise+'</b> rose, across '+d.nSeries+' series';
   var body=[];
   if(d.parallel.length)body.push('Rising in two or more independent series: '+_list(d.parallel.map(function(x){return '<b>'+esc(x.gene)+'</b> ('+x.n+')';}),5)+'.');
   body.push('Out of '+d.n.toLocaleString('en-US')+' trajectories; '+d.fall+' declined.');
-  var sg=seriesGainSummary(); if(sg)body.push('By its last time point a series had gained a median of <b>'+sg.median+'</b> fixed '+_plural(sg.median,'SNP','SNPs')+
-    ' since its first'+(sg.max>sg.median?(', up to '+sg.max+' in '+esc(sg.top)):'')+(sg.checked?'':' (the start not checked for depth)')+'.');
+  var sg=seriesGainSummary(); if(sg)body.push('By its last time point a series had gained a median of <b>'+sg.median.toLocaleString('en-US')+'</b> fixed '+_plural(sg.median,'SNP','SNPs')+
+    ' since its first'+(sg.max>sg.median?(', up to '+sg.max.toLocaleString('en-US')+' in '+esc(sg.top)):'')+(sg.checked?'':' (the start not checked for depth)')+'.');
   return {k:'dyn',eyebrow:'Variants over time',tone:'',head:head,body:body.join(' '),
     link:{href:'#dynamics',t:'Open the trajectories'},note:'A screen of allele-frequency trajectories, not a selection test: drift and linked passengers move too.',
     short:d.sweep.length?d.sweep.length+' '+_plural(d.sweep.length,'allele','alleles')+' swept toward fixation.':''};

@@ -731,10 +731,33 @@ def test_dyn_opos_without_a_complete_original_coordinate_is_none(info):
 
 
 @pytest.mark.parametrize(("value", "expected"), [
-    ("P3", 3.0), ("passage 12", 12.0), ("-2.5", -2.5), (7, 7.0), ("7.", 7.0), ("2025-01-15", 2025.0),
+    ("P3", 3.0), ("passage 12", 12.0), ("-2.5", -2.5), (7, 7.0), ("7.", 7.0), ("M6", 6.0),
 ])
 def test_dyn_num_extracts_the_first_number_it_finds(value, expected):
     assert qc_parsers._dyn_num(value) == pytest.approx(expected)
+
+
+def test_dyn_num_orders_dates_by_the_whole_date():
+    """The first number of a day-first date is the day: 03/06/2020 came before 15/01/2020."""
+    order = ["15/01/2020", "03/06/2020", "2020-07-01", "02/13/2021", "2021-03-01"]
+
+    assert sorted(order, key=qc_parsers._dyn_num) == order
+
+
+def test_dyn_num_puts_the_baseline_first():
+    """'baseline', M3, M6: taken by their first number the baseline had none and came last."""
+    assert qc_parsers._dyn_num("baseline") == 0.0
+    assert sorted(["M6", "baseline", "M3"], key=qc_parsers._dyn_num) == ["baseline", "M3", "M6"]
+
+
+def test_a_dna_extract_column_is_never_read_as_the_group(tmp_path):
+    """'replicate_of' matches the group pattern, but it ties libraries of one DNA together."""
+    p = tmp_path / "meta.tsv"
+    p.write_text("sample\treplicate_of\tpatient\ttimepoint\nA\tA\tP1\t0\nB\tA\tP1\t3\n")
+
+    meta = qc_parsers.parse_metadata(str(p))
+
+    assert meta["B"]["group"] == "P1"
 
 
 @pytest.mark.parametrize("value", [None, "", "abc", "NA"])

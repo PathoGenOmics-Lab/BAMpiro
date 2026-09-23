@@ -12,7 +12,13 @@ read against the series' first time point:
 
 Telling 'absent' from 'not read' needs the depth of the sites a sample has no call at, which is
 what the SNP matrix holds. Without it every site not called at the start counts as new, and the
-section says so rather than passing that off as checked.
+section says so rather than passing that off as checked. A site counts as read above
+--consensus_min_dp reads, where the consensus stops leaving it uncalled.
+
+The first time point is the earliest one with a sample the QC keeps and places in its series:
+a failed or swapped first sample would make every later sample look as if it had gained
+everything that sample lacks. A sample whose time cannot be read as a number has no place in
+the series and is left out of it.
 """
 from __future__ import annotations
 
@@ -27,27 +33,32 @@ def _order(meta, samples):
                                           str(meta[s].get("time") or "")))
 
 
-def series_groups(meta, variants):
-    """{group: (ordered samples, first-time-point samples)} for groups with two or more times."""
+def series_groups(meta, variants, excluded=()):
+    """{group: (samples from the first time point on, in time order; first-time-point samples)}
+    for groups with two or more times among the samples not `excluded`."""
     groups = {}
     for s, md in (meta or {}).items():
         if md.get("group") and s in variants:
             groups.setdefault(md["group"], []).append(s)
     out = {}
     for g, samples in groups.items():
-        samples = _order(meta, samples)
-        times = [meta[s].get("time") for s in samples]
+        timed = [s for s in samples if meta[s].get("tnum") is not None]
+        samples = _order(meta, timed if timed else samples)
+        kept = [s for s in samples if s not in excluded]
+        times = [meta[s].get("time") for s in kept]
         if len(set(times)) < 2:
             continue
-        out[g] = (samples, [s for s in samples if meta[s].get("time") == times[0]])
+        base = [s for s in kept if meta[s].get("time") == times[0]]
+        start = samples.index(base[0])
+        out[g] = ([s for s in samples[start:] if s in base or meta[s].get("time") != times[0]], base)
     return out
 
 
-def needed_cells(meta, variants, fixed=FIXED):
+def needed_cells(meta, variants, fixed=FIXED, excluded=()):
     """{site: {samples}} whose matrix cells the comparison reads: the first time point at every
     site a later sample carries fixed, and every later sample at the sites fixed at the start."""
     need = {}
-    for samples, base in series_groups(meta, variants).values():
+    for samples, base in series_groups(meta, variants, excluded).values():
         later = [s for s in samples if s not in base]
         for s in later:
             for site, v in variants[s].items():
@@ -104,15 +115,17 @@ def _state(site, sample, variants, cells, min_dp, fixed):
         return "fixed" if af >= fixed else "minority"
     if dp is None:
         return "unchecked"
-    return "absent" if dp >= min_dp else "unread"
+    return "absent" if dp > min_dp else "unread"
 
 
 _RANK = ("fixed", "minority", "absent", "unread", "unchecked")
 
 
-def build_series(meta, variants, cells, sample_meta=None, min_dp=7, fixed=FIXED, checked=True):
-    """The payload section, or None without a series of two or more time points."""
-    groups = series_groups(meta, variants)
+def build_series(meta, variants, cells, sample_meta=None, min_dp=7, fixed=FIXED, checked=True,
+                 excluded=()):
+    """The payload section, or None without a series of two or more time points. `excluded`
+    are the samples that cannot be a series' first time point (failed, or placed outside it)."""
+    groups = series_groups(meta, variants, excluded)
     if not groups:
         return None
     tx = (sample_meta or {}).get("tx_field")

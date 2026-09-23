@@ -349,11 +349,16 @@ def build_payload(args, thr, anc_thr):
     rep_col, rep_val, rep_reads = replicate_sets(args.metadata)
     rep_pairs, rep_shared = (replicate_pairs(rep_val, rep_reads, set(_variants), ref_of)
                              if rep_col else ([], 0))
-    _need = needed_cells(series_meta, _variants)
+    # A sample the QC fails or places outside its series (another lineage, far from its group)
+    # cannot be the first time point every later one is read against.
+    not_in_series = {s["s"] for s in jsamples
+                     if s["v"] == "FAIL" or {"GROUP_MISMATCH", "LINEAGE_MISMATCH"} & set(s["f"])}
+    _need = needed_cells(series_meta, _variants, excluded=not_in_series)
     for site, who in replicate_cells(rep_pairs, _variants).items():
         _need.setdefault(site, set()).update(who)
     _cells = read_matrix_cells(args.snp_matrix, _need) if matrix_ok else {}
-    _series = build_series(series_meta, _variants, _cells, _sample_meta, args.min_dp, checked=matrix_ok)
+    _series = build_series(series_meta, _variants, _cells, _sample_meta, args.min_dp, checked=matrix_ok,
+                           excluded=not_in_series)
     _minority = build_minority(_variants, rep_pairs, rep_shared, _cells, rep_col, args.min_dp, checked=matrix_ok)
     _dynamics = build_dynamics(series_meta, _variants, _sample_meta)   # feeds dynamics + epistasis
     # front-load 'dose' so it survives the correlation matrix's top-N view
