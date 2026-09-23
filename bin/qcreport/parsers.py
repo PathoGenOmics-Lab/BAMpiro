@@ -611,23 +611,38 @@ def parse_kraken(paths):
     return {"samples": out, "target": tgt}
 
 
+# Values that stand for "nothing here", written into a GFF as though they were data: a GFF built from a
+# table writes pandas' NaN as `nan`, and one real reference carries `Name=nan` on 3,001 of its 3,989 CDS.
+# Read as a name, every one of them was one gene called nan, so the landscape drew 988 genes of 3,989 and
+# the rest could not be found. The gene-conversion annotation already reads them as absent.
+_GFF_ABSENT = {"", ".", "-", "na", "nan", "none", "null", "n/a", "unknown"}
+
+
 def _gff_attr(attrs, key):
-    """Value of GFF3 attribute `key` from the column-9 string, or None when absent. The key is matched
-    WHOLE against each ';'-separated field (a substring search would read 'locus_tag' out of
-    'old_locus_tag' and 'gene' out of 'pseudogene', both legal GFF3 and routine in RefSeq/Prokka).
-    Only the first '=' splits, so a value that itself contains '=' survives."""
+    """Value of GFF3 attribute `key` from the column-9 string, or None when absent or a placeholder for
+    absent (nan, NA, '.'...), so a cascade of keys falls through to the next. The key is matched WHOLE
+    against each ';'-separated field (a substring search would read 'locus_tag' out of 'old_locus_tag' and
+    'gene' out of 'pseudogene', both legal GFF3 and routine in RefSeq/Prokka). Only the first '=' splits,
+    so a value that itself contains '=' survives."""
     for field in attrs.split(";"):
         k, sep, v = field.partition("=")
         if sep and k.strip() == key:
-            return v.strip()
+            v = v.strip()
+            return None if v.lower() in _GFF_ABSENT else v
     return None
 
 
-def parse_gff(path):
-    """Best-effort GFF3 parse of gene/CDS features -> [{name, start, end}] (1-based). Empty on any problem."""
+def gff_features(path):
+    """[(contig, name, start, end)] of the genes of a GFF3, 1-based inclusive; [] on any problem.
+
+    One entry per gene. A CDS stands in only where the file gives no gene for it: an annotator that writes
+    only CDS (Prokka). A CDS whose Parent is a gene of the file is that gene's, as in every RefSeq GFF, where
+    it would otherwise come back as a second gene named after its protein (NP_214515.1 beside dnaA); a gene
+    and a CDS of the same name that overlap are one gene too, the gene's span kept, while namesakes apart
+    are two genes. A name written as a placeholder (nan, NA) falls through to the locus tag or the ID."""
     if not path or not os.path.exists(path):
         return []
-    genes = {}
+    feats, gene_ids = {}, set()
     try:
         op = gzip.open if str(path).endswith(".gz") else open
         with op(path, "rt", encoding="utf-8", errors="replace") as fh:
@@ -647,12 +662,24 @@ def parse_gff(path):
                     if name is not None:
                         break
                 name = name or f"{start}-{end}"
-                # prefer a 'gene' feature over a 'CDS' of the same name
-                if name not in genes or (c[2] == "gene" and genes[name].get("type") != "gene"):
-                    genes[name] = {"name": name, "start": start, "end": end, "type": c[2]}
+                if c[2] == "gene" and _gff_attr(c[8], "ID"):
+                    gene_ids.add(_gff_attr(c[8], "ID"))
+                same = feats.setdefault((c[0], name), [])
+                hit = next((i for i, f in enumerate(same) if f[2] <= end and start <= f[3]), None)
+                if hit is None:
+                    same.append((c[0], name, start, end, c[2], _gff_attr(c[8], "Parent") or ""))
+                elif c[2] == "gene" and same[hit][4] != "gene":
+                    same[hit] = (c[0], name, start, end, "gene", "")
     except (OSError, ValueError):
         return []
-    return sorted(({"name": g["name"], "start": g["start"], "end": g["end"]} for g in genes.values()),
+    return [f[:4] for same in feats.values() for f in same
+            if not (f[4] == "CDS" and any(p in gene_ids for p in f[5].split(",") if p))]   # its gene stands for it
+
+
+def parse_gff(path):
+    """Best-effort GFF3 parse of genes -> [{name, start, end}] (1-based), in position order; see
+    gff_features for what counts as one gene. Empty on any problem."""
+    return sorted(({"name": n, "start": s, "end": e} for _, n, s, e in gff_features(path)),
                   key=lambda g: g["start"])
 
 
