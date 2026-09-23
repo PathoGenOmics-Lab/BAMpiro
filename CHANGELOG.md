@@ -8,6 +8,18 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Added
 
+- **What each series gained since its first time point.** For every samplesheet group followed
+  over time (a patient, a passage line), the report lists the SNPs each later sample carries
+  fixed that the group's first time point did not: *new* where that first time point was read at
+  the site without the allele, *risen* where it held the allele as a minority, *unknown* where it
+  was not read there, and *lost* for those fixed at the start and read without the allele later.
+  The depth comes from the SNP matrix, which the report now reads, so a site the start never read
+  is not counted as new. A chart follows each series through the median of each time point,
+  coloured by treatment, and leaves out the samples the QC fails or places outside their series.
+  On the *Resistance* page, each series' grade 1-2 mutations are laid out per time point with
+  those acquired since the start set apart: on the cohort that motivated it, the bedaquiline
+  lines of one lineage acquire atpE E61D and I66M at passages 18 and 19.
+
 - **How close the samples are to each other.** A new step, `SNP_DISTANCES`, counts the SNPs
   between every two consensus sequences over the positions both called, so a no-call, a masked
   position or a mixed site is never a difference: the distances a tree built on the same

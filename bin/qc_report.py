@@ -36,6 +36,7 @@ from qcreport.parsers import (NBINS, clean_str, consensus_stats, mapdamage_stats
                               parse_kraken, parse_lineage_colors, parse_metadata, parse_pnps, parse_profile,
                               parse_sample_meta, parse_summary, parse_vcfs, to_float)
 from qcreport.relatedness import build_relatedness, group_mismatches, parse_pairs
+from qcreport.series import build_series, needed_cells, read_matrix_cells
 from qcreport.render import REPO_URL, SECTION_INFO, build_html
 
 
@@ -105,6 +106,13 @@ def build_parser():
     ap.add_argument("--cluster-snps", type=int, default=12,
                     help="SNPs within which two samples are drawn as one cluster, and beyond which a "
                          "sample is far from its group. The report can move it live.")
+    ap.add_argument("--snp-matrix", default=None,
+                    help="The master SNP matrix TSV (build_snp_matrix.py with --depth-vcfs) -> what each "
+                         "series gained since its first time point, telling a site absent there from one "
+                         "not read (optional).")
+    ap.add_argument("--min-dp", type=int, default=7,
+                    help="Depth a site needs before a sample without a call there counts as lacking the "
+                         "allele (--consensus_min_dp).")
     ap.add_argument("--gate", action="store_true")
     return ap
 
@@ -320,6 +328,12 @@ def build_payload(args, thr, anc_thr):
 
     _variants = load_variants(args)
     _sample_meta = parse_sample_meta(args.metadata)   # shared by the dynamics filter and the SNP matrix header
+    # What each series gained since its first time point. The matrix is read only at the cells the
+    # comparison needs, and without it a site not called at the start cannot be told from one not read.
+    matrix_ok = bool(args.snp_matrix and os.path.exists(args.snp_matrix)
+                     and not os.path.basename(args.snp_matrix).startswith("NO_FILE"))
+    _cells = read_matrix_cells(args.snp_matrix, needed_cells(series_meta, _variants)) if matrix_ok else {}
+    _series = build_series(series_meta, _variants, _cells, _sample_meta, args.min_dp, checked=matrix_ok)
     _dynamics = build_dynamics(series_meta, _variants, _sample_meta)   # feeds dynamics + epistasis
     # front-load 'dose' so it survives the correlation matrix's top-N view
     dist_keys = (["dose"] + DIST) if dose_map else DIST
@@ -345,6 +359,7 @@ def build_payload(args, thr, anc_thr):
                "snp_matrix": build_snp_matrix(_variants, provenance.get('reference', '')),
                "coverage": coverage,
                "relatedness": build_relatedness(distances, groups, args.cluster_snps),
+               "series": _series,
                "sample_meta": _sample_meta,
                "metrics": [{"key": k, "label": l, "kind": kind, "dir": d} for k, l, kind, d in METRICS],
                "extra": extra_metrics,

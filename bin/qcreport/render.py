@@ -48,7 +48,7 @@ _JS_MODULES = [
     "js/01_prelude.js", "js/02_qcspace.js", "js/03_state.js", "js/04_helpers.js",
     "js/05_insights_qc.js", "js/06_insights_genome.js", "js/07_render_core.js", "js/07b_summary.js",
     "js/08_curation.js", "js/09_genome_genes.js", "js/09b_coverage.js", "js/09c_relatedness.js",
-    "js/10_dynamics.js",
+    "js/10_dynamics.js", "js/10b_series.js",
     "js/11_epistasis.js",
     "js/12_snpmatrix.js", "js/13_drug_kraken.js", "js/14_boot.js",
 ]
@@ -110,6 +110,16 @@ SECTION_INFO = {
               "in a stretch the sample has no reads for while other samples read it; 'SNPs / kb' divides "
               "the SNPs of a bin by the positions deep enough to call, so a half-read bin does not look "
               "half as variable.",
+    "gains": "For every group of the samplesheet followed over time (a patient, a passage line), the SNPs "
+             "each later sample carries fixed (allele fraction 0.9 or more) that the group's first time "
+             "point did not. 'New' needs the first time point to have been read at the site without the "
+             "allele, which the SNP matrix's depth says; where it was not read the SNP is 'unknown' rather "
+             "than new. 'Lost' is the other way round: fixed at the start, read and absent later. SNPs "
+             "only, from the variant calls.",
+    "drseries": "The resistance mutations (WHO grade 1-2, from pathotypr) at every time point of every "
+                "series, with those acquired since the first time point set apart and those no longer "
+                "called crossed out. Answers when resistance appears along a series and whether it "
+                "persists. A genomic screen, not a drug-susceptibility result.",
     "reldist": "Pairwise SNP distances between the consensus sequences, counted over the positions both "
                "samples called: a gap, a masked position or a mixed site is never a difference, as in a "
                "tree built on the same sequences. Samples are ordered so that every single-linkage "

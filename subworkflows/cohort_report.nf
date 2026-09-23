@@ -36,7 +36,15 @@ workflow COHORT_REPORT {
                       .collect().ifEmpty([])
     def ref_name = refMap.keySet().join(',')
 
-    // 11a. Consolidated QC report: aggregate every per-sample legacy log into one summary TSV, then
+    // 11a. Master SNP matrix: rows = SNP sites, columns = reference/annotation + per-sample AF & depth.
+    // The all-positions VCFs say what a sample's reads show at a site it has no call at. Built before
+    // the report, which reads it to tell a site absent at a series' first time point from one not read.
+    def snp_matrix = asBool(params.make_snp_matrix)
+        ? SNP_MATRIX(report_vcfs, allpos_vcf.map { sId, rId, vcf, tbi -> vcf }.collect().ifEmpty([]),
+                     ref_name, tsv_name).matrix
+        : file("${projectDir}/assets/NO_FILE_MATRIX")
+
+    // 11b. Consolidated QC report: aggregate every per-sample legacy log into one summary TSV, then
     // render the self-contained interactive HTML + PASS/WARN/FAIL flags.
     if (asBool(params.make_qc_report)) {
         def all_logs = legacy_log.collect()
@@ -103,9 +111,9 @@ workflow COHORT_REPORT {
                                   .mix(depth.genes.map { sId, rId, genes -> [genes] })
                                   .flatten().collect().ifEmpty([])
         // Pairwise SNP distances between the consensus sequences. The manifest names each file's sample
-        // and reference, so neither has to be read back out of a file name.
-        // Without consensus sequences SNP_DISTANCES never runs, and ifEmpty hands the report the
-        // placeholder instead of leaving it waiting for an input that never comes.
+        // and reference, so neither has to be read back out of a file name. Without consensus sequences
+        // SNP_DISTANCES never runs, and ifEmpty hands the report the placeholder instead of leaving it
+        // waiting for an input that never comes.
         def snp_dist = asBool(params.make_snp_distances)
             ? SNP_DISTANCES(masked_consensus.map { sId, rId, fa -> "${sId}\t${rId}\t${fa.name}" }
                                             .collectFile(name: 'consensus_manifest.tsv', newLine: true),
@@ -114,13 +122,7 @@ workflow COHORT_REPORT {
             : file("${projectDir}/assets/NO_FILE_DISTANCES")
         QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gff, report_mask,
                   report_meta, report_vcfs, report_vcfs_h37rv, pos_liftover, dr_report, report_gconv,
-                  report_kraken, depth_profiles, snp_dist, provenance, tsv_name)
+                  report_kraken, depth_profiles, snp_dist, snp_matrix, provenance, tsv_name)
     }
 
-    // 11b. Master SNP matrix: rows = SNP sites, columns = reference/annotation + per-sample AF & depth.
-    // The all-positions VCFs say what a sample's reads show at a site it has no call at.
-    if (asBool(params.make_snp_matrix)) {
-        def depth_vcfs = allpos_vcf.map { sId, rId, vcf, tbi -> vcf }.collect().ifEmpty([])
-        SNP_MATRIX(report_vcfs, depth_vcfs, ref_name, tsv_name)
-    }
 }

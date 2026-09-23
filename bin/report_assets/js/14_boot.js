@@ -7,8 +7,8 @@ var PAGE_RENDER={
   qc:function(){renderOverview();renderFlags();renderCuration();renderTable();renderLineages();renderKraken();renderPlots();renderADNA();},
   genome:function(){renderStacks();renderGenome();renderDeletions();renderFunction();renderGeneBurden();renderHotspots();renderPnps();},
   related:function(){renderRelatedness();},
-  variants:function(){renderDynamics();renderEpistasis();renderSnpMatrix();renderVarDose();},
-  drug:function(){renderDrug();},
+  variants:function(){renderSeries();renderDynamics();renderEpistasis();renderSnpMatrix();renderVarDose();},
+  drug:function(){renderDrug();renderDrSeries();},
   gconv:function(){renderGconv();},
   diag:function(){renderScatter();renderCorr();renderQCspace();renderRefBias();renderDoseTx();renderTemporal();}};
 var curPage='summary', pageDirty={};
@@ -207,6 +207,8 @@ function genomeResetZoom(){st.gsel=null;st.gzoom=null;st.geneMark=null;var gg=el
     var rd=el('gselreadout');if(rd)rd.innerHTML='gene <b>'+esc(g.name)+'</b> &middot; '+fmtpos(g.start)+' - '+fmtpos(g.end)+' <button class="btn" id="gselclear" style="padding:2px 8px;font-size:11px">reset zoom</button>';
     var cb=el('gselclear');if(cb)cb.onclick=function(ev){ev.stopPropagation();genomeResetZoom();};};})();
 if(!R.samples.some(function(s){return s.miss||s.trk;})){var gs=el('genome');if(gs)gs.style.display='none';var ng=el('nav-genome');if(ng)ng.style.display='none';}
+if(!(R.series&&R.series.groups&&R.series.groups.length)){['gains','nav-gains','drseries','nav-drseries'].forEach(function(id){var x=el(id);if(x)x.style.display='none';});}
+else if(!(R.dr&&R.dr.calls&&R.dr.calls.length)){['drseries','nav-drseries'].forEach(function(id){var x=el(id);if(x)x.style.display='none';});}
 if(!relSec()){['reldist','relclus','relgroup','nav-reldist','nav-relclus','nav-relgroup'].forEach(function(id){var x=el(id);if(x)x.style.display='none';});}
 if(!(R.coverage&&R.coverage.regions)){var dlx=el('deletions');if(dlx)dlx.style.display='none';var ndlx=el('nav-del');if(ndlx)ndlx.style.display='none';}
 if(!R.samples.some(function(s){return s.trk&&s.trk.snp;})){var hsx=el('hotspots');if(hsx)hsx.style.display='none';var nhx=el('nav-hot');if(nhx)nhx.style.display='none';}

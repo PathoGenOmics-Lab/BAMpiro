@@ -126,6 +126,7 @@ process QC_REPORT {
     path(kraken_reports)    // per-sample Kraken2 .report files -> Taxonomic composition panel (may be empty)
     path(depth_profiles, stageAs: 'depth/*')   // per-sample DEPTH_PROFILE tables -> deletions + SNPs per callable kb (may be empty)
     path(snp_distances)     // SNP_DISTANCES pairs TSV -> relatedness page + GROUP_MISMATCH flag (may be NO_FILE)
+    path(snp_matrix)        // SNP_MATRIX TSV -> what each series gained since its first time point (may be NO_FILE)
     val(provenance)         // pre-quoted provenance tokens (container=..., reference=...)
     val(basename)
 
@@ -154,13 +155,15 @@ process QC_REPORT {
     KRK_ARG=""; [ -n "${kraken_reports}" ] && KRK_ARG="--kraken ${kraken_reports}"
     DEL_ARG=""; [ -n "${depth_profiles}" ] && DEL_ARG="--depth-profiles ${depth_profiles} --out-deletions ${basename}_deletions.tsv"
     DIST_ARG=""; case "${snp_distances}" in ""|NO_FILE*) ;; *) [ -s "${snp_distances}" ] && DIST_ARG="--snp-distances ${snp_distances}";; esac
+    MX_ARG="";  case "${snp_matrix}" in ""|NO_FILE*) ;; *) [ -s "${snp_matrix}" ] && MX_ARG="--snp-matrix ${snp_matrix}";; esac
     python3 ${projectDir}/bin/qc_report.py \\
         --summary ${summary} \\
         ${cons_arg} \\
         --gene-burden ${gene_burden} \\
         --gff ${gff} \\
-        \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$PL_ARG \$DR_ARG \$GC_ARG \$KRK_ARG \$DEL_ARG \$DIST_ARG \\
+        \$MASK_ARG \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$PL_ARG \$DR_ARG \$GC_ARG \$KRK_ARG \$DEL_ARG \$DIST_ARG \$MX_ARG \\
         --cluster-snps ${params.snp_cluster_threshold} \\
+        --min-dp ${params.consensus_min_dp} \\
         --deletion-min-len ${params.deletion_min_len} \\
         --deletion-min-depth ${params.report_depth_min} \\
         --aa2-label "${params.canonical_label}" \\

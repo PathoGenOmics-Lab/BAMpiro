@@ -174,3 +174,11 @@ table.drmut td{text-align:left} table.drmut td.num,table.drmut th.num{text-align
 .rel-bv{font-size:10px;color:var(--txt2)}
 .rel-bl{font-size:10px;color:var(--txt2);margin-top:3px;white-space:nowrap}
 .rel-chip{display:inline-block;padding:1px 6px;margin:1px 0;border-radius:5px;background:var(--soft);font-size:11.5px}
+/* series: gains chart, and resistance mutations per time point */
+.ser-chart{overflow-x:auto}
+.ser-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.ser-tp{margin:2px 0}
+.ser-mut{display:inline-block;padding:1px 6px;margin:1px 0;border-radius:5px;background:var(--soft);font-size:11.5px}
+.ser-mut.acq{background:rgba(220,38,38,.12);font-weight:600}
+.ser-mut.lost{text-decoration:line-through;opacity:.7}
+.ser-tbl td{vertical-align:top}
