@@ -321,11 +321,16 @@ process DUMP_VERSIONS {
     '''
     # Provenance: record the exact tool versions from the (pinned) container plus the
     # pipeline/Nextflow versions, so every run documents its own software environment.
+    # A container run as the invoking user (the docker profile) has HOME=/, which it cannot write:
+    # genmap then prints a mkdir error where its version goes.
+    [ -w "${HOME:-/}" ] || export HOME="$PWD"
+
     ver() {
-        # $1 = label, $2 = prefix to strip, rest = version command
+        # $1 = label, $2 = prefix to strip, rest = version command. The first line that carries a
+        # version number, not the first line: bwa-mem2 opens with the SIMD build it launches.
         local raw line
         raw=$("${@:3}" 2>&1) || raw=""
-        line=$(head -n1 <<< "$raw")
+        line=$(grep -m1 -E '[0-9]+\.[0-9]+' <<< "$raw" || true)
         if [ -n "$2" ]; then line=${line#"$2"}; fi
         line=${line#"${line%%[![:space:]]*}"}   # trim leading whitespace
         echo "$1: ${line:-NA}"

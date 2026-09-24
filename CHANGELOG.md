@@ -122,6 +122,12 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Fixed
 
+- **Two tools had a message recorded as their version.** `pipeline_info/software_versions.txt`
+  took the first line each tool prints, and bwa-mem2 opens with the SIMD build it launches, so
+  `Looking to launch executable ...` stood where its version should be. Under the `docker` profile
+  genmap could not write to its home directory and the error took its place. The file now takes the
+  first line that carries a version number, and the step gets a home it can write to.
+
 - **The report left out every SNP FreeBayes wrote as an MNP.** Two changes of one codon on the same
   reads come out of FreeBayes as one record (CAC>GAG), and the report read only single-base records,
   so those SNPs were in the master SNP matrix and in no table of the report: not in the variant
