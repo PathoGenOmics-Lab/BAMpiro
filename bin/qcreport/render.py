@@ -178,8 +178,8 @@ SECTION_INFO = {
     "snpmatrix": "Every SNP site (rows) by sample (columns); each cell is the allele frequency with its depth, "
                  "plus a reference column and samplesheet metadata as column-header levels. Filter by gene / "
                  "position or by metadata, and download the full matrix as a TSV. A SNP that shares its codon "
-                 "with another one on the same reads carries a 'codon' badge: the amino-acid change is the codon "
-                 "read whole (get_MNV), not the one it names alone, and its cells are outlined. The Indels view "
+                 "with another one on the same reads carries a 'codon' badge: the amino-acid change of the codon "
+                 "read whole on the reads that carry it (get_MNV), and its cells are outlined. The Indels view "
                  "holds every indel a sample calls with a PASS, with its length, a frameshift marked, and HGVS; "
                  "a hatched cell is a call below the rule SNPs are held to, kept because a minority indel starts "
                  "that way.",

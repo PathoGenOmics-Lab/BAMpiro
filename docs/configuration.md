@@ -90,14 +90,14 @@ table below.
 ## Example configs
 
 Two documented, ready-to-use **organism** configs live in
-[`conf/`](https://github.com/PathoGenOmics-Lab/BAMpiro/tree/indel-mask/conf) - apply either with `-c`.
+[`conf/`](https://github.com/PathoGenOmics-Lab/BAMpiro/tree/main/conf) - apply either with `-c`.
 (The same directory also holds `garnatxa.config`, the **site** config behind
 `-profile garnatxa`, and the `test*` configs behind `-profile test`.)
 
 === "M. tuberculosis (default)"
 
     BAMpiro's built-in defaults are already TB-tuned, so a plain run is a valid TB run.
-    [`conf/tuberculosis.config`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/indel-mask/conf/tuberculosis.config)
+    [`conf/tuberculosis.config`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/main/conf/tuberculosis.config)
     additionally turns on the **full recommended MTBC feature set** - lineage +
     drug-resistance typing, dual H37Rv amino-acid numbering, the H37Rv coordinate
     liftover, and blind-spot masking (all bundled in the container):
@@ -113,7 +113,7 @@ Two documented, ready-to-use **organism** configs live in
     BAMpiro is organism-agnostic, but its defaults are TB-tuned (diploid calling for
     mixed infections + the MTBC-only features). Add the built-in **`generic`** profile,
     which sets **ploidy 1** and forces the MTBC-only features off, and copy the commented
-    template [`conf/organism.config`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/indel-mask/conf/organism.config)
+    template [`conf/organism.config`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/main/conf/organism.config)
     for the rest (Kraken DB, a canonical numbering, gate thresholds):
 
     ```bash

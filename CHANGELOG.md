@@ -121,6 +121,15 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 - **The outputs page said the main VCF held indels.** `<sample>.<ref>.ann.vcf.gz` holds SNPs, one
   record per base; the indels are in `<sample>.<ref>.indels.ann.vcf.gz` (see Added).
 
+- **The docs linked to a branch that no longer exists.** Eight links, and every page's *Edit this
+  page* button, pointed at `indel-mask`, merged and deleted since: they led nowhere. They now point
+  at `main`.
+
+- **Under the `docker` profile, the tools had no home they could write to.** The container runs as
+  the invoking user, who has no home in the image, so `HOME` was `/` and read-only: genmap, MultiQC
+  and Java could not keep their settings, and genmap's version was recorded as a `mkdir` error. The
+  profile now sets `HOME=/tmp`.
+
 - **The Garnatxa launcher asked for a branch that no longer exists.** `conf/garnatxa.sbatch` ran
   `feat/gene-conversion`, deleted once it was merged, which Nextflow can no longer pull. It now
   runs `main`, pulled again on every launch (`-latest`): without that, Nextflow runs the copy it

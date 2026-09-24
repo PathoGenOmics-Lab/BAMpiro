@@ -72,5 +72,5 @@ variant-calling and lineage / drug-resistance typing pipeline.
 
 </div>
 
-See the [Changelog](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/indel-mask/CHANGELOG.md)
+See the [Changelog](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/main/CHANGELOG.md)
 for the version history.
