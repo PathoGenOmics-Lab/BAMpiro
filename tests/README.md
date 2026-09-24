@@ -93,14 +93,16 @@ genome with five genes, and three samples read at 100x.
 | `S2` | paired-end | Fixed SNPs; two SNPs of one codon on the same reads (His>Glu, where each base alone says Asp or Gln); a fixed frameshift insertion; a SNP in one copy of a repeat, which must not be called |
 | `S3` | paired-end, a mixture | Fixed SNPs and a lost 1.5 kb stretch holding a gene, which must be its private deletion. At 25%, a SNP, a codon change whose first base alone says a stop (`MNV-masked`) and a frameshift deletion. At 30% and 25%, two SNPs of one codon on different molecules, which must not be merged into a codon change |
 
-The run is checked for the SNP matrix holding exactly the planted SNPs with their fractions and
-protein changes, the codon-level table and its marks in the SNP matrix, the indel matrix with
-each call's fraction and filter, the consensus (fixed SNPs written, minorities never written as a
-base, the repeat masked, the lost stretch uncalled), the SNP distances (11, 9 and 10), the
-deletions table, the report's own copy of the matrices, and the recorded tool versions.
-`truth.json` beside the reads spells the expectations out.
+The run is checked for each sample's main VCF holding exactly the SNPs planted in it, each
+annotated base by base; the SNP matrix holding them with their fractions and protein changes; the
+codon-level table and its marks in the SNP matrix; the indel matrix with each call's fraction and
+filter; the consensus (fixed SNPs written, minorities never written as a base, the repeat masked,
+the lost stretch uncalled); the SNP distances (11, 9 and 10); the deletions table; the report's
+own copy of the matrices; and the recorded tool versions. `truth.json` beside the reads spells the
+expectations out.
 
-It takes minutes and pulls about 1.3 GB of images, so it runs only when asked: `BAMPIRO_E2E=1`
+The whole run takes about two and a half minutes on a GitHub runner, but it pulls about 1.3 GB of
+images and needs Docker, so it runs only when asked: `BAMPIRO_E2E=1`
 for pytest, the `e2e` target for `run_tests.sh`. `BAMPIRO_E2E_DIR` keeps the cohort, results,
 trace and Nextflow log in a directory of your choice; CI uploads that directory as the `e2e-run`
 artifact when the job fails.
