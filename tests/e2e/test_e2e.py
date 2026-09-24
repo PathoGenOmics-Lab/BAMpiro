@@ -92,10 +92,11 @@ def e2e(nextflow, nextflow_env, tmp_path_factory):
     output = result.stdout + result.stderr
     (base / "nextflow.stdout").write_text(output)
     if result.returncode != 0:
-        # From Nextflow's own account of the failure (the process, its cause, the command), when there is one.
-        at = output.find("ERROR ~")
+        # From Nextflow's own account of the failure: a script that does not compile ("Error <file>:<line>")
+        # or a process that failed ("ERROR ~", then its cause and command), whichever comes first.
+        m = re.search(r"^(ERROR ~|Error )", output, re.M)
         pytest.fail(f"the pipeline failed (exit {result.returncode}):\n"
-                    + (output[at:at + 6000] if at >= 0 else output[-6000:]))
+                    + (output[m.start():m.start() + 6000] if m else output[-6000:]))
     return Run(base, out, truth, trace)
 
 
