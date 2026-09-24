@@ -11,7 +11,7 @@ the results with `pandas` / `matplotlib`** → the interactive QC report.
   ```
 
 The analysis cells are **fully runnable** against the small example cohort in
-[`example_outputs/`](https://github.com/PathoGenOmics-Lab/BAMpiro/tree/indel-mask/docs/tutorial/example_outputs)
+[`example_outputs/`](https://github.com/PathoGenOmics-Lab/BAMpiro/tree/main/docs/tutorial/example_outputs)
 (17 samples, real pipeline-format TSVs — cohort summary, QC flags, drug-resistance
 calls, SNP matrix, samplesheet metadata), so you can
 follow the whole analysis without running the pipeline first. Point the same code at

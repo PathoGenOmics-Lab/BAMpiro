@@ -65,7 +65,7 @@ Binds are therefore per-site, like the queue names and the way Singularity is pr
 
 === "Garnatxa (I2SysBio)"
 
-    Nothing to write. `-profile garnatxa` applies [`conf/garnatxa.config`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/indel-mask/conf/garnatxa.config), which already carries that cluster's bind paths, its `--qos` per step, `module load singularity`, the shared Kraken2 database, a reusable mappability cache and a work directory on scratch:
+    Nothing to write. `-profile garnatxa` applies [`conf/garnatxa.config`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/main/conf/garnatxa.config), which already carries that cluster's bind paths, its `--qos` per step, `module load singularity`, the shared Kraken2 database, a reusable mappability cache and a work directory on scratch:
 
     ```bash
     nextflow run main.nf --tsv samples.tsv --outdir results -profile garnatxa
@@ -169,7 +169,7 @@ BAMpiro is organism-agnostic; only its *defaults* are TB-tuned (diploid calling 
 nextflow run main.nf --tsv samples.tsv --outdir results -profile local,docker,generic
 ```
 
-The `generic` profile sets `freebayes_ploidy 1` (a clonal bacterium is haploid) and forces the *M. tuberculosis*-specific features off. The report's TB-only panels (lineage, drug resistance) simply self-hide when there's no such data. The commented template [`conf/organism.config`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/indel-mask/conf/organism.config) covers the rest.
+The `generic` profile sets `freebayes_ploidy 1` (a clonal bacterium is haploid) and forces the *M. tuberculosis*-specific features off. The report's TB-only panels (lineage, drug resistance) simply self-hide when there's no such data. The commented template [`conf/organism.config`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/main/conf/organism.config) covers the rest.
 
 !!! tip "Not working with TB?"
 
@@ -191,7 +191,7 @@ nextflow run main.nf --tsv samples.tsv --outdir results -profile local,docker \
 
 !!! tip "Or use the ready-made TB config"
 
-    [`conf/tuberculosis.config`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/indel-mask/conf/tuberculosis.config) bundles those two plus the H37Rv coordinate liftover (`--variant_liftover`) and blind-spot masking (`--mask_blindspots`). Apply it with `-c conf/tuberculosis.config`.
+    [`conf/tuberculosis.config`](https://github.com/PathoGenOmics-Lab/BAMpiro/blob/main/conf/tuberculosis.config) bundles those two plus the H37Rv coordinate liftover (`--variant_liftover`) and blind-spot masking (`--mask_blindspots`). Apply it with `-c conf/tuberculosis.config`.
 
 ## 5. A word on the QC gate
 

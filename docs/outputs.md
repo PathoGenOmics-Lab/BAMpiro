@@ -111,8 +111,14 @@ With the codon-level table (`--run_mnv`, on by default) two columns follow `aa_c
 `codon_change`, the amino-acid change of every codon the SNP is part of together with another SNP
 on the same reads, and `codon_change_samples`, the samples whose reads carry it and the fraction
 that does, as `His445Glu=S1:0.99,S2:1.00` (codons separated by `;`). Both are empty for a SNP that
-stands alone, and neither column is written by a run without the table. Where they are filled,
-`aa_change` is what the SNP names alone, which is not the change the codon undergoes.
+stands alone, and neither column is written by a run without the table.
+
+`aa_change` is the annotation of the record the SNP was called in. By default the matrix reads
+FreeBayes' annotated raw VCF, where changes a few bases apart on the same reads are one record
+annotated as the codon they make, so there `aa_change` already names the codon's change (CAC>GAG,
+His445Glu, on both bases). With `--annotate_legacy_vcfs false` it reads the main VCF, split into
+bases before annotation, and `aa_change` is the change each base names alone. `codon_change` is read
+on the reads either way, with how many of them carry it.
 
 ## Indel matrix
 
