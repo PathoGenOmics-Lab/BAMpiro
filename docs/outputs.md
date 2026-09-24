@@ -55,7 +55,7 @@ results_bampiro/
     │
     ├── mnv/                                # 🧩 Codon-level changes (get_MNV; only if --run_mnv, on by default)
     │   ├── MP00091.LENS.MNV.tsv            # -> One row per codon holding a call: the codon read whole, its reads
-    │   ├── MP00091.LENS.MNV.vcf.gz(.tbi)   # -> The same as VCF: a record per SNP and one per MNV (INFO/MR = its reads)
+    │   ├── MP00091.LENS.MNV.vcf.gz         # -> The same as VCF: a record per SNP and one per MNV (INFO/MR = its reads; bgzipped, not indexed)
     │   └── MP00091.LENS.mnv.summary.json / .manifest.json   # -> Counts, command, version and checksums of the run
     │
     ├── lineage/                            # 🧬 Pathotypr typing (only if --run_pathotypr)
