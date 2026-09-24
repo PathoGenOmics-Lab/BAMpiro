@@ -25,7 +25,9 @@ process GET_MNV {
 
     output:
     tuple val(sampleId), val(refId), path("${sampleId}.${refId}.MNV.tsv"), emit: tsv
-    tuple val(sampleId), val(refId), path("${sampleId}.${refId}.MNV.vcf.gz"), path("${sampleId}.${refId}.MNV.vcf.gz.tbi"), emit: vcf
+    // BGZF-compressed but not indexed: get_MNV indexes with tabix, which its image does not carry
+    // (`tabix -p vcf` indexes the file as it is).
+    tuple val(sampleId), val(refId), path("${sampleId}.${refId}.MNV.vcf.gz"), emit: vcf
     path("${sampleId}.${refId}.mnv.summary.json"),  emit: summary
     path("${sampleId}.${refId}.mnv.manifest.json"), emit: manifest
 
@@ -47,7 +49,7 @@ process GET_MNV {
     get_mnv --vcf ${sampleId}.${refId}.vcf.gz --bam ${bam} --fasta ${ref_fa} --gff \$GFF \\
         --gff-features ${params.mnv_gff_features} --translation-table ${params.mnv_translation_table} \\
         --quality ${params.freebayes_min_base_qual} --min-mapq ${params.freebayes_min_map_qual} \\
-        --threads ${task.cpus} --both --vcf-gz --index-vcf-gz \\
+        --threads ${task.cpus} --both --vcf-gz \\
         --summary-json ${sampleId}.${refId}.mnv.summary.json \\
         --run-manifest ${sampleId}.${refId}.mnv.manifest.json
     """
@@ -56,7 +58,6 @@ process GET_MNV {
     """
     touch ${sampleId}.${refId}.MNV.tsv
     touch ${sampleId}.${refId}.MNV.vcf.gz
-    touch ${sampleId}.${refId}.MNV.vcf.gz.tbi
     touch ${sampleId}.${refId}.mnv.summary.json
     touch ${sampleId}.${refId}.mnv.manifest.json
     """
