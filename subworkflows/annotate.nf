@@ -6,6 +6,7 @@
 */
 
 include { ANNOTATE_LEGACY_VCF; ANNOTATE_MAIN_VCF } from '../modules/annotation'
+include { ANNOTATE_LEGACY_VCF as ANNOTATE_INDELS } from '../modules/annotation'
 include { asBool } from '../modules/utils'
 
 workflow ANNOTATE {
@@ -14,6 +15,8 @@ workflow ANNOTATE {
     homo_snp     // (sId, rId, var.homo.SNPs.vcf)
     het_snp      // (sId, rId, var.het.SNPs.vcf)
     homo_indel   // (sId, rId, var.homo.indel.vcf)
+    het_indel    // (sId, rId, var.het.indel.vcf)
+    indels       // (sId, rId, indels.vcf.gz, tbi): every indel call, PASS or LowSupport
     raw_fb       // (sId, rId, freebayes.raw.vcf.gz, tbi)
     main_vcf     // (sId, rId, vcf.gz, tbi)
     allpos_vcf   // (sId, rId, all.pos.vcf.gz, tbi)
@@ -29,6 +32,7 @@ workflow ANNOTATE {
             .mix(homo_snp.map   { sId, rId, vcf -> tuple(rId, sId, "var.homo.SNPs", vcf) })
             .mix(het_snp.map    { sId, rId, vcf -> tuple(rId, sId, "var.het.SNPs", vcf) })
             .mix(homo_indel.map { sId, rId, vcf -> tuple(rId, sId, "var.homo.indel", vcf) })
+            .mix(het_indel.map  { sId, rId, vcf -> tuple(rId, sId, "var.het.indel", vcf) })
             .mix(raw_fb.map     { sId, rId, vcf, tbi -> tuple(rId, sId, "freebayes.raw", vcf) })
 
         def ann_leg_in = leg_inputs.combine(snpeff_db, by: 0)
@@ -45,8 +49,14 @@ workflow ANNOTATE {
     // Annotate Main VCF
     def vcf_for_stats = Channel.empty()
     def ch_snpeff_stats = Channel.empty()
+    // The indels: annotated beside the main VCF (their gene, effect and HGVS), as they are otherwise
+    def indels_out = indels.map { sId, rId, vcf, tbi -> tuple(sId, rId, vcf) }
 
     if (asBool(params.annotate_main_vcf)) {
+        def ann_ind = ANNOTATE_INDELS(indels.map { sId, rId, vcf, tbi -> tuple(rId, sId, "indels", vcf) }
+                                            .combine(snpeff_db, by: 0)
+                                            .map { rId, sId, lbl, vcf, cfg, dat -> tuple(sId, rId, lbl, vcf, cfg, dat) })
+        indels_out = ann_ind.out.map { sId, rId, vcf, tbi -> tuple(sId, rId, vcf) }
         def main_pre = main_vcf.map { sId, rId, vcf, tbi -> tuple(rId, sId, vcf, tbi) }
         def ann_main_in = main_pre.combine(snpeff_db, by: 0)
             .map { rId, sId, vcf, tbi, cfg, dat -> tuple(sId, rId, vcf, tbi, cfg, dat) }
@@ -63,4 +73,5 @@ workflow ANNOTATE {
     freebayes_vcf = freebayes_ann     // annotated freebayes.raw; empty when annotate_legacy_vcfs is off
     stats_vcf     = vcf_for_stats     // (sId, rId, vcf) feeding the legacy stats and the cohort report
     snpeff_stats  = ch_snpeff_stats   // SnpEff CSV for MultiQC; empty when annotate_main_vcf is off
+    indels_vcf    = indels_out        // (sId, rId, indels(.ann).vcf.gz) feeding the indel matrix
 }

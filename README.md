@@ -45,6 +45,7 @@ tuberculosis* but is **organism-agnostic** - point it at any reference genome + 
 - Alignment-free MTBC lineage + WHO drug-resistance typing ([Pathotypr](docs/pathotypr.md))
 - A self-contained, interactive [HTML QC report](docs/qc-report.md) with 21 panels
 - Dual amino-acid numbering (used reference + H37Rv / Mycobrowser)
+- Indels and codon-level (MNV) amino-acid changes, phased on the reads
 - One digest-pinned container with every tool and marker panel built in
 
 ## Features
@@ -54,6 +55,7 @@ tuberculosis* but is **organism-agnostic** - point it at any reference genome + 
 | 🧬 Any bacterial genome | Reference-agnostic mapping + variant calling; TB-tuned defaults, works on any species |
 | 🧹 Repeat & mappability masking | `nucmer` repeat exclusion plus a length-aware `genmap` read filter |
 | 🧪 Variants & backbone | `FreeBayes` (ploidy 1/2) + "all-sites" VCFs for phylogenetic supermatrices |
+| 🧩 Indels & codon-level changes | Every indel with the call rules a SNP has (PASS or LowSupport) + an indel matrix; SNPs of one codon read whole on the reads that carry them ([get_MNV](https://github.com/PathoGenOmics-Lab/get_MNV)) |
 | 🩺 Lineage & drug resistance | Alignment-free MTBC lineage + WHO DR typing ([Pathotypr](docs/pathotypr.md)), reference-agnostic |
 | 📊 Interactive QC report | Self-contained HTML dashboard, [21 panels](docs/qc-report.md) + per-sample `qc_flags.tsv` |
 | 🔤 Dual amino-acid numbering | Protein changes in both the used reference and H37Rv/Mycobrowser numbering |

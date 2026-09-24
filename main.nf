@@ -16,6 +16,7 @@ include { READ_QC }            from './subworkflows/read_qc'              // 2-3
 include { LINEAGE_TYPING }     from './subworkflows/lineage_typing'       // 4. Pathotypr
 include { MAP_READS }          from './subworkflows/map_reads'            // 5. Mapping, merge, read filter
 include { CALL_VARIANTS }      from './subworkflows/call_variants'        // 6. Variant calling
+include { CODON_CHANGES }      from './subworkflows/codon_changes'        // 6b. Codon-level changes (get_MNV)
 include { MAKE_CONSENSUS }     from './subworkflows/make_consensus'       // 7. Consensus
 include { ANNOTATE }           from './subworkflows/annotate'             // 8. Annotation
 include { LEGACY_STATS }       from './subworkflows/legacy_stats'         // 9. Legacy stats
@@ -267,6 +268,9 @@ Run Pathotypr    : ${params.run_pathotypr}
     // 6. Variant Calling
     def variants = CALL_VARIANTS(bams.variant_base)
 
+    // 6b. Codon-level changes: get_MNV reads the SNPs of one codon whole, on the reads that carry them
+    def codons = CODON_CHANGES(variants.codon_calls, bams.variant_base, refGffMap)
+
     // 12. Gene conversion (opt-in). Reads the PRE-FILTER bam and the reference self-alignment,
     // because the masking the rest of the pipeline applies removes exactly this signal.
     def gconv = GENE_CONVERSION(refs.delta, bams.dedup_bam,
@@ -278,8 +282,8 @@ Run Pathotypr    : ${params.run_pathotypr}
                                    variants.allpos, variants.snps, variants.mask_sites)
 
     // 8. Annotation
-    def annotated = ANNOTATE(variants.homo_snp, variants.het_snp, variants.homo_indel,
-                             variants.raw_fb, variants.main_vcf, variants.allpos, refs.snpeff)
+    def annotated = ANNOTATE(variants.homo_snp, variants.het_snp, variants.homo_indel, variants.het_indel,
+                             variants.indels, variants.raw_fb, variants.main_vcf, variants.allpos, refs.snpeff)
 
     // 9. Legacy Stats Generation
     def legacy = LEGACY_STATS(refs.bundle, reads.pe_json, reads.se_json,
@@ -292,5 +296,5 @@ Run Pathotypr    : ${params.run_pathotypr}
     // 11. Cohort-level outputs (QC report + master SNP matrix).
     COHORT_REPORT(legacy.legacy_log, consensus.fasta, refs.bundle, reads.kraken_reports,
                   typing.dr_mutations, annotated.stats_vcf, annotated.freebayes_vcf,
-                  variants.allpos, gconv.cohort_tsv, refMap, refGffMap, tsv_name)
+                  variants.allpos, annotated.indels_vcf, codons.tsv, gconv.cohort_tsv, refMap, refGffMap, tsv_name)
 }

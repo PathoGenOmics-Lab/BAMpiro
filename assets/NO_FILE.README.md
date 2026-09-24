@@ -13,6 +13,8 @@ stages one of these empty files instead, and the process recognises it by the
 | `NO_FILE_LIFTOVER` | variant coordinate map (`QC_REPORT`) | `--variant_liftover false` |
 | `NO_FILE_DISTANCES` | pairwise SNP distances (`QC_REPORT`) | `--make_snp_distances false`, or no consensus sequences |
 | `NO_FILE_MATRIX` | the master SNP matrix (`QC_REPORT`) | `--make_snp_matrix false` |
+| `NO_FILE_INDELS` | the master indel matrix (`QC_REPORT`) | `--make_indel_matrix false` |
+| `NO_FILE_MNV` | the codon-level table (`SNP_MATRIX`, `QC_REPORT`) | `--run_mnv false`, or no sample reached get_MNV |
 
 Two properties matter, and both are load-bearing:
 

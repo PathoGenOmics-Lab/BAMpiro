@@ -346,6 +346,10 @@ process DUMP_VERSIONS {
       ver python    'Python '            python3   --version
       ver multiqc   'multiqc, version '  multiqc   --version
       ver pathotypr 'pathotypr '         pathotypr --version
+      # get_MNV runs in its own image until the pipeline image carries it: NA here then, and each
+      # sample's mnv/<sample>.<ref>.mnv.manifest.json records the version that ran.
+      ver get_mnv   'get_mnv '           get_mnv   --version
+      echo "get_mnv container: !{params.mnv_container ?: params.container}"
 
       # The marker catalogue is provenance too, and it is the half that cannot be recovered from
       # the results. Catalogue v1.0.0 assigned each variant a single drug inherited from its gene;

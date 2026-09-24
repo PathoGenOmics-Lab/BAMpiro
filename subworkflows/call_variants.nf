@@ -33,6 +33,9 @@ workflow CALL_VARIANTS {
     homo_snp   = fb_out.homo_snp     // legacy split VCFs
     het_snp    = fb_out.het_snp
     homo_indel = fb_out.homo_indel
+    het_indel  = fb_out.het_indel
+    indels     = fb_out.indels       // (sId, rId, indels.vcf.gz, tbi): every indel call, PASS or LowSupport
+    codon_calls = fb_out.codon_calls // (sId, rId, codon_calls.vcf.gz, tbi): the passing SNPs + indels, for get_MNV
     allpos     = vcf_ch.allpos       // (sId, rId, all.pos.vcf.gz, tbi)
     main_vcf   = vcf_ch.main_vcf     // (sId, rId, vcf.gz, tbi)
 }

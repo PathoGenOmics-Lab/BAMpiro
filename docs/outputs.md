@@ -14,6 +14,8 @@ results_bampiro/
 ├── samples_legio_qc_flags.tsv            # Per-sample PASS/WARN/FAIL verdicts
 ├── samples_legio_summary.tsv             # Cohort metrics table (feeds the report)
 ├── samples_legio_snp_matrix.tsv          # Master SNP matrix (site × sample AF & depth)
+├── samples_legio_indel_matrix.tsv        # Master indel matrix (indel × sample AF, depth & filter; see below)
+├── samples_legio_mnv.tsv                 # 🧩 Codon-level changes: SNPs of one codon on the same reads (get_MNV; see below)
 ├── samples_legio_deletions.tsv           # Stretches some samples have no reads for (see below)
 ├── samples_legio_snp_distances.tsv       # SNPs between every two consensus sequences (square matrix)
 ├── samples_legio_snp_distances_pairs.tsv # The same, one row per pair, with how much each rests on
@@ -34,8 +36,10 @@ results_bampiro/
     ├── MP00091.LENS.filtered.bam.bai       # BAM Index  (or .cram with --output_cram)
     │                                       # (final.bam is published instead when dynamic_read_filter=false, or in addition with --publish_prefilter_bam)
     │
-    ├── MP00091.LENS.ann.vcf.gz             # 🎯 MAIN OUTPUT: Annotated Variants (SNPs/Indels)
+    ├── MP00091.LENS.ann.vcf.gz             # 🎯 MAIN OUTPUT: Annotated SNPs (one record per base)
     ├── MP00091.LENS.ann.vcf.gz.tbi         # Index for the main VCF
+    ├── MP00091.LENS.indels.ann.vcf.gz      # 🎯 Annotated indels: every indel call, FILTER PASS or LowSupport (see below)
+    ├── MP00091.LENS.indels.ann.vcf.gz.tbi  # Index for the indel VCF
     ├── MP00091.LENS.canonical.ann.vcf.gz   # 🧬 SNPs at their canonical (H37Rv) position, annotated there; INFO/OPOS = the mapping coordinate (only if --annotate_canonical)
     │
     ├── MP00091.LENS.all.pos.vcf.gz         # 🦴 BACKBONE: VCF containing ALL positions (WT + Variants)
@@ -47,6 +51,12 @@ results_bampiro/
     ├── MP00091.LENS.var.homo.SNPs.ann...   # 📂 Split VCFs: Subset of Homozygous SNPs (Annotated)
     ├── MP00091.LENS.var.het.SNPs.ann...    # 📂 Split VCFs: Subset of Heterozygous SNPs (Annotated)
     ├── MP00091.LENS.var.homo.indel...      # 📂 SPLIT VCF: Homozygous Indels only
+    ├── MP00091.LENS.var.het.indel...       # 📂 SPLIT VCF: Heterozygous (minority) Indels only
+    │
+    ├── mnv/                                # 🧩 Codon-level changes (get_MNV; only if --run_mnv, on by default)
+    │   ├── MP00091.LENS.MNV.tsv            # -> One row per codon holding a call: the codon read whole, its reads
+    │   ├── MP00091.LENS.MNV.vcf.gz(.tbi)   # -> The same as VCF: a record per SNP and one per MNV (INFO/MR = its reads)
+    │   └── MP00091.LENS.mnv.summary.json / .manifest.json   # -> Counts, command, version and checksums of the run
     │
     ├── lineage/                            # 🧬 Pathotypr typing (only if --run_pathotypr)
     │   └── MP00091__<runId>.pathotypr.lineage_summary.tsv   # -> Pathotypr lineage / sub-lineage call (__<runId> avoids multi-lane collisions)
@@ -96,6 +106,55 @@ genotype's dosage passed off as a fraction.
 
 Rows are keyed on contig and position, so two references that share a contig name cannot be told
 apart; the matrix step warns when it sees one.
+
+With the codon-level table (`--run_mnv`, on by default) two columns follow `aa_change`:
+`codon_change`, the amino-acid change of every codon the SNP is part of together with another SNP
+on the same reads, and `codon_change_samples`, the samples whose reads carry it and the fraction
+that does, as `His445Glu=S1:0.99,S2:1.00` (codons separated by `;`). Both are empty for a SNP that
+stands alone, and neither column is written by a run without the table. Where they are filled,
+`aa_change` is what the SNP names alone, which is not the change the codon undergoes.
+
+## Indel matrix
+
+`<samplesheet>_indel_matrix.tsv` holds the run's indels the way the SNP matrix holds its SNPs.
+Indels are called with the definition a SNP has (the depth, strand support and allele fraction of
+`--filter_min_dp`, `--min_alt_fwd`/`--min_alt_rev`, `--het_min_frac` and `--hom_threshold`), and
+each sample's `<sample>.<ref>.indels(.ann).vcf.gz` keeps every indel FreeBayes made, normalised
+(left-aligned, one allele per record): the ones that meet the rule have `FILTER` `PASS` and the
+rest `LowSupport`.
+
+A row is an indel (contig, position, REF, ALT) that at least one sample calls with a `PASS`, with its
+`length` (positive for an insertion), `gene`, `effect`, `hgvs_c`, `hgvs_p` and `n_pass` (how many
+samples call it with a `PASS`), then three columns per sample:
+
+| `AF` | `DP` | `FT` | Meaning |
+| :--- | :--- | :--- | :--- |
+| a fraction | the depth | `PASS` | The sample calls the indel and the call meets the rule |
+| a fraction | the depth | `LowSupport` | The sample calls it below the rule: kept, because a minority frameshift starts that way |
+| `0` | the depth | empty | Read at the indel's anchor base, and no such indel called |
+| empty | `0` | empty | No read covers the anchor base in that sample |
+| empty | empty | empty | Not in that sample's genome, or no all-positions VCF |
+
+The depth of a `0` cell is the reads that show a base at the anchor position, so for a long indel it
+is a floor: a read that ends inside the event is not counted. Indels are not lifted to canonical
+(H37Rv) coordinates.
+
+## Codon-level changes (MNVs)
+
+Two SNPs in one codon change one amino acid, and annotated one base at a time they name two changes
+that are not there: CAC>GAG is His>Glu, where each base alone says His>Asp and His>Gln, and GAG>TTG
+is Glu>Leu, where the first base alone says a stop. [get_MNV](https://github.com/PathoGenOmics-Lab/get_MNV)
+groups each sample's passing SNPs and indels by codon and reads the codon whole, on the reads that
+span it (with the base and mapping-quality floors FreeBayes called with).
+
+Its per-sample table writes a combined change for every codon holding two calls, also when no read
+carries them together (two SNPs on different molecules of a mixed population: `MNV Reads` 0).
+`<samplesheet>_mnv.tsv` keeps a codon only where at least `--mnv_min_reads` reads carry every change
+at once: `sample`, `reference`, `contig`, `gene`, `positions`, `ref_bases`, `alt_bases`, `ref_codon`,
+`mnv_codon`, `aa_change` (the codon read whole), `snp_aa_changes` (what each SNP says alone),
+`change_type`, `consequence_shift` (`MNV-masked` when the SNPs alone name another consequence, such
+as a stop), `mnv_reads`, `total_reads`, `mnv_frequency` and `phasing_support`. The same codons mark
+the SNP matrix (`codon_change`) and the report's variant matrix.
 
 ## SNP distances
 

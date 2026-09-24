@@ -30,6 +30,11 @@ process CALL_FREEBAYES {
     tuple val(sampleId), val(refId), path("${sampleId}.${refId}.var.homo.SNPs.vcf"),  emit: homo_snp
     tuple val(sampleId), val(refId), path("${sampleId}.${refId}.var.het.SNPs.vcf"),   emit: het_snp
     tuple val(sampleId), val(refId), path("${sampleId}.${refId}.var.homo.indel.vcf"), emit: homo_indel
+    tuple val(sampleId), val(refId), path("${sampleId}.${refId}.var.het.indel.vcf"),  emit: het_indel
+    // Every indel call, normalised: PASS where it meets the hom or het rule, LowSupport where not
+    tuple val(sampleId), val(refId), path("${sampleId}.${refId}.indels.vcf.gz"), path("${sampleId}.${refId}.indels.vcf.gz.tbi"), emit: indels
+    // The SNPs and indels that pass, in one VCF: what get_MNV groups by codon (never published)
+    tuple val(sampleId), val(refId), path("codon_calls.vcf.gz"), path("codon_calls.vcf.gz.tbi"), emit: codon_calls
 
     shell:
     """
@@ -101,6 +106,20 @@ process CALL_FREEBAYES {
     bcftools view \$EXCL_ARG --types snps,mnps -i "\$hom_rule" -Ov -o !{sampleId}.!{refId}.var.homo.SNPs.vcf  normalized.vcf
     bcftools view \$EXCL_ARG --types snps,mnps -i "\$het_rule" -Ov -o !{sampleId}.!{refId}.var.het.SNPs.vcf   normalized.vcf
     bcftools view \$EXCL_ARG --types indels    -i "\$hom_rule" -Ov -o !{sampleId}.!{refId}.var.homo.indel.vcf normalized.vcf
+    bcftools view \$EXCL_ARG --types indels    -i "\$het_rule" -Ov -o !{sampleId}.!{refId}.var.het.indel.vcf  normalized.vcf
+
+    # 7b. Indels, with the same definition of a call as a SNP. One file holds every indel FreeBayes
+    # made, normalised (left-aligned, one allele per record): the ones that meet the hom or het rule
+    # are PASS and the rest LowSupport, so a minority indel that falls short here keeps its fraction
+    # where the cohort matrix reads it instead of vanishing. Masked regions are left out, as for SNPs.
+    bcftools view \$EXCL_ARG --types indels -Ou normalized.vcf \
+      | bcftools filter -s LowSupport -i "\$hom_rule || \$het_rule" -Oz -o !{sampleId}.!{refId}.indels.vcf.gz
+    safe_tabix !{sampleId}.!{refId}.indels.vcf.gz
+
+    # 7c. The calls get_MNV groups by codon: the SNPs and indels that pass, in one VCF. Kept apart from
+    # the published files; the codon-level table is the deliverable.
+    bcftools view \$EXCL_ARG --types snps,indels -i "\$hom_rule || \$het_rule" -Oz -o codon_calls.vcf.gz normalized.vcf
+    safe_tabix codon_calls.vcf.gz
 
     # 8. Format for Backbone Integration
     # Adds ADP, WT, HET, HOM, NC tags to INFO/FORMAT for the consensus step. INFO is tokenised on ';'
@@ -123,6 +142,11 @@ process CALL_FREEBAYES {
     touch ${sampleId}.${refId}.var.homo.SNPs.vcf
     touch ${sampleId}.${refId}.var.het.SNPs.vcf
     touch ${sampleId}.${refId}.var.homo.indel.vcf
+    touch ${sampleId}.${refId}.var.het.indel.vcf
+    touch ${sampleId}.${refId}.indels.vcf.gz
+    touch ${sampleId}.${refId}.indels.vcf.gz.tbi
+    touch codon_calls.vcf.gz
+    touch codon_calls.vcf.gz.tbi
     """
 }
 

@@ -5,11 +5,18 @@ var SNPMX_PAL_DARK=['#2f4a6b','#6b4c2f','#2f5a40','#6b3a4a','#4a3a6b','#2f5a55',
 var snpmxFilter={};
 var snpmxAll=false;   // false = show the top MAXR most-shared sites; true = virtualized scroll over every site
 var snpmxZoom=32;     // SNP-matrix cell width in px (zoom slider); CSS var --mxcw, no re-render (row height untouched -> virtualization safe)
+var snpmxMode='snp';  // which variants the matrix shows: 'snp' or 'indel' (the run's indel matrix)
+// an indel's allele, short enough for a row label: long ones keep their ends and say how long they are
+function mxAllele(a){ a=String(a||''); return a.length>9?(esc(a.slice(0,4))+'&#8230;'+esc(a.slice(-2))):esc(a); }
 function renderSnpMatrix(){
   var host=el('snpmx_body'), sec=el('snpmatrix'); if(!host)return;
-  var M=R.snp_matrix;
-  if(!(M&&M.rows&&M.rows.length)){ if(sec)sec.style.display='none'; var nv=el('nav-snpmx'); if(nv)nv.style.display='none'; return; }
+  var SM=R.snp_matrix, IM=R.indel_matrix;
+  var hasS=!!(SM&&SM.rows&&SM.rows.length), hasI=!!(IM&&IM.rows&&IM.rows.length);
+  if(!hasS&&!hasI){ if(sec)sec.style.display='none'; var nv=el('nav-snpmx'); if(nv)nv.style.display='none'; return; }
   if(sec)sec.style.display='';
+  if(snpmxMode==='indel'&&!hasI) snpmxMode='snp';
+  if(snpmxMode==='snp'&&!hasS) snpmxMode='indel';
+  var isIndel=snpmxMode==='indel', M=isIndel?IM:SM, unit=isIndel?'indel(s)':'SNP site(s)';
   var samples=M.samples, MAXR=400;
   var meta=(R.sample_meta&&R.sample_meta.fields&&R.sample_meta.fields.length)?R.sample_meta:null;
   var metaMaps={}, metaVals={};
@@ -34,9 +41,13 @@ function renderSnpMatrix(){
     meta.fields.map(function(f){ return '<label class="snpmx-fsel">'+esc(f)+' <select data-f="'+esc(f)+'"><option value="">all</option>'+
       metaVals[f].map(function(v){return '<option value="'+esc(v)+'"'+(snpmxFilter[f]===v?' selected':'')+'>'+esc(v)+'</option>';}).join('')+'</select></label>'; }).join('')+
     '<button class="dyn-btn" id="snpmxfclear">clear</button></div>'):'';
+  // SNPs or indels: each view is its own matrix, in the same sample columns
+  var modeUI=(hasS&&hasI)?('<div class="seg snpmx-mode" role="group" aria-label="variants shown">'+
+      '<button type="button" data-mode="snp" class="'+(isIndel?'':'on')+'" aria-pressed="'+(!isIndel)+'">SNPs <span class="snpmx-modec">'+SM.rows.length+'</span></button>'+
+      '<button type="button" data-mode="indel" class="'+(isIndel?'on':'')+'" aria-pressed="'+isIndel+'">Indels <span class="snpmx-modec">'+IM.rows.length+'</span></button></div>'):'';
   host.innerHTML=
-    '<div class="snpmx-controls">'+
-      '<input id="snpmxq" class="dyn-search" type="search" placeholder="filter by gene / position / amino acid...">'+
+    '<div class="snpmx-controls">'+modeUI+
+      '<input id="snpmxq" class="dyn-search" type="search" placeholder="filter by gene / position / '+(isIndel?'HGVS':'amino acid')+'...">'+
       '<label class="snpmx-toggle"><input type="checkbox" id="snpmxdp" checked> show depth</label>'+
       '<button class="dyn-btn" id="snpmxdl" title="Download the matrix as the report holds it (all samples, called cells only) as a wide TSV. The run&#39;s own snp_matrix.tsv also gives AF 0 and the depth where a sample was read without the allele">'+icon('download')+'download matrix (TSV)</button>'+
       '<button class="dyn-btn snpmx-allbtn" id="snpmxallbtn" style="display:none" title="Toggle between the top most-shared sites and a scrollable view of every site"></button>'+
@@ -54,7 +65,7 @@ function renderSnpMatrix(){
     });
     var nfilt=0; for(var kf in snpmxFilter){ if(snpmxFilter[kf]) nfilt++; }
     var total=rows.length, capped=total>MAXR, ncol=1+vi.length;
-    el('snpmxcount').innerHTML=total+' SNP site(s) &#215; '+vi.length+' sample(s)'+(nfilt?' (filtered)':'')+
+    el('snpmxcount').innerHTML=total+' '+unit+' &#215; '+vi.length+' sample(s)'+(nfilt?' (filtered)':'')+
       (capped?(' &#183; showing <b>'+(snpmxAll?('all '+total):(MAXR+' of '+total))+'</b>'):'')+(M.truncated?' &#183; full matrix in the TSV':'');
     var allbtn=el('snpmxallbtn');   // a real button toggles between the top sites and the full virtualized scroll
     if(allbtn){ if(capped){ allbtn.style.display=''; allbtn.classList.toggle('on',snpmxAll);
@@ -67,16 +78,31 @@ function renderSnpMatrix(){
         vi.map(function(i){var s=samples[i],v=(meta.rows[s]||{})[f]||'',bg=metaColor(f,v); return '<th class="snpmx-metacell" style="top:'+(k*mh)+'px;background:'+bg+';color:'+metaText(bg)+'" title="'+esc(f)+': '+esc(v||'-')+'">'+esc(v)+'</th>';}).join('')+'</tr>';
     }).join(''):'';
     var stop=nf*mh;
-    var refhdr='SNP'+((M.reference||REFNAME)?(' <span class="snpmx-refn" title="reference the samples were mapped against">'+esc(M.reference||REFNAME)+'</span>'):'')+(AA2LBL?(' <span class="snpmx-refn2" title="reference of interest - amino acids (and the position, when the pipeline lifts it) are also shown in this reference&#39;s coordinates in brackets when they differ">&#8596; '+esc(AA2LBL)+'</span>'):'');
+    var refhdr=(isIndel?'Indel':'SNP')+((M.reference||REFNAME)?(' <span class="snpmx-refn" title="reference the samples were mapped against">'+esc(M.reference||REFNAME)+'</span>'):'')+(AA2LBL?(' <span class="snpmx-refn2" title="reference of interest - amino acids (and the position, when the pipeline lifts it) are also shown in this reference&#39;s coordinates in brackets when they differ">&#8596; '+esc(AA2LBL)+'</span>'):'');
     var nameRow='<tr><th class="snpmx-info snpmx-corner" style="top:'+stop+'px">'+refhdr+'</th>'+
       vi.map(function(i){var s=samples[i];return '<th class="snpmx-hcell" style="top:'+stop+'px" title="'+esc(s)+'"><span class="snpmx-h">'+esc(s)+'</span></th>';}).join('')+'</tr>';
     function rowHTML(r){
-      var lbl='<b>'+esc(r.gene||r.contig)+'</b>'+geneRvTag(r.gene)+' '+refPos(r.pos,r.pos_h37rv)+' '+esc(r.ref)+'&#8594;'+esc(r.alt)+(r.aa?(' <span class="snpmx-aa">'+aaDual(r.aa,r.aa_h37rv)+'</span>'):'');
+      var lbl;
+      if(isIndel){
+        // an indel: its length (a frameshift when it is not a multiple of three in a gene) and HGVS
+        var fs=/frameshift/.test(r.eff||''), ln=(r.len>0?'+':'&#8722;')+Math.abs(r.len)+' bp';
+        lbl='<b>'+esc(r.gene||r.contig)+'</b>'+geneRvTag(r.gene)+' '+refPos(r.pos)+' '+mxAllele(r.ref)+'&#8594;'+mxAllele(r.alt)+
+          ' <span class="snpmx-len'+(fs?' fs':'')+'" title="'+esc((r.eff||'').replace(/_/g,' ')+(r.hgvs_c?(' · '+r.hgvs_c):''))+'">'+ln+(fs?' &#183; frameshift':'')+'</span>'+
+          (r.aa?(' <span class="snpmx-aa">'+esc(r.aa)+'</span>'):'');
+      } else {
+        lbl='<b>'+esc(r.gene||r.contig)+'</b>'+geneRvTag(r.gene)+' '+refPos(r.pos,r.pos_h37rv)+' '+esc(r.ref)+'&#8594;'+esc(r.alt)+(r.aa?(' <span class="snpmx-aa">'+aaDual(r.aa,r.aa_h37rv)+'</span>'):'');
+        // this SNP and another one of its codon are on the same reads: the codon read whole is the change
+        if(r.mnv_aa) lbl+=' <span class="snpmx-mnv" title="Codon-level change: in '+Object.keys(r.mnv).length+' sample(s) this SNP and another one of its codon are on the same reads (get_MNV), so the amino-acid change is the codon read whole: '+esc(r.mnv_aa.join(', '))+(r.aa?(', not '+esc(r.aa)+' alone'):'')+'">codon '+esc(r.mnv_aa.join(', '))+'</span>';
+      }
       var cells=vi.map(function(i){var c=r.cells[i], s=samples[i];
-        if(!c) return '<td class="snpmx-cell snpmx-empty" title="'+esc(s)+' - no call here. The run&#39;s snp_matrix.tsv says whether it was read: AF 0 with the depth, or empty with no read"></td>';
+        if(!c) return '<td class="snpmx-cell snpmx-empty" title="'+esc(s)+' - no call here. The run&#39;s '+(isIndel?'indel':'snp')+'_matrix.tsv says whether it was read: AF 0 with the depth, or empty with no read"></td>';
         var afTxt=c[0].toFixed(2).replace(/^0/,'').replace(/^1\.00$/,'1');
         var dpTxt=(showDP&&c[1]!=null)?('<span class="snpmx-dp">'+c[1]+'</span>'):'';
-        return '<td class="snpmx-cell'+(showDP?' wdp':'')+'" style="background:'+snpAfColor(c[0])+'" title="'+esc(s)+'  AF='+c[0].toFixed(3)+(c[1]!=null?('  DP='+c[1]):'')+'"><span class="snpmx-af">'+afTxt+'</span>'+dpTxt+'</td>';
+        var low=isIndel&&c[2]&&c[2]!=='PASS', mv=!isIndel&&r.mnv&&r.mnv[i];
+        var tip=esc(s)+'  AF='+c[0].toFixed(3)+(c[1]!=null?('  DP='+c[1]):'')+
+          (low?('  - called below the rule SNPs are held to ('+esc(c[2])+'): kept, because a minority indel starts that way'):'')+
+          (mv?('  - codon-level change '+esc(mv[0])+(mv[1]!=null?(', on '+Math.round(mv[1]*100)+'% of the reads'):'')+(mv[2]?(' (alone: '+esc(mv[2])+')'):'')+(mv[3]==='MNV-masked'?' - the SNPs alone would name another consequence':'')):'');
+        return '<td class="snpmx-cell'+(showDP?' wdp':'')+(low?' snpmx-low':'')+(mv?' snpmx-inmnv':'')+'" style="background:'+snpAfColor(c[0])+'" title="'+tip+'"><span class="snpmx-af">'+afTxt+'</span>'+dpTxt+'</td>';
       }).join('');
       return '<tr><td class="snpmx-info">'+lbl+'</td>'+cells+'</tr>';
     }
@@ -113,15 +139,19 @@ function renderSnpMatrix(){
     el('snpmxfclear').onclick=function(){ snpmxFilter={}; Array.prototype.forEach.call(host.querySelectorAll('.snpmx-filters select'),function(s){s.value='';}); draw(); };
   }
   el('snpmxdl').onclick=function(){
-    var hdr=['reference','contig','pos','pos_'+AA2LBL,'ref_allele','alt_allele','gene','effect','aa_change'];
-    samples.forEach(function(s){hdr.push(s+'|AF');hdr.push(s+'|DP');});
+    var hdr=isIndel?['reference','contig','pos','ref_allele','alt_allele','length','gene','effect','hgvs_c','hgvs_p']
+                   :['reference','contig','pos','pos_'+AA2LBL,'ref_allele','alt_allele','gene','effect','aa_change','codon_change'];
+    var per=isIndel?3:2;
+    samples.forEach(function(s){hdr.push(s+'|AF');hdr.push(s+'|DP');if(isIndel)hdr.push(s+'|FT');});
     var lines=[hdr.join('\t')];
-    if(meta){ meta.fields.forEach(function(f){ var row=['# '+f,'','','','','','','']; samples.forEach(function(s){row.push((meta.rows[s]||{})[f]||'');row.push('');}); lines.push(row.join('\t')); }); }
-    M.rows.forEach(function(r){var row=[M.reference||r.contig,r.contig,r.pos,(r.pos_h37rv?(''+r.pos_h37rv).split(':').pop():''),r.ref,r.alt,r.gene,r.eff,r.aa];
-      samples.forEach(function(s,i){var c=r.cells[i]; if(c){row.push(c[0].toFixed(4));row.push(c[1]==null?'':c[1]);}else{row.push('');row.push('');}});
+    if(meta){ meta.fields.forEach(function(f){ var row=['# '+f]; while(row.length<hdr.length-samples.length*per)row.push(''); samples.forEach(function(s){row.push((meta.rows[s]||{})[f]||''); for(var k=1;k<per;k++)row.push('');}); lines.push(row.join('\t')); }); }
+    M.rows.forEach(function(r){var row=isIndel?[M.reference||r.contig,r.contig,r.pos,r.ref,r.alt,r.len,r.gene,r.eff,r.hgvs_c||'',r.aa]
+                                              :[M.reference||r.contig,r.contig,r.pos,(r.pos_h37rv?(''+r.pos_h37rv).split(':').pop():''),r.ref,r.alt,r.gene,r.eff,r.aa,(r.mnv_aa||[]).join(';')];
+      samples.forEach(function(s,i){var c=r.cells[i]; if(c){row.push(c[0].toFixed(4));row.push(c[1]==null?'':c[1]);if(isIndel)row.push(c[2]||'');}else{row.push('');row.push('');if(isIndel)row.push('');}});
       lines.push(row.join('\t'));});
-    dl(lines.join('\n')+'\n','snp_matrix.tsv','text/tab-separated-values');
+    dl(lines.join('\n')+'\n',isIndel?'indel_matrix.tsv':'snp_matrix.tsv','text/tab-separated-values');
   };
+  Array.prototype.forEach.call(host.querySelectorAll('.snpmx-mode button'),function(b){ b.onclick=function(){ var m=b.getAttribute('data-mode'); if(m!==snpmxMode){ snpmxMode=m; snpmxAll=false; renderSnpMatrix(); } }; });
   window.__snpmxDraw=draw;   // let the header 'all sites' shortcut repaint the matrix without a full re-render
   draw();
   if(window.__syncSitesBtn)window.__syncSitesBtn();

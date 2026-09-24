@@ -8,6 +8,33 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
 
 ### Added
 
+- **Indels, as a deliverable.** Indels are called with the definition a SNP has (the depth, strand
+  support and allele fraction of the hom and het rules), and each sample's
+  `<sample>.<ref>.indels.ann.vcf.gz` keeps every indel FreeBayes made, normalised, with `FILTER`
+  `PASS` where it meets the rule and `LowSupport` where not: a minority frameshift, the way
+  resistance through Rv0678 often starts, keeps its fraction instead of vanishing. Until now the
+  main VCF held SNPs only and a minority indel was in no filtered file. `<samplesheet>_indel_matrix.tsv`
+  holds the run's indels as the SNP matrix holds its SNPs: every indel a sample calls with a `PASS`,
+  its length, gene, effect and HGVS, and per sample the fraction, the depth and whether that call
+  passes; a sample without the indel reads AF 0 at the depth of the anchor base where it was read.
+  The report's matrix panel gains an Indels view, with frameshifts marked. The legacy split set
+  gains `var.het.indel.vcf`. The matrix is off with `--make_indel_matrix false`; the per-sample
+  indel VCFs are always written.
+
+- **Codon-level changes, read on the reads that carry them.** Two SNPs in one codon change one
+  amino acid, and annotated a base at a time they name two changes that are not there. A new step,
+  `GET_MNV`, runs [get_MNV](https://github.com/PathoGenOmics-Lab/get_MNV) 1.1.5 on each sample's
+  passing SNPs and indels with its alignment, and reads every codon whole on the reads that span it:
+  per-sample tables under `mnv/`, and `<samplesheet>_mnv.tsv` with the codons at least
+  `--mnv_min_reads` reads carry whole. The SNP matrix gains `codon_change` and
+  `codon_change_samples`, and the report marks those SNPs and their cells. On reads simulated from
+  H37Rv, two SNPs of rpoB codon 445 on the same reads read His445Glu (base by base: His445Asp and
+  His445Gln), a minority pair in codon 460 reads Glu460Leu where its first base alone says a stop,
+  and two SNPs of codon 430 on different molecules stay two changes: get_MNV writes a combined
+  change for them too, with no read carrying it, and the table leaves it out. get_MNV runs in its
+  bioconda image, pinned by digest (`--mnv_container`), until the pipeline image carries it; the
+  Dockerfile now installs it. Off with `--run_mnv false`.
+
 - **How low an allele frequency can be trusted.** A *Minority variants* panel counts each
   sample's calls below fixation, their spread of allele fractions and how many rest on three
   alternate reads or fewer, where an error and a real minority look the same. When the
@@ -83,6 +110,16 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
   artefacts with each other at identical coordinates.
 
 ### Fixed
+
+- **The report left out every SNP FreeBayes wrote as an MNP.** Two changes of one codon on the same
+  reads come out of FreeBayes as one record (CAC>GAG), and the report read only single-base records,
+  so those SNPs were in the master SNP matrix and in no table of the report: not in the variant
+  matrix, the series, the minority variants or the dynamics. It now reads such a record as the
+  SNPs it is made of, each with the record's fraction and its annotation, the codon read whole, as
+  the SNP matrix does.
+
+- **The outputs page said the main VCF held indels.** `<sample>.<ref>.ann.vcf.gz` holds SNPs, one
+  record per base; the indels are in `<sample>.<ref>.indels.ann.vcf.gz` (see Added).
 
 - **The Garnatxa launcher asked for a branch that no longer exists.** `conf/garnatxa.sbatch` ran
   `feat/gene-conversion`, deleted once it was merged, which Nextflow can no longer pull. It now

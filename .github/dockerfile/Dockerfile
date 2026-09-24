@@ -49,6 +49,7 @@ ENV MAMBA_ROOT_PREFIX=/opt/conda
 # - kraken2: Decontamination
 # - multiqc: Reporting
 # - pathotypr: alignment-free MTBC lineage + WHO drug-resistance genotyping (k-mer, reference-agnostic)
+# - get_mnv: codon-level (MNV) amino-acid changes, phased on the reads (PathoGenOmics-Lab)
 # - python=3.12: Latest stable python requested
 RUN micromamba create -n bampiro-env -c conda-forge -c bioconda -y \
     'python' \
@@ -73,6 +74,9 @@ RUN micromamba create -n bampiro-env -c conda-forge -c bioconda -y \
     # Pinned, like its marker files below. The catalogue and the binary carry the same
     # version on purpose: v1.0.2 renumbered the data files so the two match again.
     'pathotypr=1.0.2' \
+    # Codon-level changes: two SNPs in one codon read whole, on the reads that carry them (MNVs).
+    # Pinned, like pathotypr: the codon table and its columns are what the run's outputs are read from.
+    'get_mnv=1.1.5' \
     'pandas' \
     # pandas already pulls numpy in, but bin/gconv_model.py and bin/build_min_unique_len.py import
     # it directly, and a direct import has no business resting on somebody else's dependency.

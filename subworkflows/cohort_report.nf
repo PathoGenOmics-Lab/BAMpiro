@@ -6,7 +6,8 @@
 */
 
 include { ANNOTATE_CANONICAL } from '../modules/annotation'
-include { COLLECT_SUMMARY; COLLECT_DR; DEPTH_PROFILE; LIFT_VARIANTS; QC_REPORT; SNP_DISTANCES; SNP_MATRIX } from '../modules/report'
+include { COLLECT_SUMMARY; COLLECT_DR; DEPTH_PROFILE; INDEL_MATRIX; LIFT_VARIANTS; QC_REPORT; SNP_DISTANCES; SNP_MATRIX } from '../modules/report'
+include { MNV_TABLE } from '../modules/mnv'
 include { asBool } from '../modules/utils'
 
 workflow COHORT_REPORT {
@@ -20,6 +21,8 @@ workflow COHORT_REPORT {
     vcf_for_stats      // (sId, rId, vcf)
     freebayes_ann      // annotated freebayes.raw VCFs; empty when annotate_legacy_vcfs is off
     allpos_vcf         // (sId, rId, all.pos.vcf.gz, tbi): the depth of every site, for the SNP matrix
+    indels_vcf         // (sId, rId, indels(.ann).vcf.gz): every indel call, PASS or LowSupport
+    mnv_tsv            // (sId, rId, <sample>.<ref>.MNV.tsv): get_MNV's codons; empty when run_mnv is off
     gconv_cohort       // cohort gene-conversion TSV; empty when --find_gene_conversion is off
     refMap             // refId -> refFasta
     refGffMap          // refId -> refGff
@@ -36,13 +39,30 @@ workflow COHORT_REPORT {
                       .collect().ifEmpty([])
     def ref_name = refMap.keySet().join(',')
 
+    // 11a0. The run's codon-level changes: every sample's get_MNV codons that reads carry whole. The
+    // manifest names each file's sample and reference, so neither is read back out of a file name.
+    def mnv_table = asBool(params.run_mnv)
+        ? MNV_TABLE(mnv_tsv.map { sId, rId, f -> "${sId}\t${rId}\t${f.name}" }
+                           .collectFile(name: 'mnv_manifest.tsv', newLine: true),
+                    mnv_tsv.map { sId, rId, f -> f }.collect(), tsv_name).table
+              .ifEmpty(file("${projectDir}/assets/NO_FILE_MNV"))
+        : file("${projectDir}/assets/NO_FILE_MNV")
+
     // 11a. Master SNP matrix: rows = SNP sites, columns = reference/annotation + per-sample AF & depth.
     // The all-positions VCFs say what a sample's reads show at a site it has no call at. Built before
     // the report, which reads it to tell a site absent at a series' first time point from one not read.
+    // The codon-level table says which SNPs are one amino-acid change together (codon_change columns).
     def snp_matrix = asBool(params.make_snp_matrix)
         ? SNP_MATRIX(report_vcfs, allpos_vcf.map { sId, rId, vcf, tbi -> vcf }.collect().ifEmpty([]),
-                     ref_name, tsv_name).matrix
+                     mnv_table, ref_name, tsv_name).matrix
         : file("${projectDir}/assets/NO_FILE_MATRIX")
+
+    // 11a'. Master indel matrix: every indel a sample calls with a PASS, each sample's AF, depth and filter.
+    def indel_matrix = asBool(params.make_indel_matrix)
+        ? INDEL_MATRIX(indels_vcf.map { sId, rId, vcf -> vcf }.collect().ifEmpty([]),
+                       allpos_vcf.map { sId, rId, vcf, tbi -> vcf }.collect().ifEmpty([]),
+                       ref_name, tsv_name).matrix
+        : file("${projectDir}/assets/NO_FILE_INDELS")
 
     // 11b. What each sample's reads cover, from its all-positions VCF and its reference's GFF: the
     // report reads them against each other for deletions and SNPs per callable kb, and the tables
@@ -134,7 +154,8 @@ workflow COHORT_REPORT {
         def report_gconv = gconv_cohort.ifEmpty([])
         QC_REPORT(summ.summary, summ.gene_burden, cons_files, report_gffs, report_masks, report_fais,
                   report_ref_ids, report_meta, report_vcfs, report_vcfs_h37rv, pos_liftover, dr_report,
-                  report_gconv, report_kraken, depth_profiles, snp_dist, snp_matrix, provenance, tsv_name)
+                  report_gconv, report_kraken, depth_profiles, snp_dist, snp_matrix, indel_matrix, mnv_table,
+                  provenance, tsv_name)
     }
 
 }

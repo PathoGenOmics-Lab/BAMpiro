@@ -76,6 +76,8 @@ table below.
 | :--- | :---: | :--- |
 | `--make_qc_report` | :octicons-check-circle-fill-16:{ .green } on | The interactive HTML QC report + `qc_flags.tsv` |
 | `--make_snp_matrix` | :octicons-check-circle-fill-16:{ .green } on | The cohort master SNP-matrix TSV |
+| `--make_indel_matrix` | :octicons-check-circle-fill-16:{ .green } on | The cohort master indel-matrix TSV |
+| `--run_mnv` | :octicons-check-circle-fill-16:{ .green } on | Codon-level changes with get_MNV (per-sample `mnv/`, `<samplesheet>_mnv.tsv`, the SNP matrix's `codon_change`) |
 | `--make_consensus` | :octicons-check-circle-fill-16:{ .green } on | The per-sample consensus FASTA |
 | `--exclude_repeats` | :octicons-check-circle-fill-16:{ .green } on | `nucmer` self-alignment repeat masking |
 | `--dynamic_read_filter` | :octicons-check-circle-fill-16:{ .green } on | The length-aware (mappability) read filter |
@@ -196,6 +198,12 @@ Two documented, ready-to-use **organism** configs live in
 | | `--het_min_frac` | `0.10` | Frequency between 0.10 and 0.90 is **Heterozygous**. |
 | | `--filter_min_dp` | `30` | Minimum depth required to call a variant. |
 | | `--min_alt_fwd/rev` | `2` | Min variant supporting reads in FWD and REV strands. |
+| **Indels & codons** | `--make_indel_matrix` | `true` | Emit `<samplesheet>_indel_matrix.tsv`: every indel a sample calls with a PASS (the rules above), each sample's AF, depth and filter. |
+| | `--run_mnv` | `true` | Read the SNPs that share a codon whole, on the reads that carry them ([get_MNV](https://github.com/PathoGenOmics-Lab/get_MNV)): the amino-acid change a per-base annotation misses. |
+| | `--mnv_min_reads` | `2` | Reads that must carry every change of a codon for it to count as one change in `<samplesheet>_mnv.tsv`. |
+| | `--mnv_gff_features` | `CDS` | GFF feature types get_MNV reads codons from. |
+| | `--mnv_translation_table` | `11` | NCBI genetic code get_MNV translates with (11: bacteria and archaea). |
+| | `--mnv_container` | `quay.io/biocontainers/get_mnv` 1.1.5, by digest | The image get_MNV runs in until the pipeline image carries it; empty runs it in the pipeline image. |
 | **Consensus** | `--make_consensus` | `true` | Generate a consensus FASTA for each sample. |
 | | `--consensus_min_dp` | `7` | Depth threshold below which a base becomes "No Call". |
 | | `--consensus_mask_char` | `X` | Character for masked/low-quality sites. |
