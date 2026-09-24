@@ -7,6 +7,7 @@
 #   tests/run_tests.sh js         # only the report front-end tests
 #   tests/run_tests.sh pipeline   # only the Nextflow stub runs (needs nextflow + Java 17+)
 #   tests/run_tests.sh lint       # only ruff
+#   tests/run_tests.sh e2e        # a real run in Docker on a simulated cohort (minutes; not part of 'all')
 #
 # The Nextflow leg is skipped automatically when the CLI is not installed.
 
@@ -55,6 +56,16 @@ if [[ "$TARGET" == "all" || "$TARGET" == "pipeline" ]]; then
         record python3 -m pytest tests/pipeline -q
     else
         echo "nextflow not installed, skipping (needs Java 17+)"
+    fi
+fi
+
+# Not part of 'all': it pulls the pinned images and runs the pipeline for real, which takes minutes.
+if [[ "$TARGET" == "e2e" ]]; then
+    step "pytest: end-to-end run on the simulated cohort (Docker)"
+    if command -v nextflow >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+        BAMPIRO_E2E=1 record python3 -m pytest tests/e2e -q -rs
+    else
+        echo "needs nextflow (Java 17+) and a running Docker, skipping"
     fi
 fi
 

@@ -53,6 +53,7 @@ current host, so a fresh clone works anywhere without being edited.
 | `docker` | *(leaves it alone)* | Docker instead of Singularity (combine it: `local,docker`) |
 | `generic` | *(leaves it alone)* | A non-tuberculosis organism (ploidy 1, the MTBC-only features off) |
 | `test` · `test_full` | `local` | The bundled fixture cohort, for `-stub-run` |
+| `test_e2e` | `local` | A real run of the simulated end-to-end cohort (with `docker`) |
 
 Pick one executor profile and add as many option profiles as you like, comma-separated
 and with no spaces: `-profile local,docker`, `-profile slurm,generic`.

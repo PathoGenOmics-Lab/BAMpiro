@@ -8,6 +8,7 @@ pythonpath = ["bin"]
 addopts = "-ra --strict-markers"
 markers = [
     "nextflow: needs the `nextflow` CLI on PATH (skipped when absent)",
+    "e2e: a real pipeline run in Docker on a simulated cohort (only with BAMPIRO_E2E=1)",
 ]
 
 [tool.ruff]

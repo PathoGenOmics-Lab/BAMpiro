@@ -32,6 +32,7 @@ comma-separated and with no spaces.
 | `docker` | Docker on, Singularity off | Combine it with an executor profile: `-profile local,docker`. |
 | `generic` | ploidy 1, MTBC features off | A non-tuberculosis organism (see [below](#example-configs)). |
 | `test` · `test_full` | `conf/test.config` (+ `test_full`) | The bundled fixture cohort, sized for `nextflow run main.nf -profile test -stub-run`. |
+| `test_e2e` | `conf/test_e2e.config` | A real run of the simulated cohort `tests/e2e/cohort.py` writes, at the production thresholds; used by the end-to-end test as `-profile docker,test_e2e`. |
 
 ```bash
 -profile local,docker      # a laptop, with Docker

@@ -162,9 +162,11 @@ tests/run_tests.sh
 ```
 
 Unit tests for the Python under `bin/`, tests for the report front-end's hand-written statistics
-(checked against SciPy), and a full `-stub-run` of the DAG over a 170 kB fixture cohort. No
-container, no reference genome, no network. [`tests/README.md`](tests/README.md) has the details;
-CI runs the same checks on every pull request.
+(checked against SciPy), and a full `-stub-run` of the DAG over a 170 kB fixture cohort, none of
+which needs a container, a reference genome or a network. One more leg runs the pipeline for real,
+in its containers, on a cohort simulated at test time whose every SNP, codon change and indel is
+known in advance (`tests/run_tests.sh e2e`, with Docker). [`tests/README.md`](tests/README.md) has
+the details; CI runs all of them on every pull request.
 
 ## Why "BAMpiro"?
 
