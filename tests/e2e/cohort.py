@@ -254,9 +254,14 @@ def plan(genome, cds):
                            (split_1, "S3", 0.30), (split_2, "S3", 0.25)]:
         for site in entries:
             sites.setdefault(site, {})[s] = af
+    # Two changes of one codon on the same reads are one MNP record in FreeBayes' raw VCF, annotated
+    # as the codon they make; the SNP matrix and the report read that VCF and keep the codon's change
+    # on each base. The main VCF splits the record first, so each base carries its own change there.
+    whole = {pos: f"p.{aa(name, k, codon)}" for s, (name, k, codon) in mnv.items() for pos, _, _ in mnv_snps[s]}
     for (pos, ref, alt), af in sorted(sites.items()):
         name, hgvs = protein_change(genome, pos, ref, alt)
-        truth["snps"].append({"pos": pos, "ref": ref, "alt": alt, "af": af, "gene": name, "hgvs_p": hgvs})
+        truth["snps"].append({"pos": pos, "ref": ref, "alt": alt, "af": af, "gene": name, "hgvs_p": hgvs,
+                              "matrix_aa": whole.get(pos, hgvs)})
 
     for s, (name, k, codon) in mnv.items():
         truth["mnvs"].append({

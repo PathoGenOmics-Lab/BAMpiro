@@ -179,13 +179,40 @@ def snp_matrix(run: Run):
     return {int(r["pos"]): r for r in tsv(one(run.out, "e2e_snp_matrix.tsv"))}
 
 
-def test_the_snp_matrix_holds_the_planted_snps_and_nothing_else(e2e):
+def main_vcf_calls(run: Run, sample: str):
+    """{pos: (ref, alt, HGVS.p)} of a sample's main VCF, the deliverable of its calls."""
+    out = {}
+    for f in vcf_records(one(run.out, f"{sample}.{cohort.REF_ID}.ann.vcf.gz")):
+        ann = f[7].split("ANN=")[1].split(",")[0].split("|") if "ANN=" in f[7] else [""] * 11
+        out[int(f[1])] = (f[3], f[4], ann[10])
+    return out
+
+
+def test_each_sample_calls_the_planted_snps_and_nothing_else(e2e):
+    """The main VCF: the SNPs that pass the rules outside the masked regions, one record per base."""
+    for s in SAMPLES:
+        got = main_vcf_calls(e2e, s)
+        want = {e["pos"]: e for e in e2e.truth["snps"] if s in e["af"]}
+        assert set(got) - set(want) == set(), f"{s}: SNPs it does not carry: {sorted(set(got) - set(want))}"
+        assert set(want) - set(got) == set(), f"{s}: planted SNPs not called: {sorted(set(want) - set(got))}"
+        wrong = [(p, got[p], e["hgvs_p"]) for p, e in want.items()
+                 if got[p][:2] != (e["ref"], e["alt"]) or (e["gene"] and got[p][2] != e["hgvs_p"])]
+        assert wrong == [], f"{s}: pos, (ref, alt, change written), change planted"
+    assert e2e.truth["uncalled"][0]["pos"] not in main_vcf_calls(e2e, "S2"), "a SNP no read can be placed at"
+
+
+def test_the_snp_matrix_holds_the_planted_snps(e2e):
+    """Every planted site is a row. The matrix is read from FreeBayes' raw VCF, which keeps each site
+    FreeBayes weighed, genotyped reference or not and masked or not, so it can also list a site no
+    sample calls: here 13149, two error reads (5%) at the edge of the masked repeat in S2. That is what
+    the code does today, pinned so a change to it is seen; outputs.md says a row is a called site."""
     rows = snp_matrix(e2e)
     want = {e["pos"] for e in e2e.truth["snps"]}
-    assert set(rows) - want == set(), f"SNPs nobody carries: {sorted(set(rows) - want)}"
-    assert want - set(rows) == set(), f"planted SNPs not called: {sorted(want - set(rows))}"
-    repeat_snp = e2e.truth["uncalled"][0]["pos"]
-    assert repeat_snp not in rows, "a SNP no read can be placed at was called"
+    assert want - set(rows) == set(), f"planted SNPs missing: {sorted(want - set(rows))}"
+    calls = set().union(*(main_vcf_calls(e2e, s) for s in SAMPLES))
+    called_extra = sorted((set(rows) - want) & calls)
+    assert called_extra == [], f"rows for SNPs a sample calls but none carries: {called_extra}"
+    assert e2e.truth["uncalled"][0]["pos"] not in rows, "a SNP no read can be placed at is a row"
 
 
 def test_every_cell_says_what_the_sample_carries(e2e):
@@ -206,10 +233,12 @@ def test_every_cell_says_what_the_sample_carries(e2e):
 
 
 def test_each_snp_names_the_protein_change_it_makes(e2e):
+    """Two changes of one codon on the same reads are one MNP record in the VCF the matrix reads,
+    annotated as the codon they make, and each base keeps that change (matrix_aa)."""
     rows = snp_matrix(e2e)
-    wrong = [(e["pos"], rows[e["pos"]]["gene"], rows[e["pos"]]["aa_change"], e["gene"], e["hgvs_p"])
+    wrong = [(e["pos"], rows[e["pos"]]["gene"], rows[e["pos"]]["aa_change"], e["gene"], e["matrix_aa"])
              for e in e2e.truth["snps"] if e["gene"]
-             and (rows[e["pos"]]["gene"], rows[e["pos"]]["aa_change"]) != (e["gene"], e["hgvs_p"])]
+             and (rows[e["pos"]]["gene"], rows[e["pos"]]["aa_change"]) != (e["gene"], e["matrix_aa"])]
     assert wrong == [], "pos, gene and change written, then planted"
 
 
@@ -343,7 +372,7 @@ def test_the_report_carries_the_same_matrices(e2e):
     payload = report_payload(e2e)
     snps = payload["snp_matrix"]
     assert set(snps["samples"]) == set(SAMPLES), snps["samples"]
-    assert {r["pos"] for r in snps["rows"]} == {e["pos"] for e in e2e.truth["snps"]}
+    assert {r["pos"] for r in snps["rows"]} == set(snp_matrix(e2e)), "the report and the SNP matrix disagree"
     by_pos = {r["pos"]: r for r in snps["rows"]}
     for m in e2e.truth["mnvs"]:
         for p in m["positions"]:
