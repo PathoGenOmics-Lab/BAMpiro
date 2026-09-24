@@ -35,6 +35,17 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
   bioconda image, pinned by digest (`--mnv_container`), until the pipeline image carries it; the
   Dockerfile now installs it. Off with `--run_mnv false`.
 
+- **A real run of the pipeline in CI.** The tests stopped short of the science: `-stub-run`
+  replaces every process's script block, and the unit tests run `bin/` one script at a time. A new
+  CI job runs BAMpiro for real, in its pinned images, on a cohort simulated at test time
+  (`tests/e2e/cohort.py`: a 24 kb genome with five genes, three samples at 100x, one of them
+  single-end over two runs) and holds every deliverable against what was planted: the SNP matrix
+  with each fraction and protein change; the codon-level table, with two codon changes carried
+  whole, one whose first base alone says a stop, and two SNPs of one codon on different molecules
+  that must stay two changes; the indel matrix with each call's filter; the consensus over a repeat
+  and over a stretch one sample lost; the SNP distances; the deletions table; and the report's own
+  copy of the matrices. `tests/run_tests.sh e2e` runs it locally (Docker), with `-profile test_e2e`.
+
 - **How low an allele frequency can be trusted.** A *Minority variants* panel counts each
   sample's calls below fixation, their spread of allele fractions and how many rest on three
   alternate reads or fewer, where an error and a real minority look the same. When the
@@ -110,6 +121,12 @@ based on [Keep a Changelog](https://keepachangelog.com/), and the project follow
   artefacts with each other at identical coordinates.
 
 ### Fixed
+
+- **Two tools had a message recorded as their version.** `pipeline_info/software_versions.txt`
+  took the first line each tool prints, and bwa-mem2 opens with the SIMD build it launches, so
+  `Looking to launch executable ...` stood where its version should be. Under the `docker` profile
+  genmap could not write to its home directory and the error took its place. The file now takes the
+  first line that carries a version number, and the step gets a home it can write to.
 
 - **The report left out every SNP FreeBayes wrote as an MNP.** Two changes of one codon on the same
   reads come out of FreeBayes as one record (CAC>GAG), and the report read only single-base records,

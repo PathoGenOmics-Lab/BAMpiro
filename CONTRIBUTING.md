@@ -57,20 +57,23 @@ tests/run_tests.sh lint         # ruff only
 tests/run_tests.sh unit         # Python unit tests for bin/ only
 tests/run_tests.sh js           # report front-end only
 tests/run_tests.sh pipeline     # Nextflow stub runs only
+tests/run_tests.sh e2e          # a real run in Docker on a simulated cohort (not part of "everything")
 ```
 
-There are around 1,200 tests in three legs:
+The suite has four legs:
 
 | Leg | What it covers | Needs |
 | :--- | :--- | :--- |
 | `tests/unit/` | Everything under `bin/`: the consensus decision tree, the QC verdict engine, the parsers, the k-mer liftover, the read filter, and the awk and filter expressions the process scripts call | `pytest`, `numpy` |
 | `tests/js/` | The report's hand-written ES5 statistics, checked against SciPy and statsmodels reference values, plus the integrity of the asset bundle | `node >= 18` |
 | `tests/pipeline/` | Samplesheet validation and a full `-stub-run` of the DAG on both test profiles | `nextflow`, Java 17+ |
+| `tests/e2e/` | One real run of the pipeline, in its containers, on a cohort simulated at test time, with every output held against what the cohort planted | `nextflow`, Java 17+, Docker |
 
 A leg whose tool is not installed skips itself instead of failing, so a partial local setup still
-gives useful signal. Nothing needs a container, a reference genome, real reads or a network
-connection. [`tests/README.md`](tests/README.md) documents the fixture cohort, the two test profiles
-and the Node harness in more detail.
+gives useful signal. Only the end-to-end leg needs a container, the pinned images and a few
+minutes, which is why `tests/run_tests.sh` leaves it out unless asked (`e2e`, or `BAMPIRO_E2E=1`
+for pytest). [`tests/README.md`](tests/README.md) documents the fixture cohort, the simulated
+cohort, the test profiles and the Node harness in more detail.
 
 Two things to know before you add a test:
 
@@ -83,7 +86,7 @@ Two things to know before you add a test:
 
 ## What CI runs
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) gates every pull request with five jobs:
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) gates every pull request with six jobs:
 
 | Job | What it does |
 | :--- | :--- |
@@ -92,6 +95,7 @@ Two things to know before you add a test:
 | Fixtures are reproducible | Regenerates `tests/data/` and fails on any diff |
 | Report front-end (Node) | `node --test tests/js/*.test.mjs` on Node 20 |
 | Stub run | `pytest tests/pipeline` against Nextflow `24.04.2` and `latest-stable` |
+| End-to-end run (Docker) | `pytest tests/e2e` against `latest-stable`: the pipeline for real, in the pinned images; when it fails, the run (cohort, results, trace, log) is kept as the `e2e-run` artifact |
 
 The two Python versions are the oldest the scripts must still run on and the one in the container.
 The two Nextflow versions are the minimum the manifest declares and the current release, the latter
@@ -101,8 +105,8 @@ as an early warning rather than a hard requirement.
 on pull requests that touch `docs/`, `mkdocs.yml` or the workflow itself, so a broken link or a page
 missing from the nav fails review rather than `main`.
 
-Actions minutes are metered on this repository, so a new push cancels the previous run of the same
-branch. Run `tests/run_tests.sh` locally before you push rather than using CI as your test runner.
+A new push cancels the previous run of the same branch. Run `tests/run_tests.sh` locally before you
+push rather than using CI as your test runner.
 
 ## Linting: narrow on purpose
 
@@ -158,10 +162,11 @@ The pipeline is layered, and the layer decides whether your change is testable:
 | `modules/*.nf` | The processes: their inputs, outputs, resources and the command line they run. |
 | `bin/` | Everything the command line actually does, once it is more than a call to a tool. |
 
-That last row is the one worth internalising. **A process script cannot be tested.** `-stub-run`
-replaces it wholesale, and nothing can import it, so a decision written inside a `script:` block has
-no coverage and cannot get any. If your change involves a threshold, a filter expression, a parse or
-any other decision, put it in a file under `bin/` and have the process call it. That is why
+That last row is the one worth internalising. **A process script cannot be unit-tested.**
+`-stub-run` replaces it wholesale and nothing can import it. The end-to-end leg does run it, but only
+inside one whole run of the default features on one cohort: it tells you that something broke, not
+which decision. If your change involves a threshold, a filter expression, a parse or any other
+decision, put it in a file under `bin/` and have the process call it. That is why
 `vcf_filter_rules.py`, `format_snps_for_backbone.awk` and `backbone_allpos.awk` exist.
 
 A sub-workflow's `emit:` name must not match a `def` local in the same scope: `emit: x = y` is a
@@ -189,6 +194,10 @@ If the process sits on an optional branch, make sure `-profile test_full` reache
 turns on every optional feature (Kraken, pathotypr typing, canonical annotation, the liftover, the
 virgin consensus) precisely so one stub run instantiates every declared process, and
 `test_the_full_profile_reaches_every_process` fails when something drops out of that coverage.
+
+If the process is on by default, the end-to-end run executes it for real. When it produces a
+deliverable, plant what it should find in `tests/e2e/cohort.py` and hold its output against that in
+`tests/e2e/test_e2e.py`.
 
 ## Tests pin observed behaviour
 

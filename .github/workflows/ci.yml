@@ -1,11 +1,13 @@
 name: CI
 
 # The gate for every change: linting, unit tests for the Python under bin/, tests for the report's
-# hand-written front-end statistics, and a full stub run of the DAG. (The docs build lives in
-# docs.yml, which runs on pull requests too.)
+# hand-written front-end statistics, a full stub run of the DAG, and one real run of the pipeline.
+# (The docs build lives in docs.yml, which runs on pull requests too.)
 #
-# Nothing here needs a container, a reference genome or real reads: the fixture cohort under
+# All but the last need no container, reference genome or real reads: the fixture cohort under
 # tests/data/ is 170 kB and `-stub-run` executes each process's stub: block instead of the tool.
+# The end-to-end job runs the script blocks themselves, in the pinned images, on a cohort
+# simulated at test time (tests/e2e/cohort.py) whose every SNP, codon change and indel is known.
 
 on:
   pull_request:
@@ -13,8 +15,7 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# A new push supersedes the previous run of the same branch. The repository is private on a free
-# plan, so Actions minutes are metered; do not burn them on results nobody will read.
+# A new push supersedes the previous run of the same branch: nobody reads the results of the old one.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -101,6 +102,43 @@ jobs:
         with:
           version: ${{ matrix.nxf_ver }}
       - run: python -m pytest tests/pipeline -q
+
+  e2e:
+    name: End-to-end run (Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      NXF_ANSI_LOG: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest
+      - uses: nf-core/setup-nextflow@v2
+        with:
+          version: latest-stable
+      # Pulls the pinned images, simulates the cohort, runs the pipeline and checks every output.
+      - name: Run the pipeline on the simulated cohort
+        run: python -m pytest tests/e2e -q -rs
+        env:
+          BAMPIRO_E2E: "1"
+          BAMPIRO_E2E_DIR: ${{ runner.temp }}/e2e
+      # The cohort, the results, the trace and the Nextflow log, without the work directory.
+      - name: Keep the run for inspection
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-run
+          path: |
+            ${{ runner.temp }}/e2e
+            !${{ runner.temp }}/e2e/work
+            !${{ runner.temp }}/e2e/mappability
+          retention-days: 7
 
 # The docs are validated by docs.yml, which already installs the cairo/pango libraries the
 # social plugin needs and now runs on pull requests too. Nothing to duplicate here.
