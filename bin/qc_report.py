@@ -32,6 +32,7 @@ from qcreport.metrics import (ANC_DEF, DEF, DEFS, DIST, METRICS, build_gene_map,
                               flag_sample, het_frac, is_ancient, lineage_counts_parsed, lineage_fracs, robust)
 from qcreport.panels import build_dynamics, build_epistasis, build_snp_matrix
 from qcreport.parsers import (NBINS, clean_str, consensus_stats, mapdamage_stats, mask_profile, parse_bed,
+                              parse_indel_matrix, parse_mnv_table,
                               parse_collection_dates, parse_dose, parse_dr, parse_gene_burden,
                               parse_gene_conversion, parse_gff,
                               parse_kraken, parse_lineage_colors, parse_metadata, parse_pnps, parse_profile,
@@ -122,6 +123,12 @@ def build_parser():
                     help="The master SNP matrix TSV (build_snp_matrix.py with --depth-vcfs) -> what each "
                          "series gained since its first time point, telling a site absent there from one "
                          "not read (optional).")
+    ap.add_argument("--indel-matrix", default=None,
+                    help="The master indel matrix TSV (build_indel_matrix.py) -> the indel view of the matrix "
+                         "panel (optional).")
+    ap.add_argument("--mnv", default=None,
+                    help="The run's codon-level table (collect_mnv.py over get_MNV) -> which SNPs of the matrix "
+                         "are one amino-acid change together (optional).")
     ap.add_argument("--min-dp", type=int, default=7,
                     help="Depth a site needs before a sample without a call there counts as lacking the "
                          "allele (--consensus_min_dp).")
@@ -436,6 +443,9 @@ def build_payload(args, thr, anc_thr):
     _dynamics = build_dynamics(series_meta, _variants, _sample_meta)   # feeds dynamics + epistasis
     # front-load 'dose' so it survives the correlation matrix's top-N view
     dist_keys = (["dose"] + DIST) if dose_map else DIST
+    # The SNP view of the matrix panel, with the SNPs that are one codon-level change marked, and the indel
+    # view in the same column order
+    _snp_mx = build_snp_matrix(_variants, provenance.get('reference', ''), mnv=parse_mnv_table(args.mnv))
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     payload = {"generated": now, "version": clean_str(args.version) or "", "repo_url": REPO_URL,
                "counts": counts, "thresholds": thr, "dist": dist_keys,
@@ -456,7 +466,8 @@ def build_payload(args, thr, anc_thr):
                "n_ancient": n_ancient, "anc_thresholds": anc_thr, "provenance": provenance,
                "dynamics": _dynamics,
                "epistasis": build_epistasis(_dynamics),
-               "snp_matrix": build_snp_matrix(_variants, provenance.get('reference', '')),
+               "snp_matrix": _snp_mx,
+               "indel_matrix": parse_indel_matrix(args.indel_matrix, order=(_snp_mx or {}).get('samples')),
                "coverage": coverage,
                "relatedness": build_relatedness(distances, groups, args.cluster_snps),
                "series": _series,

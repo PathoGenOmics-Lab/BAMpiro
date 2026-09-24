@@ -248,11 +248,15 @@ def build_epistasis(dynamics, min_r=0.8, min_points=3, top=300, perm=2000, max_v
             'n_strong': sum(1 for p in out if p['tier'] == 'strong')}
 
 
-def build_snp_matrix(variants, reference='', max_sites=50000):
+def build_snp_matrix(variants, reference='', max_sites=50000, mnv=None):
     """Sparse SNP matrix for the report: samples + one row per SNP site with its ref/alt/annotation
     and only the cells (sample index -> [af, dp]) actually called. The payload is gzip-compressed in the
     HTML, so this cap is a high safety backstop (most-shared sites kept) rather than a size limit; the
-    pipeline also writes the complete matrix TSV separately."""
+    pipeline also writes the complete matrix TSV separately.
+
+    `mnv` (parse_mnv_table) marks the SNPs of a sample that are one codon-level change with another
+    one on the same reads: the row gets `mnv` (sample index -> [codon change, fraction of the reads,
+    what the SNPs say alone, consequence shift]) and `mnv_aa`, its distinct codon-level changes."""
     if not variants:
         return None
     samples = list(variants.keys())
@@ -283,5 +287,12 @@ def build_snp_matrix(variants, reference='', max_sites=50000):
              'gene': x['gene'], 'eff': x['eff'], 'aa': x['aa'], 'aa_h37rv': x['aa_h37rv'],
              'gene_h37rv': x['gene_h37rv'], 'pos_h37rv': x['pos_h37rv'], 'n': len(x['cells']), 'cells': x['cells']}
             for x in ordered]
+    if mnv:
+        for r in rows:
+            key = f"{r['contig']}:{r['pos']}"
+            hits = {i: mnv[s][key] for s, i in sidx.items() if i in r['cells'] and key in mnv.get(s, {})}
+            if hits:
+                r['mnv'] = hits
+                r['mnv_aa'] = sorted({h[0] for h in hits.values()})
     return {'samples': samples, 'reference': reference, 'rows': rows,
             'total_sites': len(sites), 'truncated': truncated}

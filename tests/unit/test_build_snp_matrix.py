@@ -579,3 +579,58 @@ def test_end_to_end_an_unreadable_depth_file_leaves_that_sample_unknown(tmp_path
     assert "could not read depths" in err
     assert rows["chr1:100"][10:12] == ["", ""]
     assert rows["chr1:200"][8:10] == ["0", "38"], "the other samples are unaffected"
+
+
+# --------------------------------------------------------------------------
+# --mnv: the SNPs that are one codon-level change with another one on the same reads
+# --------------------------------------------------------------------------
+
+def _mnv_table(path, rows):
+    header = ["sample", "reference", "contig", "gene", "positions", "aa_change", "mnv_frequency"]
+    path.write_text("\t".join(header) + "\n" + "".join("\t".join(r) + "\n" for r in rows))
+    return path
+
+
+def _matrix_with(tmp_path, extra):
+    vcf = tmp_path / "S1.vcf"
+    vcf.write_text("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n"
+                   "chr1\t139\t.\tC\tG\t50\t.\t.\tGT:AD:DP\t1/1:0,40:40\n"
+                   "chr1\t141\t.\tC\tG\t50\t.\t.\tGT:AD:DP\t1/1:0,40:40\n"
+                   "chr1\t155\t.\tC\tT\t50\t.\t.\tGT:AD:DP\t1/1:0,40:40\n")
+    out = tmp_path / "m.tsv"
+    proc = subprocess.run([sys.executable, str(bsm.__file__), "--vcfs", str(vcf), "-o", str(out), *extra],
+                          capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    lines = out.read_text().splitlines()
+    return lines[0].split("\t"), [ln.split("\t") for ln in lines[1:]], proc.stderr
+
+
+def test_without_the_codon_table_the_layout_is_the_old_one(tmp_path):
+    header, _, _ = _matrix_with(tmp_path, [])
+    assert header == ["reference", "contig", "pos", "ref_allele", "alt_allele", "gene", "effect", "aa_change",
+                      "S1|AF", "S1|DP"]
+
+
+def test_a_snp_of_a_phased_codon_carries_the_codon_change(tmp_path):
+    table = _mnv_table(tmp_path / "mnv.tsv", [["S1", "ref", "chr1", "rpoB", "139,141", "His445Glu", "0.9904"]])
+    header, rows, err = _matrix_with(tmp_path, ["--mnv", str(table)])
+    assert header[8:10] == ["codon_change", "codon_change_samples"]
+    by = {r[2]: r for r in rows}
+    assert by["139"][8:10] == ["His445Glu", "His445Glu=S1:0.9904"]
+    assert by["141"][8:10] == ["His445Glu", "His445Glu=S1:0.9904"]
+    assert by["155"][8:10] == ["", ""], "a SNP that stands alone"
+    assert by["155"][10:] == ["1.0000", "40"], "the sample columns follow"
+    assert "2 of them part of a codon-level change" in err
+
+
+def test_a_placeholder_table_leaves_the_layout_alone(tmp_path):
+    ph = tmp_path / "NO_FILE_MNV"
+    ph.write_text("")
+    header, _, _ = _matrix_with(tmp_path, ["--mnv", str(ph)])
+    assert "codon_change" not in header
+
+
+def test_codon_cells_list_every_change_and_its_samples():
+    assert bsm._codon_cells(None) == ("", "")
+    assert bsm._codon_cells({"His445Glu": [("A", "0.99"), ("B", "")], "His445Lys": [("C", "0.5")]}) == \
+           ("His445Glu;His445Lys", "His445Glu=A:0.99,B;His445Lys=C:0.5")

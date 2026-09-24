@@ -123,6 +123,7 @@ def getSavePath(filename, params) {
         lower.contains('backbone')  ||
         lower.contains('header_template') ||
         lower.contains('valid_snps_formatted') ||
+        lower.contains('codon_calls') ||
         lower == 'reference.fa' ||          
         lower.endsWith('.fai')  ||          
         lower.endsWith('.amb')  ||          
@@ -155,6 +156,12 @@ def getSavePath(filename, params) {
         if (!asBool(params.publish_allpos_vcf)) return null
         if (lower.contains('.raw.') && !asBool(params.publish_virgin_allpos_vcf)) return null
         return name
+    }
+
+    // A4. get_MNV's codon-level tables, VCF and run records go to a folder of their own. Before the
+    //     annotation rules below, which would drop an un-annotated .vcf.gz.
+    if (lower.contains('.mnv.')) {
+        return "mnv/${name}"
     }
 
     // B. ANNOTATION LOGIC (Filter Raw VCFs if annotation is enabled)

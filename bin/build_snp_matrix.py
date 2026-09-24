@@ -27,6 +27,14 @@ and the cell takes their allele fraction rather than a 0 that would deny them.
 
 Only SNPs (single-base REF and ALT) are kept. The '--reference' value labels the
 reference the samples were mapped against.
+
+A SNP that shares its codon with another one, on the same reads, is half of one amino-acid change:
+annotated alone it names a change that is not there (a stop, where the codon read whole gives a
+leucine). With the run's codon-level table (--mnv, collect_mnv.py over get_MNV), two columns after
+aa_change say so: codon_change, the change of every such codon the site takes part in, and
+codon_change_samples, the samples whose reads carry it with the fraction that does, as
+`His445Glu=S1:0.99,S2:1.00` (codons separated by ';'). Both are empty for a SNP that stands alone,
+and neither column is written without the table, so a run without get_MNV keeps the old layout.
 """
 from __future__ import annotations
 import argparse
@@ -200,6 +208,33 @@ def _ann(info):
     return '', '', ''
 
 
+def read_mnv(path):
+    """{(contig, pos): {aa_change: [(sample, mnv_frequency)]}} from a codon-level table (collect_mnv.py)."""
+    out = {}
+    if not path or not os.path.exists(path) or os.path.basename(path).startswith('NO_FILE'):
+        return out
+    import csv
+    with open(path, newline='', encoding='utf-8', errors='replace') as fh:
+        for r in csv.DictReader(fh, delimiter='\t'):
+            aa = (r.get('aa_change') or '').strip()
+            if not aa:
+                continue
+            for p in (r.get('positions') or '').split(','):
+                p = p.strip()
+                if p.isdigit():
+                    out.setdefault((r.get('contig', ''), int(p)), {}).setdefault(aa, []).append(
+                        (r.get('sample', ''), (r.get('mnv_frequency') or '').strip()))
+    return out
+
+
+def _codon_cells(mnv):
+    """(codon_change, codon_change_samples) of one site."""
+    if not mnv:
+        return '', ''
+    aas = sorted(mnv)
+    return ';'.join(aas), ';'.join(f"{aa}=" + ','.join(f"{s}:{f}" if f else s for s, f in mnv[aa]) for aa in aas)
+
+
 def main():
     ap = argparse.ArgumentParser(description="Build a master SNP matrix from per-sample annotated VCFs.")
     ap.add_argument('--vcfs', nargs='+', required=True, help="per-sample (annotated) VCFs")
@@ -210,8 +245,13 @@ def main():
                          "blank, and a blank is left only where nothing was read")
     ap.add_argument('--threads', type=int, default=1,
                     help="all-positions VCFs read in parallel")
+    ap.add_argument('--mnv', default=None,
+                    help="the run's codon-level table (collect_mnv.py): which SNPs are one amino-acid change "
+                         "together with another one on the same reads")
     ap.add_argument('-o', '--output', required=True)
     args = ap.parse_args()
+    with_codons = bool(args.mnv) and os.path.exists(args.mnv) and not os.path.basename(args.mnv).startswith('NO_FILE')
+    mnv = read_mnv(args.mnv) if with_codons else {}
 
     samples = []           # preserve first-seen order
     sites = {}             # (contig, pos) -> {ref, alt:set, gene, eff, aa, cells:{sample:(af,dp)}}
@@ -314,6 +354,8 @@ def main():
                 f"keyed on contig and position, cannot tell their sites apart\n")
 
     header = ['reference', 'contig', 'pos', 'ref_allele', 'alt_allele', 'gene', 'effect', 'aa_change']
+    if with_codons:
+        header += ['codon_change', 'codon_change_samples']
     for s in samples:
         header += [f'{s}|AF', f'{s}|DP']
     n_absent = n_unread = 0
@@ -323,6 +365,8 @@ def main():
             st = sites[(contig, pos)]
             row = [args.reference or contig, contig, str(pos), st['ref'],
                    ','.join(sorted(st['alt'])), st['gene'], st['eff'], st['aa']]
+            if with_codons:
+                row += _codon_cells(mnv.get((contig, pos)))
             for s in samples:
                 if s in st['cells']:
                     af, dp = st['cells'][s]
@@ -340,7 +384,9 @@ def main():
                 else:
                     row += ['', '']          # no record: another reference, or no depths given
             out.write('\t'.join(row) + '\n')
-    sys.stderr.write(f"[snp_matrix] {len(sites)} SNP site(s) x {len(samples)} sample(s) -> {args.output}\n")
+    in_codon = sum(1 for k in keys if k in mnv)
+    sys.stderr.write(f"[snp_matrix] {len(sites)} SNP site(s) x {len(samples)} sample(s)"
+                     + (f", {in_codon} of them part of a codon-level change" if in_codon else "") + f" -> {args.output}\n")
     if args.depth_vcfs and keys:
         missing = [s for s in samples if s not in depths]
         more = f" and {len(missing) - 5} more" if len(missing) > 5 else ""

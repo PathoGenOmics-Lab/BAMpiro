@@ -177,7 +177,12 @@ SECTION_INFO = {
                  "SNPs, NOT proof of a functional interaction.",
     "snpmatrix": "Every SNP site (rows) by sample (columns); each cell is the allele frequency with its depth, "
                  "plus a reference column and samplesheet metadata as column-header levels. Filter by gene / "
-                 "position or by metadata, and download the full matrix as a TSV.",
+                 "position or by metadata, and download the full matrix as a TSV. A SNP that shares its codon "
+                 "with another one on the same reads carries a 'codon' badge: the amino-acid change is the codon "
+                 "read whole (get_MNV), not the one it names alone, and its cells are outlined. The Indels view "
+                 "holds every indel a sample calls with a PASS, with its length, a frameshift marked, and HGVS; "
+                 "a hatched cell is a call below the rule SNPs are held to, kept because a minority indel starts "
+                 "that way.",
     "drug": "Resistance-associated mutations detected by pathotypr against the WHO catalogue (H37Rv numbering), "
             "as a sample x drug matrix (worst grade per drug) and a per-mutation table with the WHO confidence "
             "grade. Alignment-free (k-mer), so it works regardless of the mapping reference. A genomic screen, "

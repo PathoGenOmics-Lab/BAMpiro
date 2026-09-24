@@ -135,6 +135,8 @@ process QC_REPORT {
     path(depth_profiles, stageAs: 'depth/*')   // per-sample DEPTH_PROFILE tables -> deletions + SNPs per callable kb (may be empty)
     path(snp_distances)     // SNP_DISTANCES pairs TSV -> relatedness page + GROUP_MISMATCH flag (may be NO_FILE)
     path(snp_matrix)        // SNP_MATRIX TSV -> what each series gained since its first time point (may be NO_FILE)
+    path(indel_matrix)      // INDEL_MATRIX TSV -> the indel view of the matrix panel (may be NO_FILE)
+    path(mnv)               // MNV_TABLE TSV -> the SNPs that are one codon-level change (may be NO_FILE)
     val(provenance)         // pre-quoted provenance tokens (container=..., reference=...)
     val(basename)
 
@@ -163,6 +165,8 @@ process QC_REPORT {
     DEL_ARG=""; [ -n "${depth_profiles}" ] && DEL_ARG="--depth-profiles ${depth_profiles} --out-deletions ${basename}_deletions.tsv"
     DIST_ARG=""; case "${snp_distances}" in ""|NO_FILE*) ;; *) [ -s "${snp_distances}" ] && DIST_ARG="--snp-distances ${snp_distances}";; esac
     MX_ARG="";  case "${snp_matrix}" in ""|NO_FILE*) ;; *) [ -s "${snp_matrix}" ] && MX_ARG="--snp-matrix ${snp_matrix}";; esac
+    IX_ARG="";  case "${indel_matrix}" in ""|NO_FILE*) ;; *) [ -s "${indel_matrix}" ] && IX_ARG="--indel-matrix ${indel_matrix}";; esac
+    MNV_ARG=""; case "${mnv}" in ""|NO_FILE*) ;; *) [ -s "${mnv}" ] && MNV_ARG="--mnv ${mnv}";; esac
     python3 ${projectDir}/bin/qc_report.py \\
         --summary ${summary} \\
         ${cons_arg} \\
@@ -170,7 +174,7 @@ process QC_REPORT {
         --ref-gff ${refPairs(ref_ids, gffs)} \\
         --ref-mask ${refPairs(ref_ids, masks)} \\
         --ref-fai ${refPairs(ref_ids, fais)} \\
-        \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$PL_ARG \$DR_ARG \$GC_ARG \$KRK_ARG \$DEL_ARG \$DIST_ARG \$MX_ARG \\
+        \$LC_ARG \$MD_ARG \$VCF_ARG \$VH_ARG \$PL_ARG \$DR_ARG \$GC_ARG \$KRK_ARG \$DEL_ARG \$DIST_ARG \$MX_ARG \$IX_ARG \$MNV_ARG \\
         --cluster-snps ${params.snp_cluster_threshold} \\
         --min-dp ${params.consensus_min_dp} \\
         --deletion-min-len ${params.deletion_min_len} \\
@@ -284,6 +288,7 @@ process SNP_MATRIX {
     // annotate_main_vcf both off the VCFs above ARE these files, and one task cannot stage two
     // inputs under one name.
     path(depth_vcfs, stageAs: 'depth/*')
+    path(mnv)               // the run's codon-level table (MNV_TABLE) -> codon_change columns (may be NO_FILE)
     val(reference)          // reference id the samples were mapped against
     val(basename)
 
@@ -294,10 +299,11 @@ process SNP_MATRIX {
     """
     set -euo pipefail
     DEPTH_ARG=""; [ -n "${depth_vcfs}" ] && DEPTH_ARG="--depth-vcfs ${depth_vcfs}"
+    MNV_ARG="";  case "${mnv}" in ""|NO_FILE*) ;; *) [ -s "${mnv}" ] && MNV_ARG="--mnv ${mnv}";; esac
     python3 ${projectDir}/bin/build_snp_matrix.py \\
         --vcfs ${vcfs} \\
         --reference "${reference}" \\
-        \$DEPTH_ARG \\
+        \$DEPTH_ARG \$MNV_ARG \\
         --threads ${task.cpus} \\
         -o ${basename}_snp_matrix.tsv
     """
@@ -305,5 +311,39 @@ process SNP_MATRIX {
     stub:
     """
     touch ${basename}_snp_matrix.tsv
+    """
+}
+
+process INDEL_MATRIX {
+    tag "Indel matrix"
+    publishDir "${params.outdir}", mode: params.publish_mode
+    // Like SNP_MATRIX, the cost is reading every sample's all-positions VCF, in parallel.
+    cpus 4
+    memory { 4.GB * task.attempt }
+
+    input:
+    path(vcfs)                              // every sample's indel VCF (annotated when the run annotates)
+    path(depth_vcfs, stageAs: 'depth/*')    // every sample's all-positions VCF: the depth where a sample calls none
+    val(reference)
+    val(basename)
+
+    output:
+    path("${basename}_indel_matrix.tsv"), emit: matrix
+
+    script:
+    """
+    set -euo pipefail
+    DEPTH_ARG=""; [ -n "${depth_vcfs}" ] && DEPTH_ARG="--depth-vcfs ${depth_vcfs}"
+    python3 ${projectDir}/bin/build_indel_matrix.py \\
+        --vcfs ${vcfs} \\
+        --reference "${reference}" \\
+        \$DEPTH_ARG \\
+        --threads ${task.cpus} \\
+        -o ${basename}_indel_matrix.tsv
+    """
+
+    stub:
+    """
+    touch ${basename}_indel_matrix.tsv
     """
 }

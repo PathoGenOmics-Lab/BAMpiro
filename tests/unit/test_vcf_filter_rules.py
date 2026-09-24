@@ -125,6 +125,31 @@ class TestAgainstRealBcftools:
         assert self._select(vcf, het()) == []
 
 
+@pytest.mark.skipif(not shutil.which("bcftools"), reason="bcftools is not installed")
+class TestIndelSoftFilter:
+    """CALL_FREEBAYES keeps every indel and marks the ones short of the rule instead of dropping them:
+    `bcftools view --types indels | bcftools filter -s LowSupport -i "<hom> || <het>"`, as in the process."""
+
+    def test_every_indel_is_kept_and_only_the_short_ones_are_marked(self, tmp_path):
+        header = TestAgainstRealBcftools._vcf(tmp_path, []).read_text()
+        rows = [
+            "c\t100\t.\tA\tAT\t50\t.\tDP=50;RO=1;AO=49;SAF=25;SAR=24\tGT:DP\t1/1:50\n",    # hom indel
+            "c\t200\t.\tAT\tA\t50\t.\tDP=50;RO=40;AO=10;SAF=5;SAR=5\tGT:DP\t0/1:50\n",    # 20% indel
+            "c\t300\t.\tAT\tA\t50\t.\tDP=50;RO=46;AO=4;SAF=4;SAR=0\tGT:DP\t0/1:50\n",     # one strand
+            "c\t400\t.\tA\tT\t50\t.\tDP=50;RO=1;AO=49;SAF=25;SAR=24\tGT:DP\t1/1:50\n",     # a SNP
+        ]
+        vcf = tmp_path / "calls.vcf"
+        vcf.write_text(header + "".join(rows))
+        rule = f"{hom()} || {het()}"
+        view = subprocess.run(["bcftools", "view", "--types", "indels", "-Ou", str(vcf)],
+                              capture_output=True, check=True)
+        out = subprocess.run(["bcftools", "filter", "-s", "LowSupport", "-i", rule, "-Ov", "-"],
+                             input=view.stdout, capture_output=True, check=True)
+        got = [(ln.split(b"\t")[1].decode(), ln.split(b"\t")[6].decode())
+               for ln in out.stdout.splitlines() if not ln.startswith(b"#")]
+        assert got == [("100", "PASS"), ("200", "PASS"), ("300", "LowSupport")]
+
+
 class TestCli:
     """The processes call this as a command and substitute the result into bcftools."""
 

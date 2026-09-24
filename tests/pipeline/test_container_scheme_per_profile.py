@@ -6,7 +6,8 @@ not. The default keeps the scheme, because that is the path every cluster run ta
 `docker` profile is the one that strips it.
 
 Both halves are asserted here. Dropping the scheme from the default would fix a laptop and break
-every cluster, which is the more expensive direction to get wrong.
+every cluster, which is the more expensive direction to get wrong. get_MNV runs in an image of its
+own (`--mnv_container`), and the same two runtimes read that reference too.
 """
 
 from __future__ import annotations
@@ -23,13 +24,13 @@ pytestmark = pytest.mark.nextflow
 CONTAINER = re.compile(r"^\s*container\s*=\s*'([^']+)'", re.M)
 
 
-def effective_container(nextflow, env, profile):
-    """What `process.container` resolves to under a profile, as Nextflow itself reports it."""
+def effective_container(nextflow, env, profile, image="bampiro"):
+    """What a process's container resolves to under a profile, as Nextflow itself reports it."""
     out = subprocess.run(
         [nextflow, "config", "-profile", profile, str(REPO_ROOT)],
         capture_output=True, text=True, cwd=REPO_ROOT, env=env, timeout=300)
     assert out.returncode == 0, out.stderr[-2000:]
-    found = [m.group(1) for m in CONTAINER.finditer(out.stdout) if "bampiro" in m.group(1)]
+    found = [m.group(1) for m in CONTAINER.finditer(out.stdout) if image in m.group(1)]
     assert found, f"no container resolved under -profile {profile}"
     return found[-1]
 
@@ -56,4 +57,14 @@ def test_the_two_forms_are_the_same_image(nextflow, nextflow_env):
     cluster = effective_container(nextflow, nextflow_env, "garnatxa")
     laptop = effective_container(nextflow, nextflow_env, "local,docker")
 
+    assert cluster == "docker://" + laptop
+
+
+def test_get_mnv_image_takes_the_scheme_each_runtime_wants(nextflow, nextflow_env):
+    """GET_MNV's container is set on its own, so the docker profile has to strip it on its own."""
+    cluster = effective_container(nextflow, nextflow_env, "garnatxa", image="get_mnv")
+    laptop = effective_container(nextflow, nextflow_env, "local,docker", image="get_mnv")
+
+    assert cluster.startswith("docker://"), cluster
+    assert "get_mnv@sha256:" in laptop, "the digest pin has to survive the rewrite"
     assert cluster == "docker://" + laptop

@@ -1066,7 +1066,12 @@ def _dyn_opos(info):
 
 def parse_vcfs(paths):
     """{sample: {'chrom:pos': {ref,alt,gene,eff,imp,af}}} from annotated per-sample VCFs (SNPs only).
-    Sample = the VCF #CHROM last column, so filenames are irrelevant."""
+    Sample = the VCF #CHROM last column, so filenames are irrelevant.
+
+    An MNP record (REF and ALT of one length, as FreeBayes writes two changes of one codon it sees on
+    the same reads) is every base it changes, each a SNP at its own position with the record's fraction
+    and annotation, which is the codon read whole: the master SNP matrix reads it the same way. Skipped,
+    those SNPs were missing from every table of the report."""
     out = {}
     for p in paths or []:
         if not p or not os.path.exists(p):
@@ -1088,16 +1093,122 @@ def parse_vcfs(paths):
                     if len(c) < 8:
                         continue
                     chrom, pos, ref, alt = c[0], c[1], c[3], c[4]
-                    if alt in ('.', '') or len(ref) != 1 or any(len(a) != 1 for a in alt.split(',')):
+                    if alt in ('.', ''):
+                        continue
+                    alt1 = alt.split(',')[0]
+                    if len(ref) == 1 and all(len(a) == 1 for a in alt.split(',')):
+                        changes = [(0, ref, alt1)]
+                    elif len(ref) == len(alt1) > 1:
+                        changes = [(k, ref[k], alt1[k]) for k in range(len(ref)) if ref[k].upper() != alt1[k].upper()]
+                    else:
+                        continue   # indels and complex records are not SNPs
+                    try:
+                        start = int(pos)
+                    except ValueError:
                         continue
                     af = _dyn_af(c[8], c[9]) if len(c) >= 10 else 1.0
                     if af is None:
                         continue
                     dp = _dyn_dp(c[8], c[9]) if len(c) >= 10 else None
                     gene, eff, imp, aa = _dyn_ann(c[7])
-                    out[sample][f'{chrom}:{pos}'] = {'ref': ref, 'alt': alt.split(',')[0], 'gene': gene,
-                                                     'eff': eff, 'imp': imp, 'aa': aa, 'aa_h37rv': '',
-                                                     'af': round(af, 4), 'dp': dp, 'opos': _dyn_opos(c[7])}
+                    opos = _dyn_opos(c[7])
+                    for k, r1, a1 in changes:
+                        key = f'{chrom}:{start + k}'
+                        if k and key in out[sample]:
+                            continue   # a record of its own already gave this sample's call here
+                        o = opos
+                        if o and k:
+                            oc, _, op = o.rpartition(':')
+                            o = f'{oc}:{int(op) + k}' if op.isdigit() else o
+                        out[sample][key] = {'ref': r1, 'alt': a1, 'gene': gene,
+                                            'eff': eff, 'imp': imp, 'aa': aa, 'aa_h37rv': '',
+                                            'af': round(af, 4), 'dp': dp, 'opos': o}
         except OSError:
             continue
+    return out
+
+
+def _no_file(path):
+    return not path or not os.path.exists(path) or os.path.basename(path).startswith('NO_FILE')
+
+
+def parse_indel_matrix(path, order=None, max_rows=20000):
+    """The indel matrix TSV (build_indel_matrix.py) as the matrix panel holds a matrix: the samples, and
+    one row per indel with its annotation and only the cells a sample calls, [af, dp, filter] (PASS or
+    LowSupport: a call below the rule SNPs are held to, kept because a minority indel starts that way).
+
+    `order` puts the samples in the SNP view's order, so switching views keeps every column in place.
+    The cap keeps the most-called indels, as the SNP view does; the run's TSV has all of them."""
+    if _no_file(path):
+        return None
+    rows, samples = [], []
+    try:
+        with open(path, encoding='utf-8', errors='replace') as fh:
+            header = fh.readline().rstrip('\n').split('\t')
+            col = {h: i for i, h in enumerate(header)}
+            if not {'contig', 'pos', 'ref_allele', 'alt_allele'} <= set(col):
+                return None
+            found = [h[:-3] for h in header if h.endswith('|AF')]
+            samples = [s for s in (order or []) if s in found] + [s for s in found if s not in (order or [])]
+            for line in fh:
+                c = line.rstrip('\n').split('\t')
+                if len(c) < len(header):
+                    continue
+                cells = {}
+                for k, s in enumerate(samples):
+                    try:
+                        af = float(c[col[s + '|AF']])
+                    except (ValueError, KeyError):
+                        continue
+                    if af <= 0:
+                        continue          # read without the indel, or not read: the TSV tells which
+                    dp = c[col[s + '|DP']]
+                    ft = c[col[s + '|FT']] if (s + '|FT') in col else ''
+                    cells[k] = [round(af, 4), int(dp) if dp.isdigit() else None, ft or 'PASS']
+                if not cells:
+                    continue
+                get = lambda k: c[col[k]] if k in col else ''
+                try:
+                    pos, length = int(get('pos')), int(get('length') or 0)
+                except ValueError:
+                    continue
+                rows.append({'contig': get('contig'), 'pos': pos, 'ref': get('ref_allele'), 'alt': get('alt_allele'),
+                             'len': length, 'gene': get('gene'), 'eff': get('effect'), 'hgvs_c': get('hgvs_c'),
+                             'aa': get('hgvs_p'), 'n': len(cells), 'cells': cells})
+    except OSError:
+        return None
+    if not rows:
+        return None
+    total, truncated = len(rows), len(rows) > max_rows
+    if truncated:
+        rows = sorted(rows, key=lambda r: -r['n'])[:max_rows]
+        rows.sort(key=lambda r: (r['contig'], r['pos']))
+    return {'samples': samples, 'rows': rows, 'total_sites': total, 'truncated': truncated}
+
+
+def parse_mnv_table(path):
+    """{sample: {'contig:pos': [codon change, fraction of the reads carrying it, the changes the SNPs
+    name one at a time, consequence shift]}} from the run's codon-level table (collect_mnv.py): which SNP
+    of a sample is half of one amino-acid change with another one on the same reads."""
+    out = {}
+    if _no_file(path):
+        return out
+    import csv
+    try:
+        with open(path, newline='', encoding='utf-8', errors='replace') as fh:
+            for r in csv.DictReader(fh, delimiter='\t'):
+                aa = (r.get('aa_change') or '').strip()
+                if not aa:
+                    continue
+                try:
+                    freq = round(float(r.get('mnv_frequency') or ''), 4)
+                except ValueError:
+                    freq = None
+                entry = [aa, freq, (r.get('snp_aa_changes') or '').strip(), (r.get('consequence_shift') or '').strip()]
+                for pos in (r.get('positions') or '').split(','):
+                    pos = pos.strip()
+                    if pos:
+                        out.setdefault(r.get('sample', ''), {})[f"{r.get('contig', '')}:{pos}"] = entry
+    except OSError:
+        return {}
     return out
